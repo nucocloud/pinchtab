@@ -317,7 +317,7 @@ func defaultReadProcessCommand(pid int) (string, error) {
 		parts := strings.Split(strings.TrimRight(string(data), "\x00"), "\x00")
 		return strings.TrimSpace(strings.Join(parts, " ")), nil
 	}
-	out, err := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "command=").Output()
+	out, err := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "command=").Output() // #nosec G204 -- pid is an int argument to a static ps command, no shell expansion
 	if err != nil {
 		return "", err
 	}
