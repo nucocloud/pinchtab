@@ -7,8 +7,32 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
+
+var configHintOnce sync.Once
+
+// EmitDefaultConfigHint prints a one-time hint to stderr when PINCHTAB_CONFIG
+// points somewhere other than the default config path AND a default config
+// already exists at that path. The hint is best-effort UX nudge for users
+// who may not realize they're running against a custom config.
+//
+// Scoped to specific commands (health, config) and once-per-process via
+// sync.Once so scripted callers and unrelated CLI commands stay quiet.
+func EmitDefaultConfigHint() {
+	configHintOnce.Do(func() {
+		defaultConfigPath := filepath.Join(userConfigDir(), "config.json")
+		configPath := envOr("PINCHTAB_CONFIG", defaultConfigPath)
+		if configPath == defaultConfigPath {
+			return
+		}
+		if _, err := os.Stat(defaultConfigPath); err != nil {
+			return
+		}
+		fmt.Fprintf(os.Stderr, "HINT: default config exists at %s — you can edit it directly instead of using PINCHTAB_CONFIG\n", defaultConfigPath)
+	})
+}
 
 // Load returns the RuntimeConfig with precedence: env vars > config file > defaults.
 func Load() *RuntimeConfig {
@@ -145,12 +169,6 @@ func Load() *RuntimeConfig {
 	// Load config file (supports both legacy flat and new nested format)
 	defaultConfigPath := filepath.Join(userConfigDir(), "config.json")
 	configPath := envOr("PINCHTAB_CONFIG", defaultConfigPath)
-
-	if configPath != defaultConfigPath {
-		if _, statErr := os.Stat(defaultConfigPath); statErr == nil {
-			fmt.Fprintf(os.Stderr, "HINT: default config exists at %s — you can edit it directly instead of using PINCHTAB_CONFIG\n", defaultConfigPath)
-		}
-	}
 
 	data, err := os.ReadFile(configPath)
 	if err != nil {

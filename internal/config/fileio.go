@@ -8,24 +8,32 @@ import (
 	"runtime"
 )
 
-// tightenConfigPerms best-effort enforces 0700 on the config directory and
-// 0600 on the config file. It is invoked from both the save path (to handle
-// pre-existing loose perms left by older versions) and the load path (to
-// proactively recover regardless of whether the user mutates anything).
-// Failures are intentionally swallowed: chmod can fail on read-only FS,
-// foreign-owned files, or filesystems that don't honor unix perms, none of
-// which should block reading config.
-func tightenConfigPerms(path string) {
+// applyConfigPerms enforces 0600 on the config file and 0700 on its parent
+// directory. It only chmods when current perms differ from the target, so
+// repeat calls on already-tight perms are no-ops and safe on directories
+// the process doesn't own (e.g. /tmp).
+//
+// Strictness is the caller's choice. SaveFileConfig bubbles errors because
+// it just wrote secrets and a dir we can't tighten is a real problem. The
+// load path swallows the return: chmod can fail on read-only FS, foreign-
+// owned files, or filesystems that don't honor unix perms, none of which
+// should block reading config.
+func applyConfigPerms(path string) error {
 	if runtime.GOOS == "windows" {
-		return
+		return nil
 	}
 	if fi, err := os.Stat(path); err == nil && fi.Mode().Perm() != 0600 {
-		_ = os.Chmod(path, 0600)
+		if err := os.Chmod(path, 0600); err != nil {
+			return fmt.Errorf("failed to set config file permissions: %w", err)
+		}
 	}
 	dir := filepath.Dir(path)
 	if fi, err := os.Stat(dir); err == nil && fi.Mode().Perm() != 0700 {
-		_ = os.Chmod(dir, 0700)
+		if err := os.Chmod(dir, 0700); err != nil {
+			return fmt.Errorf("failed to set config directory permissions: %w", err)
+		}
 	}
+	return nil
 }
 
 // LoadFileConfig loads a FileConfig from the default or specified path.
@@ -36,12 +44,21 @@ func LoadFileConfig() (*FileConfig, string, error) {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return &FileConfig{}, configPath, nil
+			// No file on disk — the effective config is the defaults. Returning
+			// a populated DefaultFileConfig() (rather than a zero FileConfig{})
+			// means callers that subsequently SaveFileConfig don't write a
+			// half-empty file with all-zero security/instance fields, which
+			// previously caused IDPI and other defaults to be silently disabled
+			// on first-run auto-config. ConfigVersion is reset so NeedsWizard()
+			// still treats this as a first-install state.
+			defaults := DefaultFileConfig()
+			defaults.ConfigVersion = ""
+			return &defaults, configPath, nil
 		}
 		return nil, configPath, fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	tightenConfigPerms(configPath)
+	_ = applyConfigPerms(configPath)
 
 	if isLegacyConfig(data) {
 		fc, err := loadLegacyFileConfig(data)
@@ -65,9 +82,6 @@ func SaveFileConfig(fc *FileConfig, path string) error {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
-	if err := os.Chmod(dir, 0700); err != nil {
-		return fmt.Errorf("failed to set config directory permissions: %w", err)
-	}
 
 	data, err := json.MarshalIndent(fc, "", "  ")
 	if err != nil {
@@ -78,11 +92,8 @@ func SaveFileConfig(fc *FileConfig, path string) error {
 	if err := os.WriteFile(path, data, 0600); err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
-	if err := os.Chmod(path, 0600); err != nil {
-		return fmt.Errorf("failed to set config file permissions: %w", err)
-	}
 
-	return nil
+	return applyConfigPerms(path)
 }
 
 func loadLegacyFileConfig(data []byte) (*FileConfig, error) {

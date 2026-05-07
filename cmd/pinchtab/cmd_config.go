@@ -20,6 +20,9 @@ var clipboardExecCommand = exec.Command
 var configCmd = &cobra.Command{
 	Use:   "config",
 	Short: "Manage configuration",
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		config.EmitDefaultConfigHint()
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		printConfigOverview(loadLocalConfig())
 	},

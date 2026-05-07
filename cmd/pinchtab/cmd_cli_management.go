@@ -2,6 +2,7 @@ package main
 
 import (
 	browseractions "github.com/pinchtab/pinchtab/internal/cli/actions"
+	"github.com/pinchtab/pinchtab/internal/config"
 	"github.com/pinchtab/pinchtab/internal/urls"
 	"github.com/spf13/cobra"
 )
@@ -20,6 +21,7 @@ var healthCmd = &cobra.Command{
 	Use:   "health",
 	Short: "Check server health",
 	Run: func(cmd *cobra.Command, args []string) {
+		config.EmitDefaultConfigHint()
 		runCLI(func(rt cliRuntime) {
 			browseractions.Health(rt.client, rt.base, rt.token, cmd)
 		})
