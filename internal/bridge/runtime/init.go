@@ -49,6 +49,9 @@ func InitChrome(cfg *config.RuntimeConfig, bundle *stealth.Bundle, hooks Hooks) 
 	}
 
 	slog.Info("starting chrome initialization", "headless", cfg.Headless, "profile", cfg.ProfileDir, "binary", cfg.ChromeBinary)
+	if config.IsCloakBrowserProvider(cfg.BrowserProvider) && strings.TrimSpace(cfg.ChromeBinary) == "" {
+		return nil, nil, nil, nil, stealth.LaunchModeUninitialized, missingBrowserBinaryError(cfg)
+	}
 
 	bundle = ensureStealthBundle(cfg, bundle)
 	allocCtx, allocCancel, opts, debugPort := setupAllocator(cfg, bundle, hooks)
@@ -152,6 +155,7 @@ func setupAllocator(cfg *config.RuntimeConfig, bundle *stealth.Bundle, hooks Hoo
 	}
 	opts = appendExecAllocatorFlags(opts, BaseChromeFlagArgs())
 	opts = appendExecAllocatorFlags(opts, bundle.Launch.Args)
+	opts = appendExecAllocatorFlags(opts, cloakBrowserFlagArgs(cfg))
 
 	chromeBinary := cfg.ChromeBinary
 	if chromeBinary == "" {
@@ -289,10 +293,7 @@ func startChromeWithRecovery(parentCtx context.Context, cfg *config.RuntimeConfi
 	}
 
 	if err := chromedp.Run(browserCtx, chromedp.ActionFunc(func(ctx context.Context) error {
-		if err := stealth.ApplyTargetEmulation(ctx, cfg, bundle.LaunchUserAgent()); err != nil {
-			return err
-		}
-		return injectedScript(ctx, bundle.Script)
+		return applyStartupStealth(ctx, cfg, bundle, bundle.Script)
 	})); err != nil {
 		browserCancel()
 		allocCancel()
@@ -332,7 +333,7 @@ func startChromeWithRemoteAllocator(parentCtx context.Context, cfg *config.Runti
 		chromeBinary = findChromeBinary()
 	}
 	if chromeBinary == "" {
-		return nil, nil, stealth.LaunchModeUninitialized, fmt.Errorf("chrome/chromium not found: please install chrome or chromium, or set 'binary' in config.json")
+		return nil, nil, stealth.LaunchModeUninitialized, missingBrowserBinaryError(cfg)
 	}
 
 	args := buildChromeArgsWithBundle(cfg, bundle, debugPort)
@@ -366,10 +367,7 @@ func startChromeWithRemoteAllocator(parentCtx context.Context, cfg *config.Runti
 	browserCtx, browserCancel := chromedp.NewContext(remoteAllocCtx)
 
 	if err := chromedp.Run(browserCtx, chromedp.ActionFunc(func(ctx context.Context) error {
-		if err := stealth.ApplyTargetEmulation(ctx, cfg, bundle.LaunchUserAgent()); err != nil {
-			return err
-		}
-		return injectedScript(ctx, injectedStealthScript)
+		return applyStartupStealth(ctx, cfg, bundle, injectedStealthScript)
 	})); err != nil {
 		browserCancel()
 		remoteAllocCancel()
@@ -486,6 +484,7 @@ func buildChromeArgsWithBundle(cfg *config.RuntimeConfig, bundle *stealth.Bundle
 	bundle = ensureStealthBundle(cfg, bundle)
 	args := append([]string{fmt.Sprintf("--remote-debugging-port=%d", port)}, BaseChromeFlagArgs()...)
 	args = append(args, bundle.Launch.Args...)
+	args = append(args, cloakBrowserFlagArgs(cfg)...)
 
 	if validPaths := existingExtensionPaths(cfg.ExtensionPaths); len(validPaths) > 0 {
 		joined := strings.Join(validPaths, ",")
@@ -518,6 +517,53 @@ func buildChromeArgsWithBundle(cfg *config.RuntimeConfig, bundle *stealth.Bundle
 	args = append(args, config.AllowedChromeExtraFlags(cfg.ChromeExtraFlags)...)
 
 	return appendChromeCompatibilityFlags(args)
+}
+
+func cloakBrowserFlagArgs(cfg *config.RuntimeConfig) []string {
+	if cfg == nil || !config.IsCloakBrowserProvider(cfg.BrowserProvider) {
+		return nil
+	}
+	cloak := cfg.Cloak
+	args := []string{}
+	add := func(name, value string) {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			args = append(args, name+"="+value)
+		}
+	}
+	add("--fingerprint", cloak.FingerprintSeed)
+	add("--fingerprint-platform", cloak.Platform)
+	add("--fingerprint-locale", cloak.Locale)
+	add("--fingerprint-timezone", cloak.Timezone)
+	add("--fingerprint-webrtc-ip", cloak.WebRTCIP)
+	add("--fingerprint-fonts-dir", cloak.FontsDir)
+	if cloak.StorageQuotaMB > 0 {
+		args = append(args, "--fingerprint-storage-quota="+strconv.Itoa(cloak.StorageQuotaMB))
+	}
+	return args
+}
+
+func applyStartupStealth(ctx context.Context, cfg *config.RuntimeConfig, bundle *stealth.Bundle, script string) error {
+	if !config.NativeCloakStealthEnabled(cfg) {
+		ua := ""
+		if bundle != nil {
+			ua = bundle.LaunchUserAgent()
+		}
+		if err := stealth.ApplyTargetEmulation(ctx, cfg, ua); err != nil {
+			return err
+		}
+	}
+	if strings.TrimSpace(script) == "" {
+		return nil
+	}
+	return injectedScript(ctx, script)
+}
+
+func missingBrowserBinaryError(cfg *config.RuntimeConfig) error {
+	if cfg != nil && config.IsCloakBrowserProvider(cfg.BrowserProvider) {
+		return fmt.Errorf("cloakbrowser binary not found: set browser.binary to the CloakBrowser Chromium binary when browser.provider is cloak")
+	}
+	return fmt.Errorf("chrome/chromium not found: please install chrome or chromium, or set 'binary' in config.json")
 }
 
 func injectedScript(ctx context.Context, script string) error {
