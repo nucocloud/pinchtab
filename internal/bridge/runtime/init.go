@@ -72,8 +72,6 @@ func initChromeFromExistingCDP(cfg *config.RuntimeConfig, bundle *stealth.Bundle
 	wsURL := strings.TrimSpace(cfg.CDPAttachURL)
 	slog.Info("attaching to existing Chrome via CDP", "cdpUrl", wsURL)
 
-	bundle = ensureStealthBundle(cfg, bundle)
-
 	remoteAllocCtx, remoteAllocCancel := chromedp.NewRemoteAllocator(context.Background(), wsURL)
 	browserCtx, browserCancel := chromedp.NewContext(remoteAllocCtx)
 
