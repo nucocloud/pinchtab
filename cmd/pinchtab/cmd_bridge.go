@@ -8,7 +8,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var bridgeEngine string
+var (
+	bridgeEngine    string
+	bridgeCDPAttach string
+	bridgeBind      string
+	bridgePort      string
+)
 
 var bridgeCmd = &cobra.Command{
 	Use:   "bridge",
@@ -20,6 +25,15 @@ var bridgeCmd = &cobra.Command{
 			return err
 		}
 		cfg.Engine = engineMode
+		if v := strings.TrimSpace(bridgeCDPAttach); v != "" {
+			cfg.CDPAttachURL = v
+		}
+		if v := strings.TrimSpace(bridgeBind); v != "" {
+			cfg.Bind = v
+		}
+		if v := strings.TrimSpace(bridgePort); v != "" {
+			cfg.Port = v
+		}
 		server.RunBridgeServer(cfg, version)
 		return nil
 	},
@@ -42,5 +56,8 @@ func resolveBridgeEngine(flagValue, configValue string) (string, error) {
 func init() {
 	bridgeCmd.GroupID = "primary"
 	bridgeCmd.Flags().StringVar(&bridgeEngine, "engine", "", "Bridge engine: chrome, lite, or auto (overrides config)")
+	bridgeCmd.Flags().StringVar(&bridgeCDPAttach, "cdp-attach", "", "Attach to an existing Chrome via its browser-level CDP URL (e.g. ws://127.0.0.1:9222/devtools/browser/abc). Skips launching Chrome; the external Chrome is left alive on shutdown.")
+	bridgeCmd.Flags().StringVar(&bridgeBind, "bind", "", "Bind address for the bridge HTTP server (overrides config server.bind)")
+	bridgeCmd.Flags().StringVar(&bridgePort, "port", "", "Port for the bridge HTTP server (overrides config server.port)")
 	rootCmd.AddCommand(bridgeCmd)
 }

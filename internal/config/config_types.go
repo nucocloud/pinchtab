@@ -62,6 +62,14 @@ type RuntimeConfig struct {
 	ChromeBinary       string
 	ChromeDebugPort    int
 	ChromeExtraFlags   string
+	// CDPAttachURL: when set, the bridge skips launching its own Chrome and
+	// connects to an already-running Chrome whose browser-level CDP
+	// WebSocket URL is provided here (e.g.
+	// "ws://127.0.0.1:9222/devtools/browser/abc"). Useful when you want the
+	// agent to drive the user's actual Chrome (extensions, profile, signed-in
+	// state) rather than a fresh isolated profile. Cleanup never kills the
+	// external Chrome — pinchtab only owns the CDP connection.
+	CDPAttachURL       string
 	ExtensionPaths     []string
 	UserAgent          string
 	NoAnimations       bool

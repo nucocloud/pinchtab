@@ -38,7 +38,16 @@ type Hooks struct {
 }
 
 // InitChrome initializes a Chrome browser for a Bridge instance.
+//
+// When cfg.CDPAttachURL is set, this skips launching a Chrome process and
+// connects to the externally-managed Chrome at that browser-level CDP
+// WebSocket URL. The returned cancel funcs only release the chromedp
+// allocator + browser context; the external Chrome process is left alive.
 func InitChrome(cfg *config.RuntimeConfig, bundle *stealth.Bundle, hooks Hooks) (context.Context, context.CancelFunc, context.Context, context.CancelFunc, stealth.LaunchMode, error) {
+	if cfg != nil && strings.TrimSpace(cfg.CDPAttachURL) != "" {
+		return initChromeFromExistingCDP(cfg, bundle)
+	}
+
 	slog.Info("starting chrome initialization", "headless", cfg.Headless, "profile", cfg.ProfileDir, "binary", cfg.ChromeBinary)
 
 	bundle = ensureStealthBundle(cfg, bundle)
@@ -52,6 +61,37 @@ func InitChrome(cfg *config.RuntimeConfig, bundle *stealth.Bundle, hooks Hooks) 
 
 	slog.Info("chrome initialized successfully", "headless", cfg.Headless, "profile", cfg.ProfileDir)
 	return allocCtx, allocCancel, browserCtx, browserCancel, launchMode, nil
+}
+
+// initChromeFromExistingCDP attaches the bridge to a Chrome that is already
+// running outside pinchtab (e.g. the user's everyday browser launched with
+// --remote-debugging-port=NNNN). No process is spawned and no profile lock
+// is taken. The allocator is a chromedp remote allocator; the returned
+// cancel funcs release only the chromedp side, never the external Chrome.
+func initChromeFromExistingCDP(cfg *config.RuntimeConfig, bundle *stealth.Bundle) (context.Context, context.CancelFunc, context.Context, context.CancelFunc, stealth.LaunchMode, error) {
+	wsURL := strings.TrimSpace(cfg.CDPAttachURL)
+	slog.Info("attaching to existing Chrome via CDP", "cdpUrl", wsURL)
+
+	bundle = ensureStealthBundle(cfg, bundle)
+
+	remoteAllocCtx, remoteAllocCancel := chromedp.NewRemoteAllocator(context.Background(), wsURL)
+	browserCtx, browserCancel := chromedp.NewContext(remoteAllocCtx)
+
+	// Touch the browser so we fail fast if the CDP URL is unreachable. We
+	// intentionally do NOT inject the stealth/UA script here — the user's
+	// Chrome is theirs, and rewriting its launch contract would be both
+	// surprising and likely break extensions, profile features, and
+	// already-open tabs.
+	if err := chromedp.Run(browserCtx, chromedp.ActionFunc(func(ctx context.Context) error {
+		return nil
+	})); err != nil {
+		browserCancel()
+		remoteAllocCancel()
+		return nil, nil, nil, nil, stealth.LaunchModeUninitialized, fmt.Errorf("failed to attach to CDP at %s: %w", wsURL, err)
+	}
+
+	slog.Info("attached to existing Chrome via CDP", "cdpUrl", wsURL)
+	return remoteAllocCtx, remoteAllocCancel, browserCtx, browserCancel, stealth.LaunchModeAttached, nil
 }
 
 func findChromeBinary() string {
