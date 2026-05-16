@@ -427,7 +427,7 @@ func tabsCacheRequestAffectsTabs(req *http.Request, resp *http.Response) bool {
 	}
 	if subpath := instanceRouteSubpath(path); subpath != "" {
 		switch subpath {
-		case "/tabs/open", "/tab", "/close", "/navigate", "/reload", "/back", "/forward":
+		case "/tab", "/close", "/navigate", "/reload", "/back", "/forward":
 			return true
 		}
 		if strings.HasPrefix(subpath, "/tabs/") {

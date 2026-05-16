@@ -330,6 +330,7 @@ func (h *Handlers) RegisterRoutes(mux *http.ServeMux, doShutdown func()) {
 	mux.HandleFunc("POST /tabs/{id}/dialog", h.HandleTabDialog)
 	mux.HandleFunc("POST /wait", h.HandleWait)
 	mux.HandleFunc("POST /tabs/{id}/wait", h.HandleTabWait)
+	mux.HandleFunc("GET /tabs/{id}/state", h.HandleTabState)
 	mux.HandleFunc("GET /console", h.HandleGetConsoleLogs)
 	mux.HandleFunc("POST /console/clear", h.HandleClearConsoleLogs)
 	mux.HandleFunc("GET /errors", h.HandleGetErrorLogs)

@@ -143,6 +143,7 @@ func TestNetworkFilter_Match(t *testing.T) {
 		{"status range match", NetworkFilter{StatusRange: "4xx"}, true},
 		{"status range no match", NetworkFilter{StatusRange: "2xx"}, false},
 		{"type match", NetworkFilter{ResourceType: "xhr"}, true},
+		{"fetch matches xhr compatibility", NetworkFilter{ResourceType: "fetch"}, true},
 		{"type no match", NetworkFilter{ResourceType: "document"}, false},
 		{"combined match", NetworkFilter{Method: "POST", StatusRange: "4xx"}, true},
 		{"combined partial no match", NetworkFilter{Method: "GET", StatusRange: "4xx"}, false},
@@ -155,6 +156,14 @@ func TestNetworkFilter_Match(t *testing.T) {
 				t.Errorf("Match() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+
+	entry.ResourceType = "Fetch"
+	if !(NetworkFilter{ResourceType: "xhr"}).Match(entry) {
+		t.Error("type=xhr should match fetch entries for compatibility")
+	}
+	if !(NetworkFilter{ResourceType: "fetch"}).Match(entry) {
+		t.Error("type=fetch should match fetch entries")
 	}
 }
 

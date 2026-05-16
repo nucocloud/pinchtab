@@ -78,7 +78,6 @@ func TestTabsCacheRequestAffectsTabs_PostShorthand(t *testing.T) {
 		"/reload":                           true,
 		"/back":                             true,
 		"/forward":                          true,
-		"/instances/inst_a/tabs/open":       true,
 		"/instances/inst_a/tab":             true,
 		"/instances/inst_a/tabs/X/navigate": true,
 		"/text":                             false,

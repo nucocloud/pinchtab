@@ -290,13 +290,28 @@ func (f NetworkFilter) Match(e NetworkEntry) bool {
 	if f.Method != "" && !strings.EqualFold(e.Method, f.Method) {
 		return false
 	}
-	if f.ResourceType != "" && !strings.EqualFold(e.ResourceType, f.ResourceType) {
+	if f.ResourceType != "" && !networkResourceTypeMatches(e.ResourceType, f.ResourceType) {
 		return false
 	}
 	if f.StatusRange != "" && !MatchStatusRange(e.Status, f.StatusRange) {
 		return false
 	}
 	return true
+}
+
+func networkResourceTypeMatches(entryType, filterType string) bool {
+	if strings.EqualFold(entryType, filterType) {
+		return true
+	}
+	// Keep fetch() traffic discoverable for older clients/tests that still
+	// query type=XHR for script-initiated requests.
+	if strings.EqualFold(filterType, "xhr") && strings.EqualFold(entryType, "fetch") {
+		return true
+	}
+	if strings.EqualFold(filterType, "fetch") && strings.EqualFold(entryType, "xhr") {
+		return true
+	}
+	return false
 }
 
 // MatchStatusRange checks whether a status code matches an exact or wildcard range.
@@ -580,6 +595,17 @@ func (nm *NetworkMonitor) maybeRetainBody(tabCtx context.Context, buf *NetworkBu
 }
 
 // GetResponseBody fetches the response body for a specific request via CDP.
+func (nm *NetworkMonitor) IsTabIdle(tabID string) (bool, bool) {
+	nm.mu.RLock()
+	buf, ok := nm.buffers[tabID]
+	nm.mu.RUnlock()
+	if !ok || buf == nil {
+		return false, false
+	}
+	count, _ := buf.InflightStatus()
+	return count == 0, true
+}
+
 func (nm *NetworkMonitor) GetResponseBody(tabCtx context.Context, requestID string) (string, bool, error) {
 	var body string
 	var base64Encoded bool

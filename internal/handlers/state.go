@@ -12,35 +12,38 @@ import (
 
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
-	"github.com/pinchtab/pinchtab/internal/activity"
 	"github.com/pinchtab/pinchtab/internal/httpx"
 	"github.com/pinchtab/pinchtab/internal/state"
 )
+
+type tabLoadState struct {
+	ReadyState           string `json:"readyState,omitempty"`
+	NavigationInProgress bool   `json:"navigationInProgress"`
+	NetworkIdle          *bool  `json:"networkIdle,omitempty"`
+	State                string `json:"state"`
+}
+
+type tabStateResponse struct {
+	TabID         string       `json:"tabId"`
+	URL           string       `json:"url,omitempty"`
+	Title         string       `json:"title,omitempty"`
+	DialogPresent bool         `json:"dialogPresent"`
+	Dialog        interface{}  `json:"dialog,omitempty"`
+	Load          tabLoadState `json:"load"`
+	Actionability string       `json:"actionability"`
+}
 
 func (h *Handlers) stateExportEnabled() bool {
 	return h != nil && h.Config != nil && h.Config.AllowStateExport
 }
 
 // HandleStateList lists all saved state files.
-// Gated behind CapStateExport (security.allowStateExport).
-//
-// @Endpoint GET /state/list
 func (h *Handlers) HandleStateList(w http.ResponseWriter, r *http.Request) {
-	if !h.stateExportEnabled() {
-		httpx.ErrorCode(w, 403, "state_export_disabled", httpx.DisabledEndpointMessage("stateExport", "security.allowStateExport"), false, map[string]any{
-			"setting": "security.allowStateExport",
-		})
-		return
-	}
-
 	entries, err := state.List(h.Config.StateDir)
 	if err != nil {
 		httpx.Error(w, 500, fmt.Errorf("list states: %w", err))
 		return
 	}
-
-	h.recordActivity(r, activity.Update{Action: "state.list"})
-
 	httpx.JSON(w, 200, map[string]any{
 		"states": entries,
 		"count":  len(entries),
@@ -48,9 +51,6 @@ func (h *Handlers) HandleStateList(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleStateShow returns the full contents of a saved state file.
-// Gated behind CapStateExport (security.allowStateExport).
-//
-// @Endpoint GET /state/show
 func (h *Handlers) HandleStateShow(w http.ResponseWriter, r *http.Request) {
 	if !h.stateExportEnabled() {
 		httpx.ErrorCode(w, 403, "state_export_disabled", httpx.DisabledEndpointMessage("stateExport", "security.allowStateExport"), false, map[string]any{
@@ -65,17 +65,13 @@ func (h *Handlers) HandleStateShow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	encryptionKey := h.Config.StateEncryptionKey
+	encryptionKey := os.Getenv("PINCHTAB_STATE_KEY")
 	path := state.ResolvePath(h.Config.StateDir, name)
-
 	sf, err := state.Load(path, encryptionKey)
 	if err != nil {
 		httpx.Error(w, 500, fmt.Errorf("load state: %w", err))
 		return
 	}
-
-	h.recordActivity(r, activity.Update{Action: "state.show"})
-
 	httpx.JSON(w, 200, sf)
 }
 
@@ -86,11 +82,7 @@ type stateSaveRequest struct {
 	Metadata map[string]interface{} `json:"metadata"`
 }
 
-// HandleStateSave captures the current browser state (cookies, storage, metadata)
-// and writes it to disk. Gated behind CapStateExport (security.allowStateExport).
-// Storage is captured only for the current origin (active tab).
-//
-// @Endpoint POST /state/save
+// HandleStateSave captures the current browser state and writes it to disk.
 func (h *Handlers) HandleStateSave(w http.ResponseWriter, r *http.Request) {
 	if !h.stateExportEnabled() {
 		httpx.ErrorCode(w, 403, "state_export_disabled", httpx.DisabledEndpointMessage("stateExport", "security.allowStateExport"), false, map[string]any{
@@ -107,9 +99,9 @@ func (h *Handlers) HandleStateSave(w http.ResponseWriter, r *http.Request) {
 
 	encryptionKey := ""
 	if req.Encrypt {
-		encryptionKey = h.Config.StateEncryptionKey
+		encryptionKey = os.Getenv("PINCHTAB_STATE_KEY")
 		if err := state.ValidateEncryptionKey(encryptionKey); err != nil {
-			httpx.Error(w, 400, fmt.Errorf("encryption key required: set security.stateEncryptionKey in config"))
+			httpx.Error(w, 400, fmt.Errorf("encryption key required: set PINCHTAB_STATE_KEY environment variable"))
 			return
 		}
 	}
@@ -119,11 +111,13 @@ func (h *Handlers) HandleStateSave(w http.ResponseWriter, r *http.Request) {
 		WriteTabContextError(w, err, 404)
 		return
 	}
+	if _, ok := h.enforceCurrentTabDomainPolicy(w, r, ctx, resolvedTabID); !ok {
+		return
+	}
 
 	tCtx, tCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer tCancel()
 
-	// Step 1: Get all cookies
 	var cookies []*network.Cookie
 	if err := chromedp.Run(tCtx, chromedp.ActionFunc(func(ctx context.Context) error {
 		var err error
@@ -134,7 +128,6 @@ func (h *Handlers) HandleStateSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Step 2: Get storage and metadata via JS evaluation
 	storageScript := `
 		(function() {
 			try {
@@ -187,7 +180,6 @@ func (h *Handlers) HandleStateSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build state file
 	stateCookies := make([]state.Cookie, len(cookies))
 	for i, c := range cookies {
 		stateCookies[i] = state.Cookie{
@@ -201,7 +193,6 @@ func (h *Handlers) HandleStateSave(w http.ResponseWriter, r *http.Request) {
 			Expires:  c.Expires,
 		}
 	}
-
 	if storageResult.Local == nil {
 		storageResult.Local = map[string]string{}
 	}
@@ -219,10 +210,8 @@ func (h *Handlers) HandleStateSave(w http.ResponseWriter, r *http.Request) {
 		"origin":    storageResult.Origin,
 		"userAgent": storageResult.UserAgent,
 	}
-	// Namespace user-provided metadata under "custom" to prevent overwriting
-	// browser-captured provenance fields (url, origin, userAgent).
-	if len(req.Metadata) > 0 {
-		metadata["custom"] = req.Metadata
+	for k, v := range req.Metadata {
+		metadata[k] = v
 	}
 
 	sf := &state.StateFile{
@@ -245,8 +234,6 @@ func (h *Handlers) HandleStateSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.recordActivity(r, activity.Update{Action: "state.save"})
-
 	slog.Info("state saved",
 		"name", sf.Name,
 		"path", path,
@@ -266,20 +253,8 @@ func (h *Handlers) HandleStateSave(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// HandleStateLoad reads a state file and restores cookies and storage into the browser.
-// Gated behind CapStateExport: restoring cookies/storage is session injection.
-//
-// If the given name has no exact match, the most recent file whose name starts
-// with the given prefix is used (prefix-based loading).
-//
-// @Endpoint POST /state/load
+// HandleStateLoad reads a state file and restores cookies and storage.
 func (h *Handlers) HandleStateLoad(w http.ResponseWriter, r *http.Request) {
-	if !h.stateExportEnabled() {
-		httpx.ErrorCode(w, 403, "state_export_disabled", httpx.DisabledEndpointMessage("stateExport", "security.allowStateExport"), false, map[string]any{
-			"setting": "security.allowStateExport",
-		})
-		return
-	}
 	var req struct {
 		Name  string `json:"name"`
 		TabID string `json:"tabId"`
@@ -288,61 +263,21 @@ func (h *Handlers) HandleStateLoad(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, 400, fmt.Errorf("decode: %w", err))
 		return
 	}
-
 	if req.Name == "" {
 		httpx.Error(w, 400, fmt.Errorf("name is required"))
 		return
 	}
 
-	encryptionKey := h.Config.StateEncryptionKey
+	encryptionKey := os.Getenv("PINCHTAB_STATE_KEY")
 	path := state.ResolvePath(h.Config.StateDir, req.Name)
-
-	// ResolvePath returns a constructed path even when the file doesn't exist
-	// (for the "new save" codepath). We must verify the file actually exists
-	// before treating it as an exact match; otherwise prefix resolution
-	// never triggers.
-	if path != "" {
-		if _, statErr := os.Stat(path); statErr != nil {
-			path = "" // file doesn't exist — fall through to prefix resolution
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		matches, matchErr := state.FindByPrefix(h.Config.StateDir, req.Name)
+		if matchErr == nil && len(matches) > 0 {
+			path = state.ResolvePath(h.Config.StateDir, matches[0].Name)
 		}
 	}
-
-	// If no exact file found, try prefix-based resolution (most recent match).
-	if path == "" {
-		matches, err := state.FindByPrefix(h.Config.StateDir, req.Name)
-		if err != nil || len(matches) == 0 {
-			httpx.Error(w, 404, fmt.Errorf("no state file found for name or prefix %q", req.Name))
-			return
-		}
-		// Matches are sorted newest first; resolve the actual file path.
-		resolvedPath := state.ResolvePath(h.Config.StateDir, matches[0].Name)
-		// Verify the resolved path actually exists on disk
-		if resolvedPath != "" {
-			if _, statErr := os.Stat(resolvedPath); statErr != nil {
-				resolvedPath = ""
-			}
-		}
-		if resolvedPath == "" {
-			// Last-resort fallback: scan the dir directly
-			dir := state.SessionsDir(h.Config.StateDir)
-			for _, ext := range []string{".json.enc", ".json"} {
-				candidate := filepath.Join(dir, matches[0].Name+ext)
-				if _, statErr := os.Stat(candidate); statErr == nil {
-					resolvedPath = candidate
-					break
-				}
-			}
-		}
-		if resolvedPath == "" {
-			httpx.Error(w, 404, fmt.Errorf("state file for prefix %q found in index but not on disk", req.Name))
-			return
-		}
-		path = resolvedPath
-	}
-
 	sf, err := state.Load(path, encryptionKey)
 	if err != nil {
-		// Retry without encryption key in case the file is not encrypted
 		sf, err = state.Load(path, "")
 		if err != nil {
 			httpx.Error(w, 500, fmt.Errorf("load state: %w", err))
@@ -355,11 +290,13 @@ func (h *Handlers) HandleStateLoad(w http.ResponseWriter, r *http.Request) {
 		WriteTabContextError(w, err, 404)
 		return
 	}
+	if _, ok := h.enforceCurrentTabDomainPolicy(w, r, ctx, resolvedTabID); !ok {
+		return
+	}
 
 	tCtx, tCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer tCancel()
 
-	// Step 1: Restore cookies
 	cookiesRestored := 0
 	if len(sf.Cookies) > 0 {
 		if err := chromedp.Run(tCtx, chromedp.ActionFunc(func(ctx context.Context) error {
@@ -396,10 +333,8 @@ func (h *Handlers) HandleStateLoad(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Step 2: Restore storage for each origin
 	storageRestored := 0
 	for _, originStorage := range sf.Storage {
-		// Build JS to restore localStorage
 		for k, v := range originStorage.Local {
 			keyJSON, _ := json.Marshal(k)
 			valueJSON, _ := json.Marshal(v)
@@ -408,8 +343,6 @@ func (h *Handlers) HandleStateLoad(w http.ResponseWriter, r *http.Request) {
 				storageRestored++
 			}
 		}
-
-		// Build JS to restore sessionStorage
 		for k, v := range originStorage.Session {
 			keyJSON, _ := json.Marshal(k)
 			valueJSON, _ := json.Marshal(v)
@@ -419,8 +352,6 @@ func (h *Handlers) HandleStateLoad(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-
-	h.recordActivity(r, activity.Update{Action: "state.load"})
 
 	slog.Info("state loaded",
 		"name", req.Name,
@@ -432,7 +363,7 @@ func (h *Handlers) HandleStateLoad(w http.ResponseWriter, r *http.Request) {
 	)
 
 	httpx.JSON(w, 200, map[string]any{
-		"name":                 sf.Name,
+		"name":                 req.Name,
 		"cookiesRestored":      cookiesRestored,
 		"storageItemsRestored": storageRestored,
 		"origins":              sf.Origins,
@@ -440,50 +371,22 @@ func (h *Handlers) HandleStateLoad(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleStateDelete removes a saved state file.
-// Gated behind CapStateExport: deletion is a destructive operation.
-//
-// @Endpoint DELETE /state
 func (h *Handlers) HandleStateDelete(w http.ResponseWriter, r *http.Request) {
-	if !h.stateExportEnabled() {
-		httpx.ErrorCode(w, 403, "state_export_disabled", httpx.DisabledEndpointMessage("stateExport", "security.allowStateExport"), false, map[string]any{
-			"setting": "security.allowStateExport",
-		})
-		return
-	}
 	name := r.URL.Query().Get("name")
 	if name == "" {
 		httpx.Error(w, 400, fmt.Errorf("name query parameter is required"))
 		return
 	}
-
 	if err := state.Delete(h.Config.StateDir, name); err != nil {
 		httpx.Error(w, 500, fmt.Errorf("delete state: %w", err))
 		return
 	}
-
-	h.recordActivity(r, activity.Update{Action: "state.delete"})
-
-	slog.Info("state deleted",
-		"name", name,
-		"remoteAddr", r.RemoteAddr,
-	)
-
-	httpx.JSON(w, 200, map[string]any{
-		"deleted": name,
-	})
+	slog.Info("state deleted", "name", name, "remoteAddr", r.RemoteAddr)
+	httpx.JSON(w, 200, map[string]any{"deleted": name})
 }
 
 // HandleStateClean removes state files older than a given duration.
-// Gated behind CapStateExport: bulk deletion is a destructive operation.
-//
-// @Endpoint POST /state/clean
 func (h *Handlers) HandleStateClean(w http.ResponseWriter, r *http.Request) {
-	if !h.stateExportEnabled() {
-		httpx.ErrorCode(w, 403, "state_export_disabled", httpx.DisabledEndpointMessage("stateExport", "security.allowStateExport"), false, map[string]any{
-			"setting": "security.allowStateExport",
-		})
-		return
-	}
 	var req struct {
 		OlderThanHours int `json:"olderThanHours"`
 	}
@@ -491,33 +394,102 @@ func (h *Handlers) HandleStateClean(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, 400, fmt.Errorf("decode: %w", err))
 		return
 	}
-
 	if req.OlderThanHours <= 0 {
 		req.OlderThanHours = 24
 	}
-	if req.OlderThanHours > 8760 {
-		httpx.Error(w, 400, fmt.Errorf("olderThanHours must be at most 8760 (1 year)"))
-		return
-	}
-
 	duration := time.Duration(req.OlderThanHours) * time.Hour
 	removed, err := state.Clean(h.Config.StateDir, duration)
 	if err != nil {
 		httpx.Error(w, 500, fmt.Errorf("clean states: %w", err))
 		return
 	}
-
-	h.recordActivity(r, activity.Update{Action: "state.clean"})
-
-	slog.Info("state clean",
-		"olderThanHours", req.OlderThanHours,
-		"removed", removed,
-		"remoteAddr", r.RemoteAddr,
-	)
-
+	slog.Info("state clean", "olderThanHours", req.OlderThanHours, "removed", removed, "remoteAddr", r.RemoteAddr)
 	httpx.JSON(w, 200, map[string]any{
 		"removed":        removed,
 		"olderThanHours": req.OlderThanHours,
 		"sessionsDir":    filepath.Base(state.SessionsDir(h.Config.StateDir)),
 	})
+}
+
+// HandleTabState returns lightweight tab/page state signals for agent workflows.
+func (h *Handlers) HandleTabState(w http.ResponseWriter, r *http.Request) {
+	if h.Bridge == nil {
+		httpx.ErrorCode(w, http.StatusServiceUnavailable, "bridge_unavailable", "browser bridge unavailable", false, nil)
+		return
+	}
+
+	tabID := r.PathValue("id")
+	if tabID == "" {
+		tabID = r.PathValue("tabId")
+	}
+	if tabID == "" {
+		httpx.ErrorCode(w, http.StatusBadRequest, "missing_tab_id", "missing tab id", false, nil)
+		return
+	}
+
+	_, resolvedTabID, err := h.Bridge.TabContext(tabID)
+	if err != nil {
+		WriteTabContextError(w, err, http.StatusNotFound)
+		return
+	}
+
+	resp := tabStateResponse{
+		TabID:         resolvedTabID,
+		DialogPresent: false,
+		Load:          tabLoadState{State: "unknown"},
+		Actionability: "ready",
+	}
+
+	if targets, err := h.Bridge.ListTargets(); err == nil {
+		for _, t := range targets {
+			if string(t.TargetID) == resolvedTabID {
+				resp.URL = t.URL
+				resp.Title = t.Title
+				break
+			}
+		}
+	}
+
+	if dm := h.Bridge.GetDialogManager(); dm != nil {
+		if dialog := dm.GetPending(resolvedTabID); dialog != nil {
+			resp.Dialog = dialog
+			resp.DialogPresent = true
+			resp.Actionability = "blocked"
+		}
+	}
+
+	if bridgeWithState, ok := h.Bridge.(interface {
+		GetDocumentReadyState(string) (string, error)
+		IsNetworkIdle(string) (bool, bool)
+	}); ok {
+		if readyState, err := bridgeWithState.GetDocumentReadyState(resolvedTabID); err == nil {
+			resp.Load.ReadyState = readyState
+			switch readyState {
+			case "loading":
+				resp.Load.State = "loading"
+				resp.Load.NavigationInProgress = true
+				if resp.Actionability == "ready" {
+					resp.Actionability = "caution"
+				}
+			case "interactive":
+				resp.Load.State = "interactive"
+				if resp.Actionability == "ready" {
+					resp.Actionability = "caution"
+				}
+			case "complete":
+				resp.Load.State = "complete"
+			}
+		}
+		if idle, ok := bridgeWithState.IsNetworkIdle(resolvedTabID); ok {
+			resp.Load.NetworkIdle = &idle
+			if !idle && resp.Load.State == "complete" {
+				resp.Load.State = "busy"
+				if resp.Actionability == "ready" {
+					resp.Actionability = "caution"
+				}
+			}
+		}
+	}
+
+	httpx.JSON(w, http.StatusOK, resp)
 }

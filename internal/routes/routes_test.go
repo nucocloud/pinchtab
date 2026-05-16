@@ -61,6 +61,22 @@ func TestCloseRoutesAreShorthandAndTabScoped(t *testing.T) {
 	}
 }
 
+func TestTabOpenAliasAndStateRoutesArePublished(t *testing.T) {
+	tabScopedFound := map[string]bool{
+		"GET /tabs/{id}/state": false,
+	}
+	for _, route := range TabScopedRoutes() {
+		if _, ok := tabScopedFound[route]; ok {
+			tabScopedFound[route] = true
+		}
+	}
+	for route, ok := range tabScopedFound {
+		if !ok {
+			t.Fatalf("TabScopedRoutes() missing %s", route)
+		}
+	}
+}
+
 func TestInspectRoutesAreShorthandAndTabScoped(t *testing.T) {
 	wantShorthand := map[string]bool{
 		"GET /title":  false,

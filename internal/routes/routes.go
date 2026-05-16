@@ -148,6 +148,7 @@ var coreEndpoints = []Endpoint{
 	{"DELETE", "/storage", "Delete storage items", CapStateExport, true},
 
 	// State management
+	{"GET", "/state", "Read tab/page state", CapNone, true},
 	{"GET", "/state/list", "List saved states", CapStateExport, false},
 
 	// Capability-gated

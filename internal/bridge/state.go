@@ -34,20 +34,25 @@ type SessionState struct {
 	SavedAt string     `json:"savedAt"`
 }
 
+var sessionRestoreFiles = []string{
+	"Current Session",
+	"Current Tabs",
+	"Last Session",
+	"Last Tabs",
+}
+
 // IsTransientURL returns true for URLs that should not be shown in the UI
-// or persisted to session state (about:blank, chrome://, etc.).
-// serverPort is the pinchtab server port so that only pinchtab's own
-// dashboard URLs on localhost are filtered, not user-navigated localhost sites.
-func IsTransientURL(url, serverPort string) bool {
-	switch url {
+// or persisted to session state.
+func IsTransientURL(rawURL, serverPort string) bool {
+	switch rawURL {
 	case "about:blank", "chrome://newtab/", "chrome://new-tab-page/":
 		return true
 	}
-	return strings.HasPrefix(url, "chrome://") ||
-		strings.HasPrefix(url, "chrome-extension://") ||
-		strings.HasPrefix(url, "devtools://") ||
-		strings.HasPrefix(url, "file://") ||
-		(serverPort != "" && strings.Contains(url, "localhost:"+serverPort))
+	return strings.HasPrefix(rawURL, "chrome://") ||
+		strings.HasPrefix(rawURL, "chrome-extension://") ||
+		strings.HasPrefix(rawURL, "devtools://") ||
+		strings.HasPrefix(rawURL, "file://") ||
+		(serverPort != "" && strings.Contains(rawURL, "localhost:"+serverPort))
 }
 
 func safeURLHostForLog(raw string) string {
@@ -65,10 +70,11 @@ func MarkCleanExit(profileDir string) {
 		return
 	}
 	patched := crashedPrefsReplacer.Replace(string(data))
-	if patched != string(data) {
-		if err := os.WriteFile(prefsPath, []byte(patched), 0644); err != nil {
-			slog.Error("patch prefs", "err", err)
-		}
+	if patched == string(data) {
+		return
+	}
+	if err := os.WriteFile(prefsPath, []byte(patched), 0644); err != nil {
+		slog.Error("patch prefs", "err", err)
 	}
 }
 
@@ -82,16 +88,8 @@ func WasUncleanExit(profileDir string) bool {
 	return strings.Contains(prefs, `"exit_type":"Crashed"`) || strings.Contains(prefs, `"exit_type": "Crashed"`)
 }
 
-var sessionRestoreFiles = []string{
-	"Current Session",
-	"Current Tabs",
-	"Last Session",
-	"Last Tabs",
-}
-
 func ClearChromeSessions(profileDir string) {
 	sessionsDir := filepath.Join(profileDir, "Default", "Sessions")
-
 	if _, err := os.Stat(sessionsDir); os.IsNotExist(err) {
 		return
 	}
@@ -104,7 +102,6 @@ func ClearChromeSessions(profileDir string) {
 			slog.Warn("failed to remove session file", "file", name, "err", err)
 		}
 	}
-
 	if len(failed) == 0 {
 		slog.Info("cleared Chrome session restore files")
 	}
@@ -114,7 +111,7 @@ func retryRemove(path string, maxRetries int) error {
 	var err error
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		if attempt > 0 {
-			time.Sleep(time.Duration(50*(1<<uint(attempt))) * time.Millisecond) // 100ms, 200ms, ...
+			time.Sleep(time.Duration(50*(1<<uint(attempt))) * time.Millisecond)
 		}
 		err = os.Remove(path)
 		if err == nil || os.IsNotExist(err) {
@@ -129,6 +126,10 @@ func retryRemove(path string, maxRetries int) error {
 }
 
 func (b *Bridge) SaveState() {
+	if b == nil || b.Config == nil || b.Config.StateDir == "" || b.TabManager == nil {
+		return
+	}
+
 	targets, err := b.ListTargets()
 	if err != nil {
 		slog.Error("save state: list targets", "err", err)
@@ -142,13 +143,11 @@ func (b *Bridge) SaveState() {
 		if t.URL == "" || IsTransientURL(t.URL, b.Config.Port) {
 			continue
 		}
-		if seen[t.URL] {
-			continue
-		}
-		if !accessed[string(t.TargetID)] {
+		if seen[t.URL] || !accessed[string(t.TargetID)] {
 			continue
 		}
 		seen[t.URL] = true
+
 		status := "active"
 		handoffReason := ""
 		if hs, ok := b.TabHandoffState(string(t.TargetID)); ok {
@@ -168,7 +167,6 @@ func (b *Bridge) SaveState() {
 		Tabs:    tabs,
 		SavedAt: time.Now().UTC().Format(time.RFC3339),
 	}
-
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
 		slog.Error("save state: marshal", "err", err)
@@ -181,9 +179,9 @@ func (b *Bridge) SaveState() {
 	path := filepath.Join(b.Config.StateDir, "sessions.json")
 	if err := os.WriteFile(path, data, 0644); err != nil {
 		slog.Error("save state: write", "err", err)
-	} else {
-		slog.Info("saved tabs", "count", len(tabs), "path", path)
+		return
 	}
+	slog.Info("saved tabs", "count", len(tabs), "path", path)
 }
 
 func (b *Bridge) ClearSavedState() {
@@ -215,43 +213,27 @@ func (b *Bridge) CleanupSavedStateBackup() {
 }
 
 func (b *Bridge) RestoreState() {
+	if b == nil || b.Config == nil || b.Config.StateDir == "" || b.BrowserCtx == nil || b.TabManager == nil {
+		return
+	}
+
 	path := filepath.Join(b.Config.StateDir, "sessions.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return
 	}
+
 	var state SessionState
-	if err := json.Unmarshal(data, &state); err != nil {
+	if err := json.Unmarshal(data, &state); err != nil || len(state.Tabs) == 0 {
 		return
 	}
-
-	if len(state.Tabs) == 0 {
-		return
-	}
-
-	const maxConcurrentTabs = 3
-	const maxConcurrentNavs = 2
-
-	tabSem := make(chan struct{}, maxConcurrentTabs)
-	navSem := make(chan struct{}, maxConcurrentNavs)
 
 	restored := 0
 	for _, tab := range state.Tabs {
-		if strings.Contains(tab.URL, "/sorry/") || strings.Contains(tab.URL, "about:blank") {
+		if tab.URL == "" || IsTransientURL(tab.URL, b.Config.Port) || strings.Contains(tab.URL, "/sorry/") {
 			continue
 		}
-
-		tabSem <- struct{}{}
-
-		if restored > 0 {
-			time.Sleep(200 * time.Millisecond)
-		}
-
-		ctx, cancel := chromedp.NewContext(b.BrowserCtx)
-
-		if err := chromedp.Run(ctx); err != nil {
-			cancel()
-			<-tabSem
+		if _, _, _, err := b.CreateTab(tab.URL); err != nil {
 			attrs := []any{"err", err}
 			if host := safeURLHostForLog(tab.URL); host != "" {
 				attrs = append(attrs, "host", host)
@@ -259,30 +241,34 @@ func (b *Bridge) RestoreState() {
 			slog.Warn("restore tab failed", attrs...)
 			continue
 		}
-
-		newID := string(chromedp.FromContext(ctx).Target.TargetID)
-		b.tabSetup(ctx)
-		b.mu.Lock()
-		b.tabs[newID] = &TabEntry{Ctx: ctx, Cancel: cancel}
-		b.accessed[newID] = true
-		b.mu.Unlock()
 		restored++
-
-		go func(tabCtx context.Context, url string) {
-			defer func() { <-tabSem }()
-
-			navSem <- struct{}{}
-			defer func() { <-navSem }()
-
-			tCtx, tCancel := context.WithTimeout(tabCtx, 15*time.Second)
-			defer tCancel()
-			_ = chromedp.Run(tCtx, chromedp.ActionFunc(func(ctx context.Context) error {
-				p := map[string]any{"url": url}
-				return chromedp.FromContext(ctx).Target.Execute(ctx, "Page.navigate", p, nil)
-			}))
-		}(ctx, tab.URL)
+		if restored > 0 {
+			time.Sleep(200 * time.Millisecond)
+		}
 	}
 	if restored > 0 {
-		slog.Info("restored tabs", "count", restored, "concurrent_limit", maxConcurrentTabs)
+		slog.Info("restored tabs", "count", restored)
 	}
+}
+
+func (b *Bridge) GetDocumentReadyState(tabID string) (string, error) {
+	tabCtx, _, err := b.TabContext(tabID)
+	if err != nil {
+		return "", err
+	}
+	ctx, cancel := context.WithTimeout(tabCtx, 2*time.Second)
+	defer cancel()
+	var readyState string
+	err = chromedp.Run(ctx, chromedp.Evaluate(`document.readyState`, &readyState))
+	if err != nil {
+		return "", err
+	}
+	return readyState, nil
+}
+
+func (b *Bridge) IsNetworkIdle(tabID string) (bool, bool) {
+	if b.netMonitor == nil {
+		return false, false
+	}
+	return b.netMonitor.IsTabIdle(tabID)
 }
