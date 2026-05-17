@@ -68,9 +68,15 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.value }}
         run: |
-          clawhub publish skills/pinchtab \
-            --slug pinchtab \
-            --name "Pinchtab" \
-            --version "$VERSION" \
-            --changelog "Release v$VERSION" \
+          ARGS=(
+            skills/pinchtab
+            --owner pinchtab
+            --slug pinchtab
+            --name "Pinchtab"
+            --version "$VERSION"
+            --changelog "Release v$VERSION"
             --tags latest
+          )
+          # TODO: Remove --migrate-owner after the first org-owned skill release.
+          ARGS+=(--migrate-owner)
+          clawhub skill publish "${ARGS[@]}"
