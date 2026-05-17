@@ -44,7 +44,7 @@ For Claude Desktop (`~/Library/Application Support/Claude/claude_desktop_config.
 
 ---
 
-## Available Tools (34 total)
+## Available Tools
 
 All tool names are prefixed with `pinchtab_`.
 
@@ -140,6 +140,8 @@ The MCP surface is intentionally scoped to browser automation. The following are
 | Read/write PinchTab config | ❌ Not available | Edit `~/.pinchtab/config.json` directly |
 
 If you need these capabilities in an agent workflow, use the CLI commands alongside the MCP tools, or call the PinchTab HTTP API directly.
+
+Saved browser state is intentionally not exposed as MCP tools right now. Use the CLI or HTTP API for `GET /state`, `pinchtab state`, and saved-state persistence operations.
 
 ## Untrusted Content
 

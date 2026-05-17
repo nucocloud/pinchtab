@@ -153,6 +153,15 @@ func (h *Handlers) HandleOpenAPI(w http.ResponseWriter, _ *http.Request) {
 				},
 			},
 			// CapStateExport-gated endpoints
+			"/state": map[string]any{"get": map[string]any{
+				"summary":            "Read current browser state for a tab",
+				"description":        security["stateExport"].Message,
+				"x-pinchtab-enabled": security["stateExport"].Enabled,
+			}, "delete": map[string]any{
+				"summary":            "Delete a saved state file",
+				"description":        security["stateExport"].Message,
+				"x-pinchtab-enabled": security["stateExport"].Enabled,
+			}},
 			"/state/list": map[string]any{"get": map[string]any{
 				"summary":            "List saved state files",
 				"description":        security["stateExport"].Message,
@@ -170,11 +179,6 @@ func (h *Handlers) HandleOpenAPI(w http.ResponseWriter, _ *http.Request) {
 			}},
 			"/state/load": map[string]any{"post": map[string]any{
 				"summary":            "Load and restore browser state",
-				"description":        security["stateExport"].Message,
-				"x-pinchtab-enabled": security["stateExport"].Enabled,
-			}},
-			"/state": map[string]any{"delete": map[string]any{
-				"summary":            "Delete a saved state file",
 				"description":        security["stateExport"].Message,
 				"x-pinchtab-enabled": security["stateExport"].Enabled,
 			}},

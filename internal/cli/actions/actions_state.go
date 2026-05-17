@@ -12,6 +12,30 @@ import (
 )
 
 // StateList lists all saved state files.
+func StateCurrent(client *http.Client, base, token string, cmd *cobra.Command) {
+	tabID, _ := cmd.Flags().GetString("tab")
+	params := url.Values{}
+	if tabID != "" {
+		params.Set("tabId", tabID)
+	}
+
+	result := apiclient.DoGetRaw(client, base, token, "/state", params)
+	if result == nil {
+		fmt.Fprintln(os.Stderr, "Failed to read current browser state")
+		os.Exit(1)
+	}
+
+	var buf map[string]any
+	if err := json.Unmarshal(result, &buf); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to parse response: %v\n", err)
+		os.Exit(1)
+	}
+
+	out, _ := json.MarshalIndent(buf, "", "  ")
+	fmt.Println(string(out))
+}
+
+// StateList lists all saved state files.
 func StateList(client *http.Client, base, token string) {
 	result := apiclient.DoGetRaw(client, base, token, "/state/list", nil)
 	if result == nil {

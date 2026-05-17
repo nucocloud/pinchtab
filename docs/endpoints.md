@@ -364,9 +364,10 @@ DELETE body fields:
 - `key` — optional (if omitted, clears entire storage)
 - `tabId` — optional
 
-## State Management
+## State
 
 ```text
+GET    /state
 GET    /state/list
 GET    /state/show
 POST   /state/save
@@ -375,14 +376,22 @@ DELETE /state
 POST   /state/clean
 ```
 
-State management saves and restores browser state (cookies, localStorage, sessionStorage, metadata) to disk.
+`GET /state` returns the current full browser state for the current tab or an explicit `tabId`, including cookies, current-origin storage, metadata, and basic tab information.
+
+`/state/save|load|list|show|delete|clean` manage persisted saved browser state on disk.
+
+This is different from `GET /tabs/{id}/state`, which returns live tab/page runtime state for readiness and blocking checks.
 
 Notes:
 
-- All state and storage endpoints are gated by `security.allowStateExport`: `/storage`, `/tabs/{id}/storage`, `GET /state/list`, `GET /state/show`, `POST /state/save`, `POST /state/load`, `DELETE /state`, and `POST /state/clean`
+- All state and storage endpoints are gated by `security.allowStateExport`: `/storage`, `/tabs/{id}/storage`, `GET /state`, `GET /state/list`, `GET /state/show`, `POST /state/save`, `POST /state/load`, `DELETE /state`, and `POST /state/clean`
 - state files are stored in `{stateDir}/sessions/` with `0600` permissions
 - optional AES-256-GCM encryption via `security.stateEncryptionKey` config setting
 - storage is captured only for the current origin (active tab)
+
+`GET /state` query parameters:
+
+- `tabId` — optional tab identifier; when omitted, uses the current tab
 
 `POST /state/save` body fields:
 
@@ -403,6 +412,16 @@ Notes:
 `POST /state/clean` body fields:
 
 - `olderThanHours` — optional (default: 24)
+
+## Tab State
+
+```text
+GET /tabs/{id}/state
+```
+
+Returns lightweight live tab/page runtime state for a tab, including load state, dialog presence, and actionability.
+
+Use it as a cheap readiness probe before actions. Keep the detailed semantics in the API/skill references rather than here.
 
 ## Wait, Network, Dialog, Console, And Errors
 

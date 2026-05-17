@@ -7,8 +7,13 @@ import (
 
 var stateCmd = &cobra.Command{
 	Use:   "state",
-	Short: "Manage browser session state",
-	Long:  "Commands for saving, loading, and managing persistent browser state (cookies, localStorage, sessionStorage).",
+	Short: "Show current browser state or manage saved state",
+	Long:  "Show current browser state for the current tab, or save, load, and manage persistent browser state (cookies, localStorage, sessionStorage).",
+	Run: func(cmd *cobra.Command, args []string) {
+		runCLI(func(rt cliRuntime) {
+			browseractions.StateCurrent(rt.client, rt.base, rt.token, cmd)
+		})
+	},
 }
 
 var stateListCmd = &cobra.Command{
@@ -79,6 +84,7 @@ var stateCleanCmd = &cobra.Command{
 
 func init() {
 	stateCmd.AddCommand(stateListCmd, stateSaveCmd, stateLoadCmd, stateShowCmd, stateDeleteCmd, stateCleanCmd)
+	addTabFlag(stateCmd)
 
 	// save flags
 	stateSaveCmd.Flags().String("name", "", "Name for the saved state (auto-generated if omitted)")

@@ -33,12 +33,66 @@ type tabStateResponse struct {
 	Actionability string       `json:"actionability"`
 }
 
+type currentBrowserStateResponse struct {
+	TabID    string                         `json:"tabId"`
+	URL      string                         `json:"url,omitempty"`
+	Title    string                         `json:"title,omitempty"`
+	Origins  []string                       `json:"origins"`
+	Cookies  []state.Cookie                 `json:"cookies"`
+	Storage  map[string]state.OriginStorage `json:"storage"`
+	Metadata map[string]interface{}         `json:"metadata,omitempty"`
+}
+
+type capturedBrowserState struct {
+	tabID string
+	url   string
+	title string
+	file  *state.StateFile
+}
+
 func (h *Handlers) stateExportEnabled() bool {
 	return h != nil && h.Config != nil && h.Config.AllowStateExport
 }
 
+// HandleStateCurrent returns the current gated browser state for a tab.
+func (h *Handlers) HandleStateCurrent(w http.ResponseWriter, r *http.Request) {
+	if !h.ensureStateExportEnabled(w) {
+		return
+	}
+
+	tabID := r.URL.Query().Get("tabId")
+	ctx, resolvedTabID, err := h.tabContext(r, tabID)
+	if err != nil {
+		WriteTabContextError(w, err, 404)
+		return
+	}
+	if _, ok := h.enforceCurrentTabDomainPolicy(w, r, ctx, resolvedTabID); !ok {
+		return
+	}
+
+	captured, err := h.captureBrowserState(ctx, resolvedTabID, nil)
+	if err != nil {
+		httpx.Error(w, 500, fmt.Errorf("capture state: %w", err))
+		return
+	}
+
+	httpx.JSON(w, 200, currentBrowserStateResponse{
+		TabID:    captured.tabID,
+		URL:      captured.url,
+		Title:    captured.title,
+		Origins:  captured.file.Origins,
+		Cookies:  captured.file.Cookies,
+		Storage:  captured.file.Storage,
+		Metadata: captured.file.Metadata,
+	})
+}
+
 // HandleStateList lists all saved state files.
 func (h *Handlers) HandleStateList(w http.ResponseWriter, r *http.Request) {
+	if !h.ensureStateExportEnabled(w) {
+		return
+	}
+
 	entries, err := state.List(h.Config.StateDir)
 	if err != nil {
 		httpx.Error(w, 500, fmt.Errorf("list states: %w", err))
@@ -52,10 +106,7 @@ func (h *Handlers) HandleStateList(w http.ResponseWriter, r *http.Request) {
 
 // HandleStateShow returns the full contents of a saved state file.
 func (h *Handlers) HandleStateShow(w http.ResponseWriter, r *http.Request) {
-	if !h.stateExportEnabled() {
-		httpx.ErrorCode(w, 403, "state_export_disabled", httpx.DisabledEndpointMessage("stateExport", "security.allowStateExport"), false, map[string]any{
-			"setting": "security.allowStateExport",
-		})
+	if !h.ensureStateExportEnabled(w) {
 		return
 	}
 
@@ -84,10 +135,7 @@ type stateSaveRequest struct {
 
 // HandleStateSave captures the current browser state and writes it to disk.
 func (h *Handlers) HandleStateSave(w http.ResponseWriter, r *http.Request) {
-	if !h.stateExportEnabled() {
-		httpx.ErrorCode(w, 403, "state_export_disabled", httpx.DisabledEndpointMessage("stateExport", "security.allowStateExport"), false, map[string]any{
-			"setting": "security.allowStateExport",
-		})
+	if !h.ensureStateExportEnabled(w) {
 		return
 	}
 
@@ -115,118 +163,13 @@ func (h *Handlers) HandleStateSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tCtx, tCancel := context.WithTimeout(ctx, 30*time.Second)
-	defer tCancel()
-
-	var cookies []*network.Cookie
-	if err := chromedp.Run(tCtx, chromedp.ActionFunc(func(ctx context.Context) error {
-		var err error
-		cookies, err = network.GetCookies().Do(ctx)
-		return err
-	})); err != nil {
-		httpx.Error(w, 500, fmt.Errorf("get cookies: %w", err))
+	captured, err := h.captureBrowserState(ctx, resolvedTabID, req.Metadata)
+	if err != nil {
+		httpx.Error(w, 500, fmt.Errorf("capture state: %w", err))
 		return
 	}
-
-	storageScript := `
-		(function() {
-			try {
-				var localEntries = {};
-				for (var i = 0; i < localStorage.length; i++) {
-					var k = localStorage.key(i);
-					localEntries[k] = localStorage.getItem(k);
-				}
-				var sessionEntries = {};
-				for (var i = 0; i < sessionStorage.length; i++) {
-					var k = sessionStorage.key(i);
-					sessionEntries[k] = sessionStorage.getItem(k);
-				}
-				return JSON.stringify({
-					local: localEntries,
-					session: sessionEntries,
-					url: window.location.href,
-					origin: window.location.origin,
-					userAgent: navigator.userAgent
-				});
-			} catch(e) {
-				return JSON.stringify({
-					error: e.message,
-					local: {},
-					session: {},
-					url: window.location.href,
-					origin: window.location.origin,
-					userAgent: navigator.userAgent
-				});
-			}
-		})()
-	`
-
-	var storageJSON string
-	if err := chromedp.Run(tCtx, chromedp.Evaluate(storageScript, &storageJSON)); err != nil {
-		httpx.Error(w, 500, fmt.Errorf("evaluate storage: %w", err))
-		return
-	}
-
-	var storageResult struct {
-		Local     map[string]string `json:"local"`
-		Session   map[string]string `json:"session"`
-		URL       string            `json:"url"`
-		Origin    string            `json:"origin"`
-		UserAgent string            `json:"userAgent"`
-		Error     string            `json:"error"`
-	}
-	if err := json.Unmarshal([]byte(storageJSON), &storageResult); err != nil {
-		httpx.Error(w, 500, fmt.Errorf("parse storage result: %w", err))
-		return
-	}
-
-	stateCookies := make([]state.Cookie, len(cookies))
-	for i, c := range cookies {
-		stateCookies[i] = state.Cookie{
-			Name:     c.Name,
-			Value:    c.Value,
-			Domain:   c.Domain,
-			Path:     c.Path,
-			Secure:   c.Secure,
-			HTTPOnly: c.HTTPOnly,
-			SameSite: c.SameSite.String(),
-			Expires:  c.Expires,
-		}
-	}
-	if storageResult.Local == nil {
-		storageResult.Local = map[string]string{}
-	}
-	if storageResult.Session == nil {
-		storageResult.Session = map[string]string{}
-	}
-
-	origins := []string{}
-	if storageResult.Origin != "" {
-		origins = append(origins, storageResult.Origin)
-	}
-
-	metadata := map[string]interface{}{
-		"url":       storageResult.URL,
-		"origin":    storageResult.Origin,
-		"userAgent": storageResult.UserAgent,
-	}
-	for k, v := range req.Metadata {
-		metadata[k] = v
-	}
-
-	sf := &state.StateFile{
-		Name:    req.Name,
-		SavedAt: time.Now(),
-		Origins: origins,
-		Cookies: stateCookies,
-		Storage: map[string]state.OriginStorage{
-			storageResult.Origin: {
-				Local:   storageResult.Local,
-				Session: storageResult.Session,
-			},
-		},
-		Metadata: metadata,
-	}
+	sf := captured.file
+	sf.Name = req.Name
 
 	path, err := state.Save(h.Config.StateDir, sf, encryptionKey)
 	if err != nil {
@@ -237,8 +180,8 @@ func (h *Handlers) HandleStateSave(w http.ResponseWriter, r *http.Request) {
 	slog.Info("state saved",
 		"name", sf.Name,
 		"path", path,
-		"cookies", len(stateCookies),
-		"origin", storageResult.Origin,
+		"cookies", len(sf.Cookies),
+		"origin", firstOrigin(sf.Origins),
 		"encrypted", req.Encrypt,
 		"tabId", resolvedTabID,
 		"remoteAddr", r.RemoteAddr,
@@ -247,14 +190,18 @@ func (h *Handlers) HandleStateSave(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, 200, map[string]any{
 		"name":      sf.Name,
 		"path":      path,
-		"cookies":   len(stateCookies),
-		"origins":   origins,
+		"cookies":   len(sf.Cookies),
+		"origins":   sf.Origins,
 		"encrypted": req.Encrypt,
 	})
 }
 
 // HandleStateLoad reads a state file and restores cookies and storage.
 func (h *Handlers) HandleStateLoad(w http.ResponseWriter, r *http.Request) {
+	if !h.ensureStateExportEnabled(w) {
+		return
+	}
+
 	var req struct {
 		Name  string `json:"name"`
 		TabID string `json:"tabId"`
@@ -370,8 +317,142 @@ func (h *Handlers) HandleStateLoad(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *Handlers) captureBrowserState(ctx context.Context, resolvedTabID string, extraMetadata map[string]interface{}) (*capturedBrowserState, error) {
+	tCtx, tCancel := context.WithTimeout(ctx, 30*time.Second)
+	defer tCancel()
+
+	var cookies []*network.Cookie
+	if err := chromedp.Run(tCtx, chromedp.ActionFunc(func(ctx context.Context) error {
+		var err error
+		cookies, err = network.GetCookies().Do(ctx)
+		return err
+	})); err != nil {
+		return nil, fmt.Errorf("get cookies: %w", err)
+	}
+
+	storageScript := `
+		(function() {
+			try {
+				var localEntries = {};
+				for (var i = 0; i < localStorage.length; i++) {
+					var k = localStorage.key(i);
+					localEntries[k] = localStorage.getItem(k);
+				}
+				var sessionEntries = {};
+				for (var i = 0; i < sessionStorage.length; i++) {
+					var k = sessionStorage.key(i);
+					sessionEntries[k] = sessionStorage.getItem(k);
+				}
+				return JSON.stringify({
+					local: localEntries,
+					session: sessionEntries,
+					url: window.location.href,
+					title: document.title,
+					origin: window.location.origin,
+					userAgent: navigator.userAgent
+				});
+			} catch(e) {
+				return JSON.stringify({
+					error: e.message,
+					local: {},
+					session: {},
+					url: window.location.href,
+					title: document.title,
+					origin: window.location.origin,
+					userAgent: navigator.userAgent
+				});
+			}
+		})()
+	`
+
+	var storageJSON string
+	if err := chromedp.Run(tCtx, chromedp.Evaluate(storageScript, &storageJSON)); err != nil {
+		return nil, fmt.Errorf("evaluate storage: %w", err)
+	}
+
+	var storageResult struct {
+		Local     map[string]string `json:"local"`
+		Session   map[string]string `json:"session"`
+		URL       string            `json:"url"`
+		Title     string            `json:"title"`
+		Origin    string            `json:"origin"`
+		UserAgent string            `json:"userAgent"`
+		Error     string            `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(storageJSON), &storageResult); err != nil {
+		return nil, fmt.Errorf("parse storage result: %w", err)
+	}
+
+	stateCookies := make([]state.Cookie, len(cookies))
+	for i, c := range cookies {
+		stateCookies[i] = state.Cookie{
+			Name:     c.Name,
+			Value:    c.Value,
+			Domain:   c.Domain,
+			Path:     c.Path,
+			Secure:   c.Secure,
+			HTTPOnly: c.HTTPOnly,
+			SameSite: c.SameSite.String(),
+			Expires:  c.Expires,
+		}
+	}
+	if storageResult.Local == nil {
+		storageResult.Local = map[string]string{}
+	}
+	if storageResult.Session == nil {
+		storageResult.Session = map[string]string{}
+	}
+
+	origins := []string{}
+	storageMap := map[string]state.OriginStorage{}
+	if storageResult.Origin != "" {
+		origins = append(origins, storageResult.Origin)
+		storageMap[storageResult.Origin] = state.OriginStorage{
+			Local:   storageResult.Local,
+			Session: storageResult.Session,
+		}
+	}
+
+	metadata := map[string]interface{}{
+		"url":       storageResult.URL,
+		"title":     storageResult.Title,
+		"origin":    storageResult.Origin,
+		"userAgent": storageResult.UserAgent,
+	}
+	if storageResult.Error != "" {
+		metadata["storageError"] = storageResult.Error
+	}
+	for k, v := range extraMetadata {
+		metadata[k] = v
+	}
+
+	return &capturedBrowserState{
+		tabID: resolvedTabID,
+		url:   storageResult.URL,
+		title: storageResult.Title,
+		file: &state.StateFile{
+			SavedAt:  time.Now(),
+			Origins:  origins,
+			Cookies:  stateCookies,
+			Storage:  storageMap,
+			Metadata: metadata,
+		},
+	}, nil
+}
+
+func firstOrigin(origins []string) string {
+	if len(origins) == 0 {
+		return ""
+	}
+	return origins[0]
+}
+
 // HandleStateDelete removes a saved state file.
 func (h *Handlers) HandleStateDelete(w http.ResponseWriter, r *http.Request) {
+	if !h.ensureStateExportEnabled(w) {
+		return
+	}
+
 	name := r.URL.Query().Get("name")
 	if name == "" {
 		httpx.Error(w, 400, fmt.Errorf("name query parameter is required"))
@@ -387,6 +468,10 @@ func (h *Handlers) HandleStateDelete(w http.ResponseWriter, r *http.Request) {
 
 // HandleStateClean removes state files older than a given duration.
 func (h *Handlers) HandleStateClean(w http.ResponseWriter, r *http.Request) {
+	if !h.ensureStateExportEnabled(w) {
+		return
+	}
+
 	var req struct {
 		OlderThanHours int `json:"olderThanHours"`
 	}

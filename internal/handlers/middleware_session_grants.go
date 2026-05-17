@@ -255,7 +255,7 @@ func sessionEvaluateGrantAllows(method, path string) bool {
 func sessionStorageGrantAllows(method, path string) bool {
 	switch method {
 	case http.MethodGet:
-		return path == "/storage" || path == "/state/list" || path == "/state/show"
+		return path == "/storage" || path == "/state" || path == "/state/list" || path == "/state/show"
 	case http.MethodPost:
 		return path == "/storage" || path == "/state/save" || path == "/state/load" || path == "/state/clean"
 	case http.MethodDelete:

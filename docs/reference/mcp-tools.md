@@ -124,3 +124,5 @@ Security note:
 - widening IDPI allowlists or disabling strict protections increases the chance that prompt-injection text reaches downstream agent logic
 
 For setup and client configuration, see [MCP Server](../mcp.md).
+
+Saved browser state is intentionally not exposed as MCP tools right now. Use the CLI or HTTP API for `GET /state`, `pinchtab state`, and saved-state persistence operations.

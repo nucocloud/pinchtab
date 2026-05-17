@@ -170,6 +170,44 @@ curl -X POST /wait -H 'Content-Type: application/json' \
   -d '{"fn":"document.readyState === \"complete\"","timeout":15000}'
 ```
 
+## Inspect tab state
+
+```bash
+# Lightweight live tab/page runtime state for a tab
+curl "/tabs/TAB_ID/state"
+```
+
+Returns:
+
+- `tabId`, `url`, `title`
+- `dialogPresent` and optional `dialog`
+- `load.readyState`, `load.navigationInProgress`, optional `load.networkIdle`, and derived `load.state`
+- `actionability` as one of:
+  - `ready` — no known blocker
+  - `caution` — page is still settling/loading
+  - `blocked` — a dialog is pending and action routes should not proceed
+
+Use this when you need a cheap health/readiness probe for a tab without pulling a full accessibility snapshot.
+
+This is live tab runtime state, not the saved browser state managed by `pinchtab state ...` and the `/state/*` endpoints.
+
+## Inspect current full browser state
+
+```bash
+# Gated full state for the current tab or an explicit tabId
+curl "/state"
+curl "/state?tabId=TAB_ID"
+```
+
+Returns:
+
+- `tabId`, `url`, `title`
+- `cookies`
+- `storage` grouped by origin with `local` and `session`
+- `metadata` such as origin and user agent
+
+This is the richer low-level browser-state view and is gated by `security.allowStateExport`.
+
 ## Batch actions
 
 ```bash

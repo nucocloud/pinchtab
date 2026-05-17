@@ -142,6 +142,11 @@ export PINCHTAB_SESSION=$(pinchtab session create --agent-id myagent)
 
 All subsequent commands use that session's dedicated tab automatically — no `--new-tab` or `--tab <id>` needed.
 
+State commands that belong with tab work:
+
+- `pinchtab state [--tab <id>]` or `GET /state` — full gated browser state for one tab: cookies, current-origin storage, metadata, and tab info.
+- `GET /tabs/{id}/state` — lightweight live tab/page runtime state for readiness, dialog blocking, and actionability checks.
+
 ### Observation
 
 ```bash

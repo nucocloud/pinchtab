@@ -148,7 +148,7 @@ var coreEndpoints = []Endpoint{
 	{"DELETE", "/storage", "Delete storage items", CapStateExport, true},
 
 	// State management
-	{"GET", "/state", "Read tab/page state", CapNone, true},
+	{"GET", "/state", "Read current browser state", CapStateExport, false},
 	{"GET", "/state/list", "List saved states", CapStateExport, false},
 
 	// Capability-gated
@@ -209,6 +209,10 @@ func TabScopedRoutes() []string {
 			routes = append(routes, ep.TabRoute())
 		}
 	}
+	// /state is intentionally split: GET /state is capability-gated full browser
+	// state, while GET /tabs/{id}/state is the lightweight ungated tab-runtime
+	// readiness view.
+	routes = append(routes, "GET /tabs/{id}/state")
 	return routes
 }
 

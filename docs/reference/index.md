@@ -30,6 +30,7 @@ Note: this index is generated and should be checked against the code when comman
 - [Select](./select.md)
 - [Sessions](./sessions.md)
 - [Snapshot](./snapshot.md)
+- [State](./state.md)
 - [Solve](./solve.md)
 - [Strategies](./strategies.md)
 - [Tabs](./tabs.md)
