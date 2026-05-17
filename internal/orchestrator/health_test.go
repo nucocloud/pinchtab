@@ -3,8 +3,13 @@ package orchestrator
 import (
 	"io"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/pinchtab/pinchtab/internal/bridge"
 	"github.com/pinchtab/pinchtab/internal/config"
@@ -258,4 +263,173 @@ func TestFetchMetrics_TagsBridgeRequestAsOrchestrator(t *testing.T) {
 	if source != "orchestrator" {
 		t.Fatalf("X-PinchTab-Source = %q, want orchestrator", source)
 	}
+}
+
+type blockingWaitCmd struct {
+	pid    int
+	waitCh chan error
+}
+
+func (c *blockingWaitCmd) Wait() error { return <-c.waitCh }
+func (c *blockingWaitCmd) PID() int    { return c.pid }
+func (c *blockingWaitCmd) Cancel()     {}
+
+func TestProbeChildInstanceReady_RequiresWarmTabSuccess(t *testing.T) {
+	o := NewOrchestratorWithRunner(t.TempDir(), &mockRunner{portAvail: true})
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/health":
+			w.WriteHeader(http.StatusOK)
+		case "/tab":
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"code":"error","error":"create target: context canceled"}`))
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	baseURL, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatalf("Parse(%q) error = %v", srv.URL, err)
+	}
+
+	ready, probe := o.probeChildInstanceReady(&InstanceInternal{Instance: bridge.Instance{ID: "inst_1"}}, baseURL)
+	if ready {
+		t.Fatal("expected warmup failure to keep instance unready")
+	}
+	if !strings.Contains(probe, "create target: context canceled") {
+		t.Fatalf("probe = %q, want create-target failure", probe)
+	}
+}
+
+func TestProbeChildInstanceReady_WarmsTabLifecycle(t *testing.T) {
+	o := NewOrchestratorWithRunner(t.TempDir(), &mockRunner{portAvail: true})
+
+	var closeCalls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/health":
+			w.WriteHeader(http.StatusOK)
+		case "/tab":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"tabId":"tab-1","url":"about:blank","title":""}`))
+		case "/close":
+			atomic.AddInt32(&closeCalls, 1)
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"closed":true,"tabId":"tab-1"}`))
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	baseURL, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatalf("Parse(%q) error = %v", srv.URL, err)
+	}
+
+	ready, probe := o.probeChildInstanceReady(&InstanceInternal{Instance: bridge.Instance{ID: "inst_1"}}, baseURL)
+	if !ready {
+		t.Fatalf("expected readiness success, got probe %q", probe)
+	}
+	if probe != "ready" {
+		t.Fatalf("probe = %q, want ready", probe)
+	}
+	if atomic.LoadInt32(&closeCalls) != 1 {
+		t.Fatalf("close calls = %d, want 1", closeCalls)
+	}
+}
+
+func TestMonitor_DelaysRunningUntilWarmTabSucceeds(t *testing.T) {
+	old := processAliveFunc
+	processAliveFunc = func(pid int) bool { return pid > 0 }
+	defer func() { processAliveFunc = old }()
+
+	var tabAttempts int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/health":
+			w.WriteHeader(http.StatusOK)
+		case "/tab":
+			attempt := atomic.AddInt32(&tabAttempts, 1)
+			if attempt == 1 {
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(`{"code":"error","error":"create target: context canceled"}`))
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"tabId":"tab-2","url":"about:blank","title":""}`))
+		case "/close":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"closed":true,"tabId":"tab-2"}`))
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	parsed, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatalf("Parse(%q) error = %v", srv.URL, err)
+	}
+	host, portStr, ok := strings.Cut(parsed.Host, ":")
+	if !ok {
+		t.Fatalf("expected host:port in %q", parsed.Host)
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		t.Fatalf("Atoi(%q) error = %v", portStr, err)
+	}
+
+	o := NewOrchestratorWithRunner(t.TempDir(), &mockRunner{portAvail: true})
+	o.ApplyRuntimeConfig(&config.RuntimeConfig{Bind: host})
+	o.client = srv.Client()
+
+	cmd := &blockingWaitCmd{pid: 4321, waitCh: make(chan error, 1)}
+	inst := &InstanceInternal{
+		Instance: bridge.Instance{
+			ID:          "inst_1",
+			Port:        strconv.Itoa(port),
+			Status:      "starting",
+			StartTime:   time.Now(),
+			ProfileName: "profile1",
+		},
+		cmd: cmd,
+	}
+
+	done := make(chan struct{})
+	go func() {
+		o.monitor(inst)
+		close(done)
+	}()
+
+	deadline := time.Now().Add(4 * time.Second)
+	for time.Now().Before(deadline) {
+		o.mu.RLock()
+		status := inst.Status
+		o.mu.RUnlock()
+		if status == "running" {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	o.mu.RLock()
+	status := inst.Status
+	o.mu.RUnlock()
+	if status != "running" {
+		cmd.waitCh <- nil
+		<-done
+		t.Fatalf("status = %q, want running", status)
+	}
+	if atomic.LoadInt32(&tabAttempts) < 2 {
+		cmd.waitCh <- nil
+		<-done
+		t.Fatalf("tab attempts = %d, want at least 2", tabAttempts)
+	}
+
+	cmd.waitCh <- nil
+	<-done
 }

@@ -62,6 +62,12 @@ ACTIVE_INST_IDS+=("$INST1" "$INST2")
 
 wait_for_orchestrator_instance_status "${E2E_SERVER}" "${INST1}" "running" 30
 
+# Issue 545 contract: once an instance reports running, the first immediate
+# tab open must succeed without a startup-race 500.
+pt_post "/instances/${INST1}/tabs/open" '{"url":"about:blank"}'
+assert_ok "running instance accepts immediate tabs/open"
+assert_json_exists "$RESULT" '.tabId' "immediate tabs/open returns tab id"
+
 pt_get /instances
 assert_ok "list after launch"
 assert_instance_list_contains "$INST1" "instance $INST1 in list" "instance $INST1 not in list"

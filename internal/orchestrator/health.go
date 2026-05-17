@@ -1,8 +1,10 @@
 package orchestrator
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -66,24 +68,12 @@ func (o *Orchestrator) monitor(inst *InstanceInternal) {
 				lastProbe = fmt.Sprintf("%s -> %s", baseURL, err.Error())
 				continue
 			}
-			req, reqErr := http.NewRequest(http.MethodGet, healthProbeURL(targetBaseURL), nil)
-			if reqErr != nil {
-				lastProbe = fmt.Sprintf("%s -> %s", baseURL, reqErr.Error())
-				continue
-			}
-			tagOrchestratorMonitoringRequest(req)
-			o.applyInstanceAuth(req, inst)
-			resp, err := o.client.Do(req)
-			if err == nil {
-				_ = resp.Body.Close()
-				lastProbe = fmt.Sprintf("%s -> HTTP %d", baseURL, resp.StatusCode)
-				if isInstanceHealthyStatus(resp.StatusCode) {
-					healthy = true
-					resolvedURL = baseURL
-					break
-				}
-			} else {
-				lastProbe = fmt.Sprintf("%s -> %s", baseURL, err.Error())
+			ready, probe := o.probeChildInstanceReady(inst, targetBaseURL)
+			lastProbe = fmt.Sprintf("%s -> %s", baseURL, probe)
+			if ready {
+				healthy = true
+				resolvedURL = baseURL
+				break
 			}
 		}
 		if healthy {
@@ -232,6 +222,109 @@ func (o *Orchestrator) probeInstanceHealth(inst *InstanceInternal) (bool, string
 		}
 	}
 	return false, "", lastProbe
+}
+
+func (o *Orchestrator) probeChildInstanceReady(inst *InstanceInternal, baseURL *url.URL) (bool, string) {
+	req, reqErr := http.NewRequest(http.MethodGet, healthProbeURL(baseURL), nil)
+	if reqErr != nil {
+		return false, reqErr.Error()
+	}
+	tagOrchestratorMonitoringRequest(req)
+	o.applyInstanceAuth(req, inst)
+	resp, err := o.client.Do(req)
+	if err != nil {
+		return false, err.Error()
+	}
+	_ = resp.Body.Close()
+	if !isInstanceHealthyStatus(resp.StatusCode) {
+		return false, fmt.Sprintf("health HTTP %d", resp.StatusCode)
+	}
+
+	tabID, err := o.warmInstanceTabLifecycle(inst, baseURL)
+	if err != nil {
+		if tabID != "" {
+			slog.Debug("instance startup warmup left tab open", "id", inst.ID, "tabId", tabID, "err", err)
+		}
+		return false, fmt.Sprintf("warmup failed: %v", err)
+	}
+	return true, "ready"
+}
+
+func (o *Orchestrator) warmInstanceTabLifecycle(inst *InstanceInternal, baseURL *url.URL) (string, error) {
+	payload := []byte(`{"action":"new","url":"about:blank"}`)
+	tabURL := *baseURL
+	tabURL.Path = "/tab"
+	createReq, err := http.NewRequest(http.MethodPost, tabURL.String(), bytes.NewReader(payload))
+	if err != nil {
+		return "", err
+	}
+	createReq.Header.Set("Content-Type", "application/json")
+	tagOrchestratorMonitoringRequest(createReq)
+	o.applyInstanceAuth(createReq, inst)
+
+	createResp, err := o.client.Do(createReq)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = createResp.Body.Close() }()
+
+	body, readErr := io.ReadAll(createResp.Body)
+	if readErr != nil {
+		return "", fmt.Errorf("read create-tab response: %w", readErr)
+	}
+	if createResp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("create tab HTTP %d: %s", createResp.StatusCode, compactBody(body))
+	}
+
+	var result struct {
+		TabID string `json:"tabId"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", fmt.Errorf("decode create-tab response: %w", err)
+	}
+	if strings.TrimSpace(result.TabID) == "" {
+		return "", fmt.Errorf("create-tab response missing tabId")
+	}
+
+	closePayload, err := json.Marshal(map[string]string{"tabId": result.TabID})
+	if err != nil {
+		return result.TabID, err
+	}
+	closeURL := *baseURL
+	closeURL.Path = "/close"
+	closeReq, err := http.NewRequest(http.MethodPost, closeURL.String(), bytes.NewReader(closePayload))
+	if err != nil {
+		return result.TabID, err
+	}
+	closeReq.Header.Set("Content-Type", "application/json")
+	tagOrchestratorMonitoringRequest(closeReq)
+	o.applyInstanceAuth(closeReq, inst)
+
+	closeResp, err := o.client.Do(closeReq)
+	if err != nil {
+		return result.TabID, fmt.Errorf("close warmup tab: %w", err)
+	}
+	defer func() { _ = closeResp.Body.Close() }()
+	closeBody, readErr := io.ReadAll(closeResp.Body)
+	if readErr != nil {
+		return result.TabID, fmt.Errorf("read close-tab response: %w", readErr)
+	}
+	if closeResp.StatusCode != http.StatusOK {
+		return result.TabID, fmt.Errorf("close warmup tab HTTP %d: %s", closeResp.StatusCode, compactBody(closeBody))
+	}
+	return result.TabID, nil
+}
+
+func compactBody(body []byte) string {
+	trimmed := strings.TrimSpace(string(body))
+	if trimmed == "" {
+		return "<empty>"
+	}
+	const max = 220
+	if len(trimmed) > max {
+		return trimmed[:max]
+	}
+	return trimmed
 }
 
 type remoteTab struct {
