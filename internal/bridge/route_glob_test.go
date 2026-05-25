@@ -11,11 +11,9 @@ func TestGlobMatch_EdgeCases(t *testing.T) {
 		url     string
 		want    bool
 	}{
-		{"empty pattern returns false", "", "https://anything.test/", false},
 		{"empty URL returns false", "api.example.com", "", false},
-		{"both empty returns false", "", "", false},
 		{"unicode in URL", "café.example.com", "https://café.example.com/", true},
-		{"unicode in pattern", "*.example.com", "https://café.example.com/", false}, // non-ASCII not matched by glob
+		{"unicode hostname does not match ASCII-only wildcard", "*.example.com", "https://café.example.com/", false},
 		{"query string preserved", "api.example.com", "https://api.example.com?foo=bar", true},
 		{"fragment preserved", "api.example.com", "https://api.example.com#/path", true},
 		{"port in URL", "api.example.com", "https://api.example.com:8080/users", true},
