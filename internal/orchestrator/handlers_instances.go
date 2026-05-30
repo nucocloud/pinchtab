@@ -418,13 +418,11 @@ func (o *Orchestrator) handleAttachInstance(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Validate attach is enabled and URL is allowed
 	if err := o.validateAttachURL(req.CdpURL); err != nil {
 		httpx.Error(w, 403, err)
 		return
 	}
 
-	// Generate name if not provided
 	name := req.Name
 	if name == "" {
 		name = fmt.Sprintf("attached-%d", time.Now().UnixNano())

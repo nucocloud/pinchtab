@@ -126,7 +126,6 @@ func (h *Handlers) HandleSnapshot(w http.ResponseWriter, r *http.Request) {
 	}
 	h.recordActivity(r, activity.Update{Route: snapChromeRoute})
 
-	// Ensure Chrome is initialized
 	if err := h.ensureChrome(); err != nil {
 		if h.writeBridgeUnavailable(w, err) {
 			return
@@ -135,7 +134,6 @@ func (h *Handlers) HandleSnapshot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// filter and tabID already parsed above for lite path
 	doDiff := r.URL.Query().Get("diff") == "true"
 	format := r.URL.Query().Get("format")
 	output := r.URL.Query().Get("output")

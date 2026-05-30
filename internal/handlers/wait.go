@@ -261,7 +261,6 @@ func (h *Handlers) handleWaitCore(w http.ResponseWriter, r *http.Request, req wa
 		matchLabel = "fn"
 	}
 
-	// Poll loop
 	for {
 		var result bool
 		evalErr := h.Bridge.Evaluate(tCtx, js, &result, bridge.EvalOpts{})
@@ -284,7 +283,6 @@ func (h *Handlers) handleWaitCore(w http.ResponseWriter, r *http.Request, req wa
 			})
 			return
 		case <-time.After(pollInterval):
-			// continue polling
 		}
 	}
 }

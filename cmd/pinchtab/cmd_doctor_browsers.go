@@ -50,13 +50,11 @@ func writeBrowsersJSON(w io.Writer, report doctor.BrowsersReport) error {
 func writeBrowsersText(w io.Writer, report doctor.BrowsersReport) {
 	_, _ = fmt.Fprintf(w, "pinchtab doctor browsers\n\n")
 
-	// Compact status summary.
 	for _, bi := range report.Browsers {
 		_, _ = fmt.Fprintf(w, "  %-18s %-12s %s\n", bi.Name, bi.Status, bi.StatusDetail)
 	}
 	_, _ = fmt.Fprintln(w)
 
-	// Config summary.
 	if len(report.ConfiguredBrowsers) > 0 {
 		_, _ = fmt.Fprintf(w, "Configured: %s\n", strings.Join(report.ConfiguredBrowsers, ", "))
 	} else {

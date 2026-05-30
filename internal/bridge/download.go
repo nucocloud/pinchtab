@@ -42,7 +42,6 @@ type DownloadResult struct {
 // It creates a temporary tab, enables fetch interception to validate requests,
 // navigates to the URL, and returns the response body.
 func (b *Bridge) DownloadURL(ctx context.Context, dlURL string, opts DownloadOpts) (*DownloadResult, error) {
-	// Create a temporary tab context for the download.
 	browserCtx := b.BrowserContext()
 	tabCtx, tabCancel := chromedp.NewContext(browserCtx)
 	defer tabCancel()
@@ -77,7 +76,6 @@ func (b *Bridge) DownloadURL(ctx context.Context, dlURL string, opts DownloadOpt
 		return blockedErr
 	}
 
-	// Enable fetch interception.
 	if err := chromedp.Run(tabCtx, chromedp.ActionFunc(func(ctx context.Context) error {
 		return fetch.Enable().Do(ctx)
 	})); err != nil {
@@ -185,7 +183,6 @@ func (b *Bridge) DownloadURL(ctx context.Context, dlURL string, opts DownloadOpt
 		return nil, fmt.Errorf("network enable: %w", err)
 	}
 
-	// Navigate the temp tab to the URL.
 	navErr := chromedp.Run(tabCtx, chromedp.Navigate(dlURL))
 	if navErr != nil {
 		if bErr := getBlockedErr(); bErr != nil {

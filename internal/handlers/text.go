@@ -85,7 +85,6 @@ func (h *Handlers) HandleText(w http.ResponseWriter, r *http.Request) {
 	}
 	h.recordActivity(r, activity.Update{Route: textRoute})
 
-	// Ensure Chrome is initialized
 	if err := h.ensureChrome(); err != nil {
 		if h.writeBridgeUnavailable(w, err) {
 			return

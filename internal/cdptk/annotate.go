@@ -43,12 +43,6 @@ func AnnotationRectForNode(ctx context.Context, nodeID int64) (*AnnotationRect, 
 		return nil, fmt.Errorf("element not found (backendNodeId=%d)", nodeID)
 	}
 
-	// boxFn returns top-level viewport-relative rects so the overlay (which we
-	// always inject into the top document) can place boxes correctly even for
-	// iframe-owned nodes. Frame ancestors are walked and their iframe-element
-	// bounding rects (already in their parent's viewport) are added. Cross-
-	// origin frames throw on access; in that case we mark the rect as
-	// unprojectable so the caller can drop it.
 	// boxFn returns top-level viewport-relative rects. Walks frame ancestors,
 	// adding each iframe-element's bounding rect (already in its parent's
 	// viewport). If we hit a null frameElement before reaching the top window

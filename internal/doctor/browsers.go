@@ -84,7 +84,6 @@ func ReportBrowsers(ctx context.Context, cfg *config.RuntimeConfig) BrowsersRepo
 		if ok {
 			info.Registered = true
 
-			// Run doctor checks.
 			for _, dc := range b.DoctorChecks(browsers.TargetConfig{Provider: id}) {
 				r := dc.Fn(ctx, env)
 				info.Checks = append(info.Checks, CheckResult{
@@ -96,7 +95,6 @@ func ReportBrowsers(ctx context.Context, cfg *config.RuntimeConfig) BrowsersRepo
 				})
 			}
 
-			// Probe CanHandle for each shape.
 			for _, shape := range allShapes {
 				d := b.CanHandle(browsers.RequestIntent{Shape: shape})
 				if d.Decision == browsers.DecisionHandle {
@@ -128,7 +126,6 @@ func deriveBrowserStatus(info *BrowserInfo) {
 		return
 	}
 
-	// Check for failures first.
 	for _, c := range info.Checks {
 		if c.Status == StatusFail {
 			info.Status = "missing"
@@ -140,7 +137,6 @@ func deriveBrowserStatus(info *BrowserInfo) {
 		}
 	}
 
-	// Check for warnings.
 	for _, c := range info.Checks {
 		if c.Status == StatusWarn {
 			info.Status = "needs-config"
@@ -149,9 +145,7 @@ func deriveBrowserStatus(info *BrowserInfo) {
 		}
 	}
 
-	// All pass/skip → ready.
 	info.Status = "ready"
-	// Find a useful detail from the first passing check.
 	for _, c := range info.Checks {
 		if c.Status == StatusPass && c.Detail != "" {
 			info.StatusDetail = c.Detail

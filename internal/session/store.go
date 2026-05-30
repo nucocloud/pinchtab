@@ -383,8 +383,6 @@ func (s *Store) pruneExpiredLocked() []LifecycleEvent {
 	return events
 }
 
-// persistence types
-
 type persistedStore struct {
 	SavedAt  time.Time          `json:"savedAt"`
 	Sessions []persistedSession `json:"sessions"`

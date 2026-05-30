@@ -120,7 +120,6 @@ func (i *Instance) startScreencastEventDriven(ctx context.Context, opts browsers
 		)
 	})
 
-	// ACK goroutine
 	go func() {
 		for {
 			select {
@@ -178,7 +177,6 @@ func (i *Instance) startScreencastEventDriven(ctx context.Context, opts browsers
 		}
 	})
 
-	// Start the CDP screencast
 	err := chromedp.Run(ctx,
 		chromedp.ActionFunc(func(c context.Context) error {
 			return page.StartScreencast().
@@ -630,7 +628,6 @@ func (i *Instance) CurrentTitle(ctx context.Context) (string, error) {
 // It creates a temporary tab, enables fetch interception to validate requests,
 // navigates to the URL, and returns the response body.
 func (i *Instance) DownloadURL(ctx context.Context, dlURL string, opts browsers.DownloadOpts) (*browsers.DownloadResult, error) {
-	// Create a temporary tab context for the download.
 	tabCtx, tabCancel := chromedp.NewContext(i.browserCtx)
 	defer tabCancel()
 
@@ -664,7 +661,6 @@ func (i *Instance) DownloadURL(ctx context.Context, dlURL string, opts browsers.
 		return blockedErr
 	}
 
-	// Enable fetch interception.
 	if err := chromedp.Run(tabCtx, chromedp.ActionFunc(func(ctx context.Context) error {
 		return fetch.Enable().Do(ctx)
 	})); err != nil {
@@ -772,7 +768,6 @@ func (i *Instance) DownloadURL(ctx context.Context, dlURL string, opts browsers.
 		return nil, fmt.Errorf("network enable: %w", err)
 	}
 
-	// Navigate the temp tab to the URL.
 	navErr := chromedp.Run(tabCtx, chromedp.Navigate(dlURL))
 	if navErr != nil {
 		if bErr := getBlockedErr(); bErr != nil {

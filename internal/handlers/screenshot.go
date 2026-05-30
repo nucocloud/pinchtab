@@ -22,7 +22,6 @@ import (
 //
 // @Endpoint GET /screenshot
 func (h *Handlers) HandleScreenshot(w http.ResponseWriter, r *http.Request) {
-	// Ensure Chrome is initialized
 	if err := h.ensureChrome(); err != nil {
 		if h.writeBridgeUnavailable(w, err) {
 			return

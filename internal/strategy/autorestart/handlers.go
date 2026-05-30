@@ -24,7 +24,6 @@ func (s *Strategy) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+s.config.StatusPath, s.handleStatus)
 }
 
-// proxyToManaged ensures the managed instance is running, then proxies.
 func (s *Strategy) proxyToManaged(w http.ResponseWriter, r *http.Request) {
 	target, status, err := s.ensureRunning(r)
 	if err != nil {

@@ -48,7 +48,6 @@ func (s *Strategy) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /tabs", s.handleTabs)
 }
 
-// proxyToFirst ensures an instance is running, then proxies the request to it.
 func (s *Strategy) proxyToFirst(w http.ResponseWriter, r *http.Request) {
 	target, status, err := s.ensureRunning(r)
 	if err != nil {

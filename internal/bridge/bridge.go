@@ -28,7 +28,6 @@ type Bridge struct {
 	Dialogs       *DialogManager
 	LogStore      *ConsoleLogStore
 
-	// Network monitoring
 	netMonitor *NetworkMonitor
 
 	// Network route interception (Fetch domain). Lazy: enables CDP fetch

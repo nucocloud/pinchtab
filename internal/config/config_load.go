@@ -500,7 +500,6 @@ func applyFileConfig(cfg *RuntimeConfig, fc *FileConfig) {
 		cfg.ExtensionPaths = append([]string(nil), fc.Browser.ExtensionPaths...)
 	}
 
-	// Process browsers block — available list
 	if len(fc.Browsers.Available) > 0 {
 		cfg.BrowsersAvailable = make([]string, len(fc.Browsers.Available))
 		copy(cfg.BrowsersAvailable, fc.Browsers.Available)

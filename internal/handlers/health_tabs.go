@@ -14,7 +14,6 @@ type tabHandoffReader interface {
 }
 
 func (h *Handlers) HandleHealth(w http.ResponseWriter, r *http.Request) {
-	// Guard against nil Bridge
 	if h.Bridge == nil {
 		httpx.JSON(w, 503, map[string]any{"status": "error", "reason": "bridge not initialized"})
 		return
@@ -29,7 +28,6 @@ func (h *Handlers) HandleHealth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Ensure Chrome is initialized before checking health
 	if err := h.ensureChrome(); err != nil {
 		if h.writeBridgeUnavailable(w, err) {
 			return
@@ -46,7 +44,6 @@ func (h *Handlers) HandleHealth(w http.ResponseWriter, r *http.Request) {
 
 	resp := map[string]any{"status": "ok", "tabs": len(targets)}
 
-	// Include crash logs if any
 	if crashLogs := h.Bridge.GetCrashLogs(); len(crashLogs) > 0 {
 		resp["crashLogs"] = crashLogs
 	}
@@ -61,7 +58,6 @@ func (h *Handlers) HandleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) HandleEnsureChrome(w http.ResponseWriter, r *http.Request) {
-	// Ensure Chrome is initialized for this instance
 	if err := h.ensureChrome(); err != nil {
 		if h.writeBridgeUnavailable(w, err) {
 			return
@@ -93,7 +89,6 @@ func (h *Handlers) HandleMetrics(w http.ResponseWriter, r *http.Request) {
 		result["crashes"] = bridge.CrashSnapshot()
 	}
 
-	// Aggregate memory metrics across all tabs
 	if h.Bridge != nil {
 		if mem, err := h.Bridge.GetAggregatedMemoryMetrics(); err == nil && mem != nil {
 			result["memory"] = mem
@@ -130,7 +125,6 @@ func (h *Handlers) HandleTabMetrics(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) HandleTabs(w http.ResponseWriter, r *http.Request) {
-	// Guard against nil Bridge
 	if h.Bridge == nil {
 		httpx.Error(w, 503, fmt.Errorf("bridge not initialized"))
 		return
@@ -185,13 +179,11 @@ func (h *Handlers) HandleTabs(w http.ResponseWriter, r *http.Request) {
 		tabs = append(tabs, entry)
 	}
 
-	// First pass: add the current focused tab
 	for _, t := range targets {
 		if t.TargetID == currentTabID {
 			appendTab(t)
 		}
 	}
-	// Second pass: add all other tabs
 	for _, t := range targets {
 		if t.TargetID == currentTabID {
 			continue

@@ -209,7 +209,6 @@ func (h *Handlers) HandleAction(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Resolve tab
 	var resolvedTabID string
 	var ctx context.Context
 	{

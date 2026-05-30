@@ -122,7 +122,6 @@ func (Browser) BuildLaunchArgs(cfg browsers.LaunchConfig) ([]string, []string, e
 		args = append(args, fmt.Sprintf("--remote-debugging-port=%d", cfg.DebugPort))
 	}
 
-	// Base flags
 	args = append(args,
 		"--disable-background-networking",
 		"--enable-features=NetworkService,NetworkServiceInProcess",
@@ -149,7 +148,6 @@ func (Browser) BuildLaunchArgs(cfg browsers.LaunchConfig) ([]string, []string, e
 		"--use-mock-keychain",
 	)
 
-	// Headless flags
 	if cfg.Headless {
 		args = append(args,
 			"--headless=new",
@@ -160,7 +158,6 @@ func (Browser) BuildLaunchArgs(cfg browsers.LaunchConfig) ([]string, []string, e
 		)
 	}
 
-	// Extensions
 	if validPaths := existingExtensionPaths(cfg.ExtensionPaths); len(validPaths) > 0 {
 		joined := strings.Join(validPaths, ",")
 		args = append(args, "--load-extension="+joined, "--disable-extensions-except="+joined)
@@ -168,16 +165,13 @@ func (Browser) BuildLaunchArgs(cfg browsers.LaunchConfig) ([]string, []string, e
 		args = append(args, "--disable-extensions")
 	}
 
-	// Profile directory
 	if cfg.ProfileDir != "" {
 		args = append(args, "--user-data-dir="+cfg.ProfileDir)
 	}
 
-	// Window size
 	w, h := randomWindowSize()
 	args = append(args, fmt.Sprintf("--window-size=%d,%d", w, h))
 
-	// Timezone
 	if cfg.Timezone != "" {
 		args = append(args, "--tz="+cfg.Timezone)
 	}
@@ -185,7 +179,6 @@ func (Browser) BuildLaunchArgs(cfg browsers.LaunchConfig) ([]string, []string, e
 	// Extra flags (caller pre-filters)
 	args = append(args, cfg.ExtraFlags...)
 
-	// Compatibility
 	if cfg.NoSandbox {
 		args = append(args, "--no-sandbox")
 	}

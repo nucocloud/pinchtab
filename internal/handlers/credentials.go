@@ -157,7 +157,6 @@ func (h *Handlers) setCredentials(w http.ResponseWriter, r *http.Request, req cr
 		Password: req.Password,
 	})
 
-	// Enable Fetch domain with auth request interception.
 	if err := h.Bridge.EnableFetchWithAuth(tCtx); err != nil {
 		httpx.Error(w, 500, fmt.Errorf("CDP fetch enable: %w", err))
 		return

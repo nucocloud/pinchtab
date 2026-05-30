@@ -53,7 +53,6 @@ func (b *Bridge) startScreencastEventDriven(ctx context.Context, opts Screencast
 	done := make(chan struct{})
 	ackCh := make(chan int64, 128)
 
-	// ACK goroutine
 	go func() {
 		for {
 			select {
@@ -111,7 +110,6 @@ func (b *Bridge) startScreencastEventDriven(ctx context.Context, opts Screencast
 		}
 	})
 
-	// Start the CDP screencast
 	err := chromedp.Run(ctx,
 		chromedp.ActionFunc(func(c context.Context) error {
 			return page.StartScreencast().

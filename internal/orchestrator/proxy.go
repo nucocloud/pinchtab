@@ -45,7 +45,6 @@ func (o *Orchestrator) proxyTabRequest(w http.ResponseWriter, r *http.Request) {
 		o.proxyToURL(w, r, targetURL)
 	}
 
-	// Fast path: Locator cache hit
 	if o.instanceMgr != nil {
 		if inst, err := o.instanceMgr.FindInstanceByTabID(tabID); err == nil {
 			proxyToInstance(inst)
@@ -53,10 +52,8 @@ func (o *Orchestrator) proxyTabRequest(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Slow path: legacy lookup
 	inst, err := o.findRunningInstanceByTabID(tabID)
 	if err == nil {
-		// Cache for future O(1) lookups
 		if o.instanceMgr != nil {
 			o.instanceMgr.Locator.Register(tabID, inst.ID)
 		}

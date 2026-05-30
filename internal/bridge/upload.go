@@ -23,7 +23,6 @@ func (b *Bridge) SetFileInputFiles(ctx context.Context, nodeID int64, paths []st
 func (b *Bridge) ResolveSelectorToNodeID(ctx context.Context, selector string) (int64, error) {
 	var nodeID int64
 	err := chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
-		// Determine the JavaScript expression based on selector type.
 		var expr string
 		switch {
 		case strings.HasPrefix(selector, "xpath:"):

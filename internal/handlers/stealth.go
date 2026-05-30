@@ -48,7 +48,6 @@ func (h *Handlers) HandleFingerprintRotate(w http.ResponseWriter, r *http.Reques
 	tCtx, tCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer tCancel()
 
-	// Set user agent override
 	if err := h.Bridge.SetUserAgentOverride(tCtx, bridge.UserAgentOverrideParams{
 		UserAgent:      fp.UserAgent,
 		Platform:       fp.Platform,
@@ -82,7 +81,6 @@ func (h *Handlers) HandleFingerprintRotate(w http.ResponseWriter, r *http.Reques
 			return
 		}
 	}
-	// Add platform overlay script for new documents
 	if fp.Platform != "" {
 		overlayScript := fingerprintRotatePlatformOverlayScript(fp.Platform)
 		if _, err := h.Bridge.AddScriptToEvaluateOnNewDocument(tCtx, overlayScript); err != nil {

@@ -149,10 +149,6 @@ type PDFParams struct {
 	FooterTemplate          string
 }
 
-// ---------------------------------------------------------------------------
-// RuntimeInstance interface
-// ---------------------------------------------------------------------------
-
 // RuntimeInstance defines post-launch browser operations. Each browser
 // provider (chrome, cloak, ghost-chrome) implements this interface to
 // own its runtime behavior. The Bridge delegates operations to the

@@ -75,7 +75,6 @@ func Registry(cfg *config.RuntimeConfig) []CheckEntry {
 		{Name: "config_file", Fn: checkConfigFile},
 	}
 
-	// Add browser-specific checks from the browser registry.
 	browserID := config.NormalizeBrowser(browserFromCfg(cfg))
 	if b, ok := browsers.Get(browserID); ok {
 		env := buildDoctorEnv(cfg)

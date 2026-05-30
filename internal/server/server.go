@@ -72,7 +72,6 @@ func RunDashboard(cfg *config.RuntimeConfig, version string) {
 	configAPI.SetSessionManager(sessions)
 	authAPI := dashboard.NewAuthAPI(cfg, sessions)
 
-	// API sessions
 	sessionStore := session.NewStore(session.Config{
 		Enabled:     cfg.Sessions.Agent.Enabled,
 		Mode:        cfg.Sessions.Agent.Mode,

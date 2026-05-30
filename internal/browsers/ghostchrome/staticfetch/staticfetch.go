@@ -56,15 +56,13 @@ func (l *Browser) Navigate(ctx context.Context, url string) (*browserops.Navigat
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	// Normalize the request URL for construction. SSRF enforcement happens
-	// before this call in the handler and again at redirect/dial time in
-	// clientForNavigate.
+	// SSRF is enforced before this call (handler) and again at dial/redirect
+	// time, so an inline nav guard here is intentionally omitted.
 	safeURL, err := urls.Sanitize(url)
 	if err != nil {
 		return nil, fmt.Errorf("lite navigate: %w", err)
 	}
 
-	// Fetch HTML via HTTP.
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, safeURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("lite navigate: %w", err)
@@ -82,7 +80,6 @@ func (l *Browser) Navigate(ctx context.Context, url string) (*browserops.Navigat
 		return nil, fmt.Errorf("lite navigate: HTTP %d from %s", resp.StatusCode, url)
 	}
 
-	// Detect content type — only process HTML.
 	ct := resp.Header.Get("Content-Type")
 	if ct != "" && !strings.Contains(ct, "html") && !strings.Contains(ct, "xml") {
 		return nil, fmt.Errorf("lite navigate: unsupported content type %q", ct)
@@ -275,8 +272,6 @@ func (l *Browser) resolveTab(tabID string) (*liteTab, error) {
 	l.current = tabID
 	return tab, nil
 }
-
-// ---------- helpers ----------
 
 func (l *Browser) walkDOM(tab *liteTab, node dom.Node, filter string, depth int) []browserops.SnapshotNode {
 	var nodes []browserops.SnapshotNode

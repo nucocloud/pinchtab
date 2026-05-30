@@ -67,7 +67,6 @@ func shouldRetryPointerAction(req bridge.ActionRequest, err error) bool {
 	switch kind {
 	case bridge.ActionClick, bridge.ActionDoubleClick, bridge.ActionHover, bridge.ActionDrag,
 		bridge.ActionMouseDown, bridge.ActionMouseUp, bridge.ActionMouseWheel:
-		// pointer action kinds
 	default:
 		return false
 	}
