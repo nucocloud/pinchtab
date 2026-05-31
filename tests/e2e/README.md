@@ -8,7 +8,7 @@ End-to-end tests for PinchTab that exercise the full stack including browser aut
 
 ```bash
 ./dev e2e          # Run the extended suite quietly by default
-./dev e2e --browser=cloak         
+./dev e2e --browser=cloak
 ./dev e2e basic    # Run the basic suite (api + cli + infra basic tests)
 ./dev e2e extended # Run the extended suite
 ./dev smoke ci     # Run the CI-backed smoke subset
