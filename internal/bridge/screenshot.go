@@ -150,6 +150,24 @@ func scaledScreenshotClip(opts ScreenshotOpts, viewportWidth, viewportHeight, do
 // or by synthesizing a viewport-covering clip from ViewportWidth/Height. CDP's
 // top-level capture call has no scale parameter outside of clip, so this is
 // the only way to apply a render-time rescale.
+// captureFromSurface decides the Page.captureScreenshot fromSurface flag.
+//
+// fromSurface=false reads the renderer's current view directly instead of
+// waiting for a fresh compositor surface frame. On idle pages in headed browsers
+// (e.g. Cloak) the surface stops swapping frames, so the default fromSurface=true
+// blocks until the action deadline (~30s); reading from the view avoids that for
+// plain captures. But capture-beyond-viewport and any render-time rescale
+// (clip.Scale != 1) both need the page recomposited at a new size, which only
+// happens with fromSurface=true — forcing it off there silently drops the
+// scale/beyond-viewport effect. So keep it off only for the plain/native-scale
+// path.
+func captureFromSurface(beyondViewport bool, clip *page.Viewport) bool {
+	if beyondViewport {
+		return true
+	}
+	return clip != nil && clip.Scale != 0 && clip.Scale != 1
+}
+
 func CaptureScreenshot(ctx context.Context, opts ScreenshotOpts) ([]byte, error) {
 	clip := opts.Clip
 	if opts.Scale > 0 && opts.Scale != 1 {
@@ -168,6 +186,8 @@ func CaptureScreenshot(ctx context.Context, opts ScreenshotOpts) ([]byte, error)
 		clip = scaledScreenshotClip(opts, viewportWidth, viewportHeight, documentWidth, documentHeight)
 	}
 
+	fromSurface := captureFromSurface(opts.BeyondViewport, clip)
+
 	var buf []byte
 	err := chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		// Wake the target's renderer before capturing. Background / non-foreground
@@ -179,12 +199,7 @@ func CaptureScreenshot(ctx context.Context, opts ScreenshotOpts) ([]byte, error)
 		// (e.g. Cloak) still capture normally.
 		_ = page.BringToFront().Do(ctx)
 
-		// WithFromSurface(false) reads the renderer's current view directly instead
-		// of waiting for a fresh compositor surface frame. On idle pages in headed
-		// browsers (e.g. Cloak) the surface stops swapping frames, so the default
-		// fromSurface=true blocks until the action deadline (~30s). In headless
-		// Chrome the flag is a no-op, so chrome/ghost-chrome are unaffected.
-		shot := page.CaptureScreenshot().WithFormat(opts.Format).WithFromSurface(false)
+		shot := page.CaptureScreenshot().WithFormat(opts.Format).WithFromSurface(fromSurface)
 		if clip != nil {
 			shot = shot.WithClip(clip)
 		}
