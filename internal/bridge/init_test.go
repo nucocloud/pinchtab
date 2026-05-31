@@ -56,17 +56,49 @@ func TestBuildChromeArgsHeadlessUsesSoftwareRendering(t *testing.T) {
 }
 
 func TestBuildChromeArgsIncludesGlobalUserAgent(t *testing.T) {
+	// HEADED + no custom UA: Chrome must run WITHOUT --user-agent so its
+	// native, complete high-entropy UA Client Hints are served.
 	args := buildChromeArgs(&config.RuntimeConfig{ChromeVersion: "144.0.7559.133"}, 9222)
-
-	found := false
 	for _, arg := range args {
+		if strings.HasPrefix(arg, "--user-agent=") {
+			t.Fatalf("did not expect a pinned user-agent in headed mode without a custom UA, got %v", args)
+		}
+	}
+
+	// HEADLESS + no custom UA: Chrome's NATIVE userAgent contains
+	// "HeadlessChrome/..." in --headless=new. We MUST pin --user-agent so the
+	// headless tell never reaches the page or workers. The native UA-CH is
+	// already degraded in headless, so the PR #580 UA-CH realism rationale
+	// does not apply here.
+	headless := buildChromeArgs(&config.RuntimeConfig{ChromeVersion: "144.0.7559.133", Headless: true}, 9222)
+	var headlessUA string
+	for _, arg := range headless {
+		if strings.HasPrefix(arg, "--user-agent=") {
+			headlessUA = strings.TrimPrefix(arg, "--user-agent=")
+			break
+		}
+	}
+	if headlessUA == "" {
+		t.Fatalf("expected --user-agent to be pinned in headless mode (HeadlessChrome would otherwise leak in navigator.userAgent), got %v", headless)
+	}
+	if strings.Contains(headlessUA, "HeadlessChrome") {
+		t.Fatalf("pinned headless UA must not contain HeadlessChrome, got %q", headlessUA)
+	}
+	if !strings.Contains(headlessUA, "Chrome/144.0.0.0") {
+		t.Fatalf("pinned headless UA should carry the configured frozen Chrome major, got %q", headlessUA)
+	}
+
+	// Explicit custom UA: it must be pinned (independent of headless).
+	custom := buildChromeArgs(&config.RuntimeConfig{ChromeVersion: "144.0.7559.133", UserAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"}, 9222)
+	found := false
+	for _, arg := range custom {
 		if strings.HasPrefix(arg, "--user-agent=Mozilla/5.0") {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Fatalf("expected global user-agent arg in %v", args)
+		t.Fatalf("expected an explicit custom UA to be pinned in %v", custom)
 	}
 }
 

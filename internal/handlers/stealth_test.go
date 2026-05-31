@@ -78,6 +78,40 @@ func TestGenerateFingerprint_Config(t *testing.T) {
 	}
 }
 
+// The launch path pins navigator.userAgent to Chrome's UA-reduced form
+// (Chrome/<major>.0.0.0). /fingerprint/rotate runs against the same browser
+// session and MUST emit the same reduced form, otherwise an initial UA of
+// Chrome/144.0.0.0 followed by a rotated UA of Chrome/144.0.7559.133 trips
+// the "Chrome version preserved" E2E contract (system-basic.sh).
+func TestGenerateFingerprint_MatchesLaunchPinnedUAReduction(t *testing.T) {
+	cfg := &config.RuntimeConfig{ChromeVersion: "144.0.7559.133", Headless: true}
+	bundle := stealth.NewBundle(cfg, 1)
+	launchUA := bundle.LaunchUserAgent()
+	if launchUA == "" {
+		t.Fatalf("precondition: headless launch must pin a UA, got empty")
+	}
+	if !strings.Contains(launchUA, "Chrome/144.0.0.0") {
+		t.Fatalf("precondition: launch UA should be reduced to Chrome/144.0.0.0, got %q", launchUA)
+	}
+
+	h := Handlers{Config: cfg}
+	for _, tc := range []struct {
+		os, browser string
+	}{
+		{"windows", "chrome"},
+		{"mac", "chrome"},
+		{"windows", "edge"},
+	} {
+		fp := h.generateFingerprint(fingerprintRequest{OS: tc.os, Browser: tc.browser})
+		if !strings.Contains(fp.UserAgent, "144.0.0.0") {
+			t.Errorf("rotate UA for %s/%s should carry reduced Chrome/144.0.0.0, got %q", tc.os, tc.browser, fp.UserAgent)
+		}
+		if strings.Contains(fp.UserAgent, "144.0.7559.133") {
+			t.Errorf("rotate UA for %s/%s leaks full build version (UA reduction violated): %q", tc.os, tc.browser, fp.UserAgent)
+		}
+	}
+}
+
 func TestTimezoneIDFromOffset(t *testing.T) {
 	if got := timezoneIDFromOffset(-300); got != "America/New_York" {
 		t.Fatalf("timezoneIDFromOffset(-300) = %q, want America/New_York", got)

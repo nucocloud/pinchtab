@@ -45,14 +45,37 @@ func (b *Bridge) applyWorkerStealth(parent context.Context, targetID target.ID, 
 		ua = b.StealthBundle.LaunchUserAgent()
 	}
 
+	persona := workerStealthPersona(ua, b.Config.ChromeVersion)
+
 	if err := chromedp.Run(runCtx,
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			return stealth.ApplyTargetEmulation(ctx, b.Config, ua)
 		}),
-		chromedp.Evaluate(workerStealthParityScript(stealth.BuildPersona(ua, b.Config.ChromeVersion)), nil),
+		chromedp.Evaluate(workerStealthParityScript(persona), nil),
 	); err != nil {
 		slog.Debug("worker stealth parity failed", "targetId", targetID, "targetType", targetType, "err", err)
 	}
+}
+
+// workerStealthPersona returns the persona the worker-stealth parity script
+// should impose on a worker's navigator.
+//
+// When no explicit custom UA is configured (launch.go no longer pins
+// --user-agent in that case), the PAGE uses Chrome's native userAgent.
+// Synthesizing a config-derived UA here would force a static major onto the
+// worker that the page does not carry — a page/worker mismatch a real Chrome
+// never exhibits. Leaving UserAgent / NavigatorPlatform empty lets
+// workerStealthParityScript fall back to the worker's own native values
+// (which Chrome keeps consistent with the page).
+func workerStealthPersona(launchUA, chromeVersion string) stealth.BrowserPersona {
+	if strings.TrimSpace(launchUA) == "" {
+		return stealth.BrowserPersona{
+			Language:       "en-US",
+			Languages:      []string{"en-US", "en"},
+			AcceptLanguage: "en-US,en",
+		}
+	}
+	return stealth.BuildPersona(launchUA, chromeVersion)
 }
 
 func workerStealthParityScript(persona stealth.BrowserPersona) string {

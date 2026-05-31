@@ -37,7 +37,7 @@ run_stealth_level_matrix() {
   MATRIX_STATUS="$RESULT"
   assert_json_eq "$RESULT" '.level' "$STEALTH_LEVEL" "status level matches instance"
   assert_json_exists "$RESULT" '.scriptHash' "status includes script hash"
-  assert_json_eq "$RESULT" '.flags.globalUserAgent' 'true' "status reports global launch UA"
+  assert_json_eq "$RESULT" '.flags.globalUserAgent' 'true' "status reports global launch UA is pinned (default headless config or custom UA)"
   assert_json_eq "$RESULT" '.capabilities.webdriverNativeStrategy' 'true' "status reports native webdriver strategy"
   assert_json_eq "$RESULT" '.capabilities.downlinkMax' 'true' "status reports downlinkMax capability"
   end_test

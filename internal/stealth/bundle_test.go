@@ -138,7 +138,14 @@ func TestBuildLaunchContractOwnsStealthLaunchFlags(t *testing.T) {
 			t.Fatalf("expected stealth launch arg %q in %v", want, launch.Args)
 		}
 	}
-	if !HasLaunchArgPrefix(launch.Args, "--user-agent=Mozilla/5.0") {
-		t.Fatalf("expected stealth launch contract to own user-agent, got %v", launch.Args)
+	// Without an explicit custom UA, --user-agent must NOT be pinned (pinning it
+	// empties Chrome's native high-entropy UA Client Hints).
+	if HasLaunchArgPrefix(launch.Args, "--user-agent=") {
+		t.Fatalf("did not expect a pinned user-agent without a custom UA, got %v", launch.Args)
+	}
+	// With an explicit custom UA, the launch contract owns --user-agent.
+	custom := BuildLaunchContract(&config.RuntimeConfig{ChromeVersion: "144.0.0.0", UserAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"}, LevelLight)
+	if !HasLaunchArgPrefix(custom.Args, "--user-agent=Mozilla/5.0") {
+		t.Fatalf("expected an explicit custom UA to pin --user-agent, got %v", custom.Args)
 	}
 }

@@ -31,6 +31,22 @@ type BrowserPersona struct {
 	UserAgentData     UserAgentDataProfile `json:"userAgentData"`
 }
 
+// ReducedChromeVersion returns the UA-reduced (v100+) "<major>.0.0.0" form
+// of a Chrome version string. navigator.userAgent in real Chrome never carries
+// the full build — exposing it is a fingerprint tell. The full build still
+// lives in the high-entropy UA Client Hints. Falls back to the default major
+// when chromeVersion is empty so all callers agree on a single value.
+func ReducedChromeVersion(chromeVersion string) string {
+	major := chromeVersion
+	if i := strings.Index(chromeVersion, "."); i > 0 {
+		major = chromeVersion[:i]
+	}
+	if major == "" {
+		major = "144"
+	}
+	return major + ".0.0.0"
+}
+
 func ResolveUserAgent(userAgent, chromeVersion string) string {
 	if userAgent != "" {
 		return userAgent
@@ -50,7 +66,17 @@ func ResolveUserAgent(userAgent, chromeVersion string) string {
 }
 
 func BuildPersona(userAgent, chromeVersion string) BrowserPersona {
-	ua := ResolveUserAgent(userAgent, chromeVersion)
+	reduced := ReducedChromeVersion(chromeVersion)
+	major := reduced
+	if i := strings.Index(reduced, "."); i > 0 {
+		major = reduced[:i]
+	}
+	// Freeze the UA build to <major>.0.0.0. Real Chrome (UA reduction, v100+) never
+	// exposes the full build in navigator.userAgent — a UA like "Chrome/146.0.7680.80"
+	// is a fingerprint tell. The full build still lives in the high-entropy UA-CH
+	// (uaFullVersion / fullVersionList). An explicit custom userAgent is respected
+	// verbatim by ResolveUserAgent.
+	ua := ResolveUserAgent(userAgent, reduced)
 	language := "en-US"
 	languages := []string{"en-US", "en"}
 	acceptLanguage := "en-US,en"
@@ -60,14 +86,6 @@ func BuildPersona(userAgent, chromeVersion string) BrowserPersona {
 			Languages:      languages,
 			AcceptLanguage: acceptLanguage,
 		}
-	}
-
-	major := chromeVersion
-	if i := strings.Index(chromeVersion, "."); i > 0 {
-		major = chromeVersion[:i]
-	}
-	if major == "" {
-		major = "144"
 	}
 
 	navigatorPlatform := "Linux x86_64"
