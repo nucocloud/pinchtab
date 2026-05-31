@@ -324,7 +324,7 @@ type BrowserConfig struct {
 // BrowserTargetsConfig maps target name -> target config. Names must match `^[a-z][a-z0-9-]{0,31}$`.
 type BrowserTargetsConfig map[string]BrowserTargetConfig
 
-// BrowserTargetConfig is a single named browser target. See docs/architecture/browser-targets.md.
+// BrowserTargetConfig is a single named browser target. See docs/architecture/browser-abstraction.md.
 type BrowserTargetConfig struct {
 	Provider   string             `json:"provider,omitempty"`
 	Binary     string             `json:"binary,omitempty"`

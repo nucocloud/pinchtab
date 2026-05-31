@@ -20,7 +20,6 @@ import sys
 path, provider, token, fixtures_host, chrome_binary, cloak_binary = sys.argv[1:7]
 
 browser = {
-    "provider": provider,
     "extensionPaths": [],
 }
 if provider == "cloak":
@@ -47,6 +46,14 @@ cfg = {
         "token": token,
         "stateDir": "/data",
     },
+    # browsers.default is the authoritative provider selector. The legacy
+    # browser.provider field is rejected at validation time (it breaks
+    # `config set`/`config validate`); browser.binary/cloak below remain
+    # accepted and migrate into the default target on load.
+    "browsers": {
+        "default": provider,
+        "available": [provider],
+    },
     "browser": browser,
     "instanceDefaults": {
         "mode": "headless",
@@ -62,7 +69,10 @@ cfg = {
         "allowStateExport": True,
         "allowedDomains": [fixtures_host, "127.0.0.1", "localhost", "::1"],
         "downloadAllowedDomains": [fixtures_host],
-        "trustedResolveCIDRs": ["127.0.0.1/32"],
+        # 127.0.0.1/32 alone blocks fixtures that resolve to the Docker bridge
+        # network (e.g. 172.18.x) even when the host is in allowedDomains;
+        # trust the RFC1918 range the container networks use.
+        "trustedResolveCIDRs": ["127.0.0.1/32", "172.16.0.0/12"],
     },
     "profiles": {
         "baseDir": "/data/profiles",
@@ -137,7 +147,9 @@ cfg = {
         "allowStateExport": True,
         "allowedDomains": [fixtures_host, "127.0.0.1", "localhost", "::1"],
         "downloadAllowedDomains": [fixtures_host],
-        "trustedResolveCIDRs": ["127.0.0.1/32"],
+        # See write_provider_config: trust the Docker bridge range so fixtures
+        # resolving to 172.18.x are not blocked by the private-IP guard.
+        "trustedResolveCIDRs": ["127.0.0.1/32", "172.16.0.0/12"],
     },
     "profiles": {
         "baseDir": "/data/profiles",

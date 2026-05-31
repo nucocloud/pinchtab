@@ -16,6 +16,7 @@ var scrollByCoordinateAction = ScrollByCoordinate
 var mouseMoveByCoordinateAction = MouseMoveByCoordinate
 var mouseDownByCoordinateAction = MouseDownByCoordinate
 var mouseUpByCoordinateAction = MouseUpByCoordinate
+var clickElementAction = ClickElement
 var clickByNodeIDAction = ClickByNodeID
 var jsClickByBackendNodeAction = JSClickByBackendNode
 var dispatchClickByBackendNodeAction = JSDispatchClickByBackendNode
@@ -614,12 +615,22 @@ func (b *Bridge) actionHumanizedClick(ctx context.Context, req ActionRequest) (r
 		return nil, fmt.Errorf("need selector, ref, or nodeId")
 	}
 
-	// Run the multi-step humanized click (bezier mouse-move + press + release) in
-	// a goroutine and poll for blocking dialogs. Without this, a dialog or
-	// dialog-like popup opened by the click would hang the renderer for the
-	// full action timeout. Mirrors the wrapping used by actionClick.
+	// If the caller expects this click to open a native JS dialog, arm a
+	// one-shot auto-handler so it gets accepted/dismissed instead of leaving the
+	// renderer blocked. Without this the humanized path can only ever report
+	// dialog_blocking. Mirrors actionClick's non-humanized branch.
 	dm := b.GetDialogManager()
-	detectDialog := req.TabID != "" && dm != nil
+	armedDialog := false
+	if req.DialogAction != "" && req.TabID != "" && dm != nil {
+		dm.ArmAutoHandler(req.TabID, req.DialogAction, req.DialogText)
+		armedDialog = true
+	}
+
+	// Run the multi-step humanized click (bezier mouse-move + press + release) in
+	// a goroutine. When no dialog-action was provided, poll for an unexpected
+	// blocking dialog so it surfaces as ErrDialogBlocking rather than hanging the
+	// renderer for the full action timeout.
+	detectDialog := !armedDialog && req.TabID != "" && dm != nil
 	clickCtx := ctx
 	var clickCancel context.CancelFunc
 	if detectDialog {
@@ -629,7 +640,7 @@ func (b *Bridge) actionHumanizedClick(ctx context.Context, req ActionRequest) (r
 
 	resultCh := make(chan error, 1)
 	go func() {
-		resultCh <- ClickElement(clickCtx, backendNodeID)
+		resultCh <- clickElementAction(clickCtx, backendNodeID)
 	}()
 
 	if detectDialog {
@@ -658,6 +669,9 @@ func (b *Bridge) actionHumanizedClick(ctx context.Context, req ActionRequest) (r
 
 	if err := <-resultCh; err != nil {
 		return nil, err
+	}
+	if armedDialog {
+		waitForArmedDialogSettle(dm, req.TabID, dialogAutoHandleTimeout)
 	}
 	return map[string]any{"clicked": true, "human": true}, nil
 }

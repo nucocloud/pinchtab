@@ -592,5 +592,37 @@ func FileConfigFromRuntime(cfg *RuntimeConfig) FileConfig {
 		Browsers: browsersBlock,
 	}
 
+	reconcileDefaultTargetProvider(&fc.Browser, browsersDefault, cfg)
+
 	return fc
+}
+
+// reconcileDefaultTargetProvider keeps the serialized default browser target
+// consistent with browsers.default, which is the authoritative provider source.
+// config.Load() eagerly synthesizes a "default" target from the legacy chrome
+// fields, so when a caller later overrides DefaultBrowser (for example the
+// orchestrator selecting cloak for a child instance) without rewriting Targets,
+// the stale target would otherwise shadow browsers.default on reload because
+// explicit targets win over the legacy fields. Only the lone auto-synthesized
+// "default" target is reconciled; explicit multi-target configs are left intact.
+func reconcileDefaultTargetProvider(bc *BrowserConfig, browsersDefault string, cfg *RuntimeConfig) {
+	if bc == nil || cfg == nil || len(bc.Targets) != 1 {
+		return
+	}
+	target, ok := bc.Targets[DefaultBrowserTargetName]
+	if !ok {
+		return
+	}
+	want := NormalizeBrowser(browsersDefault)
+	if NormalizeBrowser(target.Provider) == want {
+		return
+	}
+	// browsers.default won; rewrite the default target from the authoritative
+	// runtime fields so the round-trip preserves the selected provider.
+	target.Provider = want
+	target.Binary = cfg.ChromeBinary
+	target.ExtraFlags = cfg.ChromeExtraFlags
+	target.Cloak = cloakBrowserConfigFromRuntime(cfg)
+	target.Proxy = cloneBrowserProxyConfig(cfg.Proxy)
+	bc.Targets[DefaultBrowserTargetName] = target
 }

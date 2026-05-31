@@ -179,17 +179,39 @@ func Click(ctx context.Context, x, y float64) error {
 	)
 }
 
-// ClickElement clicks on an element identified by its backend DOM node ID.
-// This uses the backendDOMNodeId from the accessibility tree, NOT a regular DOM nodeId.
-func ClickElement(ctx context.Context, backendNodeID cdp.BackendNodeID) error {
+var scrollIntoViewIfNeededAction = func(ctx context.Context, backendNodeID cdp.BackendNodeID) error {
+	return chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
+		return dom.ScrollIntoViewIfNeeded().WithBackendNodeID(backendNodeID).Do(ctx)
+	}))
+}
+
+var boxModelForBackendNodeAction = func(ctx context.Context, backendNodeID cdp.BackendNodeID) (*dom.BoxModel, error) {
 	var box *dom.BoxModel
-	if err := chromedp.Run(ctx,
+	err := chromedp.Run(ctx,
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			var err error
 			box, err = dom.GetBoxModel().WithBackendNodeID(backendNodeID).Do(ctx)
 			return err
 		}),
-	); err != nil {
+	)
+	return box, err
+}
+
+var clickCoordinateHumanAction = Click
+
+// ClickElement clicks on an element identified by its backend DOM node ID.
+// This uses the backendDOMNodeId from the accessibility tree, NOT a regular DOM nodeId.
+func ClickElement(ctx context.Context, backendNodeID cdp.BackendNodeID) error {
+	// Scroll the target into the visual viewport first. The humanized click is
+	// coordinate-based (Input.dispatchMouseEvent at the box-model center), so an
+	// element below the fold or freshly revealed (lazy-loaded list item,
+	// modal-triggered button) would otherwise produce coordinates that land on
+	// whatever is currently visible there — the dispatch "succeeds" but the
+	// intended click handler never fires. Best-effort: not every node scrolls.
+	_ = scrollIntoViewIfNeededAction(ctx, backendNodeID)
+
+	box, err := boxModelForBackendNodeAction(ctx, backendNodeID)
+	if err != nil {
 		return err
 	}
 
@@ -203,7 +225,7 @@ func ClickElement(ctx context.Context, backendNodeID cdp.BackendNodeID) error {
 	offsetX := (humanRand.Float64() - 0.5) * 10
 	offsetY := (humanRand.Float64() - 0.5) * 10
 
-	return Click(ctx, centerX+offsetX, centerY+offsetY)
+	return clickCoordinateHumanAction(ctx, centerX+offsetX, centerY+offsetY)
 }
 
 func Type(text string, fast bool) []chromedp.Action {
