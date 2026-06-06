@@ -34,7 +34,7 @@ func ensureServerWithAutoStart(baseURL, token, command string, allowAutoStart bo
 		return fmt.Errorf("server at %s is not running; auto-start is only supported for the default local server", baseURL)
 	}
 
-	slog.Info("server not running, starting automatically", "url", baseURL, "command", command)
+	slog.Debug("server not running, starting automatically", "url", baseURL, "command", command)
 	if err := start(); err != nil {
 		slog.Error("failed to auto-start server", "err", err, "command", command)
 		return fmt.Errorf("server at %s is not running and auto-start failed: %w", baseURL, err)
@@ -44,7 +44,7 @@ func ensureServerWithAutoStart(baseURL, token, command string, allowAutoStart bo
 		return fmt.Errorf("server did not become healthy at %s within %s", baseURL, timeout)
 	}
 
-	slog.Info("server started successfully", "url", baseURL, "command", command)
+	slog.Debug("server started successfully", "url", baseURL, "command", command)
 	return nil
 }
 
