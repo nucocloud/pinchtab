@@ -76,19 +76,47 @@ Validate that an AI agent can go from zero to working with PinchTab using only t
 
 ## Clean slate
 
+The setup test simulates a true first-install OOTB experience. To get there:
+
+1. **Stop any pre-existing server** — first try the recorded PID, then fall back to `pkill -f` for anything spawned outside the PID file's tracking. Killing via PID file is more reliable than `pkill -f` (which can miss processes and won't reap dashboard children).
+2. **Stash the user's real `~/.pinchtab/` aside** — so the auto-flow truly creates a config from zero, not on top of an existing profile/activity history that warms Chrome and confuses results. Restored automatically on completion via a trap.
+3. **Free port 9867 and remove the stale binary** in the project root.
+
 ```bash
+# 1. Stop any prior server (PID-file first, then pkill fallback)
+if [ -f ~/.pinchtab/server.pid ]; then
+  prior_pid=$(jq -r '.pid // empty' ~/.pinchtab/server.pid 2>/dev/null)
+  [ -n "$prior_pid" ] && kill "$prior_pid" 2>/dev/null
+fi
 docker compose -f "$TOOLS_DIR/docker-compose.yml" down 2>/dev/null
 docker rm -f optimization-pinchtab >/dev/null 2>&1 || true
 pkill -f 'pinchtab' 2>/dev/null
 pkill -f 'Google Chrome.*pinchtab' 2>/dev/null
+lsof -ti:9867 2>/dev/null | xargs kill 2>/dev/null
 sleep 2
+
+# 2. Stash the real ~/.pinchtab aside for the duration of the test
+PINCHTAB_BACKUP="$HOME/.pinchtab.backup-$(date +%s)"
+if [ -d ~/.pinchtab ]; then
+  mv ~/.pinchtab "$PINCHTAB_BACKUP"
+fi
+# Always restore on exit, even on failure or Ctrl-C
+trap '
+  if [ -d "'"$PINCHTAB_BACKUP"'" ]; then
+    rm -rf ~/.pinchtab 2>/dev/null
+    mv "'"$PINCHTAB_BACKUP"'" ~/.pinchtab
+  fi
+' EXIT INT TERM
+
+# 3. Misc state
 rm -f ~/.local/state/pinchtab/current-tab 2>/dev/null
 rm -f "$PROJECT_ROOT/pinchtab" 2>/dev/null
-find ~/.pinchtab -maxdepth 1 -name 'setup-config-*.json' -delete 2>/dev/null
-lsof -ti:9867 2>/dev/null | xargs kill 2>/dev/null
+# Defensive: clear any stray *config*.json the agent might leave in a real ~/.pinchtab
+# (no-op because we stashed it above — but kept for runs that skip the stash).
+find ~/.pinchtab -maxdepth 1 -name '*config*.json' ! -name 'config.json' -delete 2>/dev/null
 ```
 
-The setup test uses `PINCHTAB_CONFIG=~/.pinchtab/setup-config-<timestamp>.json` so it never touches the user's real `~/.pinchtab/config.json`. Stale setup-config files are removed above so the auto-flow writes a truly fresh OOTB config every time.
+The setup test uses `PINCHTAB_CONFIG=~/.pinchtab/setup-config-<timestamp>.json` so even without the stash it never touches the user's real `~/.pinchtab/config.json`. The stash adds true first-install fidelity (no warmed Chrome profile, no activity history) and the trap guarantees the real `~/.pinchtab/` is restored regardless of how the run ends.
 
 Wait 2 seconds after cleanup before spawning the agent.
 
