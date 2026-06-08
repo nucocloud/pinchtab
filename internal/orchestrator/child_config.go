@@ -43,7 +43,7 @@ func (o *Orchestrator) buildChildFileConfig(effectiveCfg *config.RuntimeConfig, 
 	fc.Server.StateDir = instanceStateDir
 	activityEnabled := false
 	fc.Observability.Activity.Enabled = &activityEnabled
-	fc.Browser.ChromeDebugPort = intPtr(cdpPort)
+	fc.SetBrowserDebugPort(cdpPort)
 	fc.Profiles.BaseDir = filepath.Dir(profilePath)
 	fc.Profiles.DefaultProfile = filepath.Base(profilePath)
 	if headless {
@@ -173,13 +173,5 @@ func effectiveBinaryFromCfg(cfg *config.RuntimeConfig) string {
 	if cfg == nil {
 		return ""
 	}
-	return cfg.ChromeBinary
-}
-
-func intPtr(v int) *int {
-	if v <= 0 {
-		return nil
-	}
-	n := v
-	return &n
+	return strings.TrimSpace(cfg.BrowserBinary)
 }

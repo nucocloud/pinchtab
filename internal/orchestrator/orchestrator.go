@@ -180,7 +180,7 @@ func NewOrchestratorWithRunner(baseDir string, runner HostRunner) *Orchestrator 
 		//   1. Instance /health handler to initialize the browser
 		//   2. Tab operations to complete (navigate, snapshot, actions, etc.)
 		// - Short timeout (<5s) would break first-request scenarios
-		// See: internal/orchestrator/health.go (monitor), internal/bridge/init.go (InitChrome)
+		// See: internal/orchestrator/health.go (monitor), internal/bridge/init.go (InitBrowser)
 		client:         &http.Client{Timeout: 60 * time.Second},
 		childAuthToken: "",
 		allowEvaluate:  false,

@@ -48,7 +48,7 @@ func TestHandleNavigate_EnsuresResolvedBrowserTargetConfig(t *testing.T) {
 	h := New(m, &config.RuntimeConfig{
 		DefaultBrowser:    config.BrowserChrome,
 		BrowsersAvailable: []string{"chrome", "cloak"},
-		ChromeBinary:      "/usr/bin/chrome",
+		BrowserBinary:     "/usr/bin/chrome",
 		Targets: config.BrowserTargetsConfig{
 			"cloak-local": {
 				Provider: config.BrowserCloak,
@@ -62,17 +62,17 @@ func TestHandleNavigate_EnsuresResolvedBrowserTargetConfig(t *testing.T) {
 	w := httptest.NewRecorder()
 	h.HandleNavigate(w, req)
 
-	if m.ensureChromeCall != 1 {
-		t.Fatalf("expected startup to be ensured once, got %d", m.ensureChromeCall)
+	if m.ensureBrowserCall != 1 {
+		t.Fatalf("expected startup to be ensured once, got %d", m.ensureBrowserCall)
 	}
-	if m.ensureChromeCfg == nil {
+	if m.ensureBrowserCfg == nil {
 		t.Fatal("expected startup config to be recorded")
 	}
-	if m.ensureChromeCfg.DefaultBrowser != config.BrowserCloak {
-		t.Fatalf("DefaultBrowser = %q, want %q", m.ensureChromeCfg.DefaultBrowser, config.BrowserCloak)
+	if m.ensureBrowserCfg.DefaultBrowser != config.BrowserCloak {
+		t.Fatalf("DefaultBrowser = %q, want %q", m.ensureBrowserCfg.DefaultBrowser, config.BrowserCloak)
 	}
-	if m.ensureChromeCfg.ChromeBinary != "/opt/cloakbrowser/chrome" {
-		t.Fatalf("ChromeBinary = %q, want target binary", m.ensureChromeCfg.ChromeBinary)
+	if m.ensureBrowserCfg.BrowserBinary != "/opt/cloakbrowser/chrome" {
+		t.Fatalf("BrowserBinary = %q, want target binary", m.ensureBrowserCfg.BrowserBinary)
 	}
 }
 

@@ -24,6 +24,8 @@ func TestGetConfigValue_RoundTrip(t *testing.T) {
 		// browser.provider is no longer supported; tested separately below.
 		{"browser.version", "120.0", "120.0"},
 		{"browser.binary", "/usr/bin/chrome", "/usr/bin/chrome"},
+		{"browsers.default", "cloak", "cloak"},
+		{"browsers.available", "chrome,cloak,ghost-chrome", "chrome,cloak,ghost-chrome"},
 		{"browser.cloak.fingerprintSeed", "42069", "42069"},
 		{"browser.cloak.platform", "windows", "windows"},
 		{"browser.cloak.locale", "en-GB", "en-GB"},

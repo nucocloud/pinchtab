@@ -16,7 +16,7 @@ import (
 	"github.com/pinchtab/pinchtab/internal/stealth"
 )
 
-func TestChromeNeedsNoSandbox(t *testing.T) {
+func TestBrowserNeedsNoSandbox(t *testing.T) {
 	origGOOS := runtimeGOOS
 	origGeteuid := osGeteuid
 	origMarker := containerMarkerPath
@@ -30,12 +30,12 @@ func TestChromeNeedsNoSandbox(t *testing.T) {
 	osGeteuid = func() int { return 1000 }
 	containerMarkerPath = t.TempDir() + "/missing-dockerenv"
 
-	if chromeNeedsNoSandbox() {
+	if launchNeedsNoSandbox() {
 		t.Fatal("expected no-sandbox compatibility to be disabled without root or container marker")
 	}
 
 	osGeteuid = func() int { return 0 }
-	if !chromeNeedsNoSandbox() {
+	if !launchNeedsNoSandbox() {
 		t.Fatal("expected root user to enable no-sandbox compatibility")
 	}
 	osGeteuid = func() int { return 1000 }
@@ -44,12 +44,12 @@ func TestChromeNeedsNoSandbox(t *testing.T) {
 	if err := os.WriteFile(containerMarkerPath, []byte(""), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	if !chromeNeedsNoSandbox() {
+	if !launchNeedsNoSandbox() {
 		t.Fatal("expected container marker to enable no-sandbox compatibility")
 	}
 }
 
-func TestShouldRetryChromeStartupWithDirectLaunch(t *testing.T) {
+func TestShouldRetryBrowserStartupWithDirectLaunch(t *testing.T) {
 	canceledParent, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -99,14 +99,14 @@ func TestShouldRetryChromeStartupWithDirectLaunch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := shouldRetryChromeStartupWithDirectLaunch(tt.parentCtx, tt.err); got != tt.want {
-				t.Fatalf("shouldRetryChromeStartupWithDirectLaunch() = %v, want %v", got, tt.want)
+			if got := shouldRetryBrowserStartupWithDirectLaunch(tt.parentCtx, tt.err); got != tt.want {
+				t.Fatalf("shouldRetryBrowserStartupWithDirectLaunch() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
-func TestBuildChromeArgs_CloakProviderUsesNativeFingerprintFlags(t *testing.T) {
+func TestBuildBrowserArgs_CloakProviderUsesNativeFingerprintFlags(t *testing.T) {
 	cfg := &config.RuntimeConfig{
 		DefaultBrowser: config.BrowserCloak,
 		Cloak: config.CloakBrowserRuntimeConfig{
@@ -121,7 +121,7 @@ func TestBuildChromeArgs_CloakProviderUsesNativeFingerprintFlags(t *testing.T) {
 		},
 	}
 
-	args := BuildChromeArgs(cfg, 9222)
+	args := BuildBrowserArgs(cfg, 9222)
 	for _, want := range []string{
 		"--fingerprint=42069",
 		"--fingerprint-platform=windows",
@@ -132,7 +132,7 @@ func TestBuildChromeArgs_CloakProviderUsesNativeFingerprintFlags(t *testing.T) {
 		"--fingerprint-storage-quota=2048",
 	} {
 		if !stealth.HasLaunchArg(args, want) {
-			t.Fatalf("BuildChromeArgs() missing %q in %v", want, args)
+			t.Fatalf("BuildBrowserArgs() missing %q in %v", want, args)
 		}
 	}
 	for _, blocked := range []string{
@@ -142,18 +142,18 @@ func TestBuildChromeArgs_CloakProviderUsesNativeFingerprintFlags(t *testing.T) {
 		"--enable-network-information-downlink-max",
 	} {
 		if stealth.HasLaunchArg(args, blocked) {
-			t.Fatalf("BuildChromeArgs() included PinchTab stealth arg %q in native Cloak mode: %v", blocked, args)
+			t.Fatalf("BuildBrowserArgs() included PinchTab stealth arg %q in native Cloak mode: %v", blocked, args)
 		}
 	}
 	if stealth.HasLaunchArgPrefix(args, "--user-agent=") {
-		t.Fatalf("BuildChromeArgs() included PinchTab user-agent override in native Cloak mode: %v", args)
+		t.Fatalf("BuildBrowserArgs() included PinchTab user-agent override in native Cloak mode: %v", args)
 	}
 }
 
-func TestBuildChromeArgs_DefaultChromeProviderKeepsChromeLaunchContract(t *testing.T) {
+func TestBuildBrowserArgs_DefaultChromeProviderKeepsChromeLaunchContract(t *testing.T) {
 	cfg := &config.RuntimeConfig{
 		DefaultBrowser: config.BrowserChrome,
-		ChromeVersion:  "144.0.0.0",
+		BrowserVersion: "144.0.0.0",
 		ExtensionPaths: []string{},
 		// Headless is PinchTab's default deployment mode and is also the mode in
 		// which the launch contract pins --user-agent: under headless Chrome the
@@ -163,7 +163,7 @@ func TestBuildChromeArgs_DefaultChromeProviderKeepsChromeLaunchContract(t *testi
 		Headless: true,
 	}
 
-	args := BuildChromeArgs(cfg, 9222)
+	args := BuildBrowserArgs(cfg, 9222)
 	for _, want := range []string{
 		"--remote-debugging-port=9222",
 		"--disable-background-networking",
@@ -175,11 +175,11 @@ func TestBuildChromeArgs_DefaultChromeProviderKeepsChromeLaunchContract(t *testi
 		"--disable-extensions",
 	} {
 		if !stealth.HasLaunchArg(args, want) {
-			t.Fatalf("BuildChromeArgs() missing Chrome provider arg %q in %v", want, args)
+			t.Fatalf("BuildBrowserArgs() missing Chrome provider arg %q in %v", want, args)
 		}
 	}
 	if !stealth.HasLaunchArgPrefix(args, "--user-agent=Mozilla/5.0") {
-		t.Fatalf("BuildChromeArgs() missing Chrome provider user-agent in %v", args)
+		t.Fatalf("BuildBrowserArgs() missing Chrome provider user-agent in %v", args)
 	}
 	for _, blockedPrefix := range []string{
 		"--fingerprint=",
@@ -191,7 +191,7 @@ func TestBuildChromeArgs_DefaultChromeProviderKeepsChromeLaunchContract(t *testi
 		"--fingerprint-storage-quota=",
 	} {
 		if stealth.HasLaunchArgPrefix(args, blockedPrefix) {
-			t.Fatalf("BuildChromeArgs() included Cloak flag prefix %q in Chrome provider mode: %v", blockedPrefix, args)
+			t.Fatalf("BuildBrowserArgs() included Cloak flag prefix %q in Chrome provider mode: %v", blockedPrefix, args)
 		}
 	}
 }
@@ -282,6 +282,32 @@ func (noCDPBrowser) NewRuntimeInstance(_ context.Context, _ bool) browsers.Runti
 
 var registerNoCDPOnce sync.Once
 
+func TestResolveProviderLaunchPlan_UsesProviderDiscovery(t *testing.T) {
+	cfg := &config.RuntimeConfig{DefaultBrowser: config.BrowserCloak}
+	want := browsers.MustGet(config.BrowserCloak).DiscoverBinary().Found
+
+	plan, err := resolveProviderLaunchPlan(cfg, providerLaunchConfig(cfg, "", 0))
+	if err != nil {
+		t.Fatalf("resolveProviderLaunchPlan() error = %v", err)
+	}
+	if plan.binary != want {
+		t.Fatalf("binary = %q, want provider discovery path %q", plan.binary, want)
+	}
+}
+
+func TestResolveProviderLaunchPlan_PropagatesProviderBuildError(t *testing.T) {
+	cfg := &config.RuntimeConfig{DefaultBrowser: config.BrowserCloak}
+	_, err := resolveProviderLaunchPlan(cfg, browsers.LaunchConfig{
+		Mode: browsers.LaunchModeLite,
+	})
+	if err == nil {
+		t.Fatal("expected provider launch error")
+	}
+	if !strings.Contains(err.Error(), "does not support") {
+		t.Fatalf("error = %v, want provider launch error context", err)
+	}
+}
+
 func TestInitRemoteCDP_RejectsUnsupportedProvider(t *testing.T) {
 	registerNoCDPOnce.Do(func() {
 		browsers.Register(&noCDPBrowser{})
@@ -291,7 +317,7 @@ func TestInitRemoteCDP_RejectsUnsupportedProvider(t *testing.T) {
 		DefaultBrowser: "nocdpstub",
 		CDPAttachURL:   "ws://127.0.0.1:9222",
 	}
-	_, _, _, _, _, err := InitChrome(cfg, nil, Hooks{})
+	_, _, _, _, _, err := InitBrowser(cfg, nil, Hooks{})
 	if err == nil {
 		t.Fatal("expected error for unsupported CDP provider")
 	}

@@ -19,11 +19,11 @@ import (
 	"github.com/pinchtab/pinchtab/internal/stealth"
 )
 
-func startChrome(parentCtx context.Context, cfg *config.RuntimeConfig, bundle *stealth.Bundle, opts []chromedp.ExecAllocatorOption, debugPort int, hooks Hooks, geoAlignment launchGeoAlignment) (context.Context, context.CancelFunc, stealth.LaunchMode, error) {
-	return startChromeWithRecovery(parentCtx, cfg, bundle, opts, debugPort, hooks, geoAlignment, false, false)
+func startBrowser(parentCtx context.Context, cfg *config.RuntimeConfig, bundle *stealth.Bundle, opts []chromedp.ExecAllocatorOption, debugPort int, hooks Hooks, geoAlignment launchGeoAlignment) (context.Context, context.CancelFunc, stealth.LaunchMode, error) {
+	return startBrowserWithRecovery(parentCtx, cfg, bundle, opts, debugPort, hooks, geoAlignment, false, false)
 }
 
-func startChromeWithRecovery(parentCtx context.Context, cfg *config.RuntimeConfig, bundle *stealth.Bundle, opts []chromedp.ExecAllocatorOption, debugPort int, hooks Hooks, geoAlignment launchGeoAlignment, retriedProfileLock, retriedProfileCorruption bool) (context.Context, context.CancelFunc, stealth.LaunchMode, error) {
+func startBrowserWithRecovery(parentCtx context.Context, cfg *config.RuntimeConfig, bundle *stealth.Bundle, opts []chromedp.ExecAllocatorOption, debugPort int, hooks Hooks, geoAlignment launchGeoAlignment, retriedProfileLock, retriedProfileCorruption bool) (context.Context, context.CancelFunc, stealth.LaunchMode, error) {
 	allocCtx, allocCancel := chromedp.NewExecAllocator(parentCtx, opts...)
 	browserCtx, browserCancel := chromedp.NewContext(allocCtx)
 
@@ -32,7 +32,7 @@ func startChromeWithRecovery(parentCtx context.Context, cfg *config.RuntimeConfi
 		hooks.SetHumanRandSeed(bundle.Seed)
 	}
 
-	const chromeStartupTimeout = 20 * time.Second
+	const browserStartupTimeout = 20 * time.Second
 	type runResult struct{ err error }
 	runCh := make(chan runResult, 1)
 	startTs := time.Now()
@@ -46,8 +46,8 @@ func startChromeWithRecovery(parentCtx context.Context, cfg *config.RuntimeConfi
 	select {
 	case res := <-runCh:
 		err = res.err
-	case <-time.After(chromeStartupTimeout):
-		err = fmt.Errorf("chrome startup timeout after %v: %w", chromeStartupTimeout, context.DeadlineExceeded)
+	case <-time.After(browserStartupTimeout):
+		err = fmt.Errorf("browser startup timeout after %v: %w", browserStartupTimeout, context.DeadlineExceeded)
 	}
 
 	if err != nil {
@@ -67,11 +67,11 @@ func startChromeWithRecovery(parentCtx context.Context, cfg *config.RuntimeConfi
 		allocCancel()
 		errMsg := err.Error()
 
-		if !retriedProfileLock && hooks.IsChromeProfileLockError != nil && hooks.IsChromeProfileLockError(errMsg) {
-			if hooks.ClearStaleChromeProfile != nil {
-				if recovered, _ := hooks.ClearStaleChromeProfile(cfg.ProfileDir, errMsg); recovered {
+		if !retriedProfileLock && hooks.IsProfileLockError != nil && hooks.IsProfileLockError(errMsg) {
+			if hooks.ClearStaleProfileLocks != nil {
+				if recovered, _ := hooks.ClearStaleProfileLocks(cfg.ProfileDir, errMsg); recovered {
 					time.Sleep(250 * time.Millisecond)
-					return startChromeWithRecovery(parentCtx, cfg, bundle, opts, debugPort, hooks, geoAlignment, true, retriedProfileCorruption)
+					return startBrowserWithRecovery(parentCtx, cfg, bundle, opts, debugPort, hooks, geoAlignment, true, retriedProfileCorruption)
 				}
 			}
 		}
@@ -83,7 +83,7 @@ func startChromeWithRecovery(parentCtx context.Context, cfg *config.RuntimeConfi
 					"quarantinedTo", quarantinePath,
 					"elapsedMs", elapsed.Milliseconds())
 				time.Sleep(500 * time.Millisecond)
-				return startChromeWithRecovery(parentCtx, cfg, bundle, opts, debugPort, hooks, geoAlignment, retriedProfileLock, true)
+				return startBrowserWithRecovery(parentCtx, cfg, bundle, opts, debugPort, hooks, geoAlignment, retriedProfileLock, true)
 			} else {
 				slog.Warn("cloakbrowser silently dropped CDP attach; profile quarantine failed",
 					"originalProfile", cfg.ProfileDir,
@@ -91,16 +91,16 @@ func startChromeWithRecovery(parentCtx context.Context, cfg *config.RuntimeConfi
 			}
 		}
 
-		if shouldRetryChromeStartupWithDirectLaunch(parentCtx, err) && debugPort > 0 {
-			slog.Warn("chrome startup failed via allocator, trying direct-launch fallback", "port", debugPort, "error", errMsg)
+		if shouldRetryBrowserStartupWithDirectLaunch(parentCtx, err) && debugPort > 0 {
+			slog.Warn("browser startup failed via allocator, trying direct-launch fallback", "port", debugPort, "error", errMsg)
 			time.Sleep(500 * time.Millisecond)
-			return startChromeWithRemoteAllocator(parentCtx, cfg, bundle, debugPort, bundle.Script, geoAlignment)
+			return startBrowserWithRemoteAllocator(parentCtx, cfg, bundle, debugPort, bundle.Script, geoAlignment)
 		}
 
 		if silentDrop {
-			return nil, nil, stealth.LaunchModeUninitialized, fmt.Errorf("failed to connect to chrome: %w (cloakbrowser dropped CDP attach silently after %dms; profile %q may be corrupted — try removing it or use a fresh profile)", err, elapsed.Milliseconds(), cfg.ProfileDir)
+			return nil, nil, stealth.LaunchModeUninitialized, fmt.Errorf("failed to connect to browser: %w (cloakbrowser dropped CDP attach silently after %dms; profile %q may be corrupted — try removing it or use a fresh profile)", err, elapsed.Milliseconds(), cfg.ProfileDir)
 		}
-		return nil, nil, stealth.LaunchModeUninitialized, fmt.Errorf("failed to connect to chrome: %w", err)
+		return nil, nil, stealth.LaunchModeUninitialized, fmt.Errorf("failed to connect to browser: %w", err)
 	}
 
 	if err := chromedp.Run(browserCtx, chromedp.ActionFunc(func(ctx context.Context) error {
@@ -125,7 +125,7 @@ func isStartupTimeout(err error) bool {
 	return strings.Contains(msg, "deadline exceeded") || strings.Contains(msg, "context deadline exceeded")
 }
 
-func shouldRetryChromeStartupWithDirectLaunch(parentCtx context.Context, err error) bool {
+func shouldRetryBrowserStartupWithDirectLaunch(parentCtx context.Context, err error) bool {
 	if isStartupTimeout(err) {
 		return true
 	}
@@ -138,28 +138,37 @@ func shouldRetryChromeStartupWithDirectLaunch(parentCtx context.Context, err err
 	return strings.Contains(err.Error(), "context canceled")
 }
 
-func startChromeWithRemoteAllocator(parentCtx context.Context, cfg *config.RuntimeConfig, bundle *stealth.Bundle, debugPort int, injectedStealthScript string, geoAlignment launchGeoAlignment) (context.Context, context.CancelFunc, stealth.LaunchMode, error) {
-	chromeBinary := cfg.ChromeBinary
-	if chromeBinary == "" {
-		chromeBinary = findChromeBinary()
+func startBrowserWithRemoteAllocator(parentCtx context.Context, cfg *config.RuntimeConfig, bundle *stealth.Bundle, debugPort int, injectedStealthScript string, geoAlignment launchGeoAlignment) (context.Context, context.CancelFunc, stealth.LaunchMode, error) {
+	plan, err := resolveProviderLaunchPlan(cfg, providerLaunchConfig(cfg, strings.TrimSpace(cfg.BrowserBinary), debugPort))
+	if err != nil {
+		return nil, nil, stealth.LaunchModeUninitialized, err
 	}
-	if chromeBinary == "" {
+	if plan.binary == "" {
 		return nil, nil, stealth.LaunchModeUninitialized, missingBrowserBinaryError(cfg)
 	}
 
-	args := buildChromeArgsWithBundle(cfg, bundle, debugPort, geoAlignment)
-	// #nosec G204 -- chromeBinary from user config or shared browser discovery
-	cmd := exec.Command(chromeBinary, args...)
-	cmd.Stdout = newPrefixedLogWriter(os.Stdout, "chrome stdout")
-	cmd.Stderr = newPrefixedLogWriter(os.Stderr, "chrome stderr")
+	args, providerEnv, err := buildBrowserArgsWithBundle(cfg, bundle, debugPort, geoAlignment)
+	if err != nil {
+		return nil, nil, stealth.LaunchModeUninitialized, err
+	}
+	// #nosec G204 -- browser binary from user config or shared browser discovery
+	cmd := exec.Command(plan.binary, args...)
+	cmd.Stdout = newPrefixedLogWriter(os.Stdout, "browser stdout")
+	cmd.Stderr = newPrefixedLogWriter(os.Stderr, "browser stderr")
+	if len(providerEnv) > 0 {
+		cmd.Env = mergeGeoEnv(os.Environ(), providerEnv)
+	}
 	if len(geoAlignment.env) > 0 {
-		cmd.Env = mergeGeoEnv(os.Environ(), geoAlignment.env)
+		if cmd.Env == nil {
+			cmd.Env = os.Environ()
+		}
+		cmd.Env = mergeGeoEnv(cmd.Env, geoAlignment.env)
 	}
 	if err := cmd.Start(); err != nil {
-		return nil, nil, stealth.LaunchModeUninitialized, fmt.Errorf("failed to start chrome directly: %w", err)
+		return nil, nil, stealth.LaunchModeUninitialized, fmt.Errorf("failed to start browser directly: %w", err)
 	}
 
-	// Reap the chrome process when it exits to prevent zombies.
+	// Reap the browser process when it exits to prevent zombies.
 	waitDone := make(chan struct{})
 	go func() {
 		_ = cmd.Wait()
@@ -171,10 +180,10 @@ func startChromeWithRemoteAllocator(parentCtx context.Context, cfg *config.Runti
 		<-waitDone
 	}
 
-	wsURL, err := waitForChromeDevTools(debugPort, 30*time.Second)
+	wsURL, err := waitForBrowserDevTools(debugPort, 30*time.Second)
 	if err != nil {
 		killAndReap()
-		return nil, nil, stealth.LaunchModeUninitialized, fmt.Errorf("chrome devtools not ready on port %d: %w", debugPort, err)
+		return nil, nil, stealth.LaunchModeUninitialized, fmt.Errorf("browser devtools not ready on port %d: %w", debugPort, err)
 	}
 
 	remoteAllocCtx, remoteAllocCancel := chromedp.NewRemoteAllocator(parentCtx, wsURL)
@@ -207,7 +216,7 @@ func findFreePort(start, end int) (int, error) {
 	return 0, fmt.Errorf("no free port available in range %d-%d", start, end)
 }
 
-func waitForChromeDevTools(port int, timeout time.Duration) (string, error) {
+func waitForBrowserDevTools(port int, timeout time.Duration) (string, error) {
 	endpoint := fmt.Sprintf("http://127.0.0.1:%d/json/version", port)
 	client := &http.Client{Timeout: 2 * time.Second}
 	deadline := time.Now().Add(timeout)
@@ -226,5 +235,5 @@ func waitForChromeDevTools(port int, timeout time.Duration) (string, error) {
 		}
 		time.Sleep(250 * time.Millisecond)
 	}
-	return "", fmt.Errorf("chrome devtools not ready on port %d after %v", port, timeout)
+	return "", fmt.Errorf("browser devtools not ready on port %d after %v", port, timeout)
 }

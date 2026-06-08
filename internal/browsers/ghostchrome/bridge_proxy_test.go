@@ -70,14 +70,14 @@ func (m *mockChromeBridge) AvailableActions() []string {
 	return []string{ActionClick, ActionType, ActionPress}
 }
 
-// ---------- ensure chrome helper ----------
+// ---------- ensure browser helper ----------
 
-type ensureChromeTracker struct {
+type ensureBrowserTracker struct {
 	calls int
 	err   error
 }
 
-func (t *ensureChromeTracker) fn() func() error {
+func (t *ensureBrowserTracker) fn() func() error {
 	return func() error {
 		t.calls++
 		return t.err
@@ -88,7 +88,7 @@ func (t *ensureChromeTracker) fn() func() error {
 
 func TestBridgeProxy_TabContext_ChromeTabPassthrough(t *testing.T) {
 	mb := newMockChromeBridge()
-	ec := &ensureChromeTracker{}
+	ec := &ensureBrowserTracker{}
 	proxy := NewBridgeProxy(mb, staticfetch.NewBrowser(), ec.fn())
 
 	ctx, resolved, err := proxy.TabContext("chrome-tab-1")
@@ -101,9 +101,9 @@ func TestBridgeProxy_TabContext_ChromeTabPassthrough(t *testing.T) {
 	if resolved != "chrome-tab-1" {
 		t.Fatalf("expected resolved = %q, got %q", "chrome-tab-1", resolved)
 	}
-	// Should not have called EnsureChrome or CreateTab.
+	// Should not have called EnsureBrowser or CreateTab.
 	if ec.calls != 0 {
-		t.Fatalf("expected 0 EnsureChrome calls, got %d", ec.calls)
+		t.Fatalf("expected 0 EnsureBrowser calls, got %d", ec.calls)
 	}
 	if len(mb.createTabURLs) != 0 {
 		t.Fatalf("expected 0 CreateTab calls, got %d", len(mb.createTabURLs))
@@ -112,7 +112,7 @@ func TestBridgeProxy_TabContext_ChromeTabPassthrough(t *testing.T) {
 
 func TestBridgeProxy_TabContext_LiteTabEscalates(t *testing.T) {
 	mb := newMockChromeBridge()
-	ec := &ensureChromeTracker{}
+	ec := &ensureBrowserTracker{}
 	lite := staticfetch.NewBrowser()
 
 	ts := startTestHTTPServer(t)
@@ -133,9 +133,9 @@ func TestBridgeProxy_TabContext_LiteTabEscalates(t *testing.T) {
 	if ctx == nil {
 		t.Fatal("expected non-nil context")
 	}
-	// Should have escalated: EnsureChrome + CreateTab.
+	// Should have escalated: EnsureBrowser + CreateTab.
 	if ec.calls != 1 {
-		t.Fatalf("expected 1 EnsureChrome call, got %d", ec.calls)
+		t.Fatalf("expected 1 EnsureBrowser call, got %d", ec.calls)
 	}
 	if len(mb.createTabURLs) != 1 {
 		t.Fatalf("expected 1 CreateTab call, got %d", len(mb.createTabURLs))
@@ -151,7 +151,7 @@ func TestBridgeProxy_TabContext_LiteTabEscalates(t *testing.T) {
 
 func TestBridgeProxy_TabContext_CachedEscalation(t *testing.T) {
 	mb := newMockChromeBridge()
-	ec := &ensureChromeTracker{}
+	ec := &ensureBrowserTracker{}
 	lite := staticfetch.NewBrowser()
 
 	ts := startTestHTTPServer(t)
@@ -171,7 +171,7 @@ func TestBridgeProxy_TabContext_CachedEscalation(t *testing.T) {
 		t.Fatalf("first call: %v", err)
 	}
 	if ec.calls != 1 {
-		t.Fatalf("expected 1 EnsureChrome call, got %d", ec.calls)
+		t.Fatalf("expected 1 EnsureBrowser call, got %d", ec.calls)
 	}
 
 	// Second call — uses cached mapping, no new escalation.
@@ -179,9 +179,9 @@ func TestBridgeProxy_TabContext_CachedEscalation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second call: %v", err)
 	}
-	// Should NOT have called EnsureChrome again.
+	// Should NOT have called EnsureBrowser again.
 	if ec.calls != 1 {
-		t.Fatalf("expected still 1 EnsureChrome call, got %d", ec.calls)
+		t.Fatalf("expected still 1 EnsureBrowser call, got %d", ec.calls)
 	}
 	if len(mb.createTabURLs) != 1 {
 		t.Fatalf("expected still 1 CreateTab call, got %d", len(mb.createTabURLs))
@@ -193,7 +193,7 @@ func TestBridgeProxy_TabContext_CachedEscalation(t *testing.T) {
 
 func TestBridgeProxy_TabContext_StaleCachedTab(t *testing.T) {
 	mb := newMockChromeBridge()
-	ec := &ensureChromeTracker{}
+	ec := &ensureBrowserTracker{}
 	lite := staticfetch.NewBrowser()
 
 	ts := startTestHTTPServer(t)
@@ -223,7 +223,7 @@ func TestBridgeProxy_TabContext_StaleCachedTab(t *testing.T) {
 		t.Fatalf("second call: %v", err)
 	}
 	if ec.calls != 2 {
-		t.Fatalf("expected 2 EnsureChrome calls, got %d", ec.calls)
+		t.Fatalf("expected 2 EnsureBrowser calls, got %d", ec.calls)
 	}
 	if len(mb.createTabURLs) != 2 {
 		t.Fatalf("expected 2 CreateTab calls, got %d", len(mb.createTabURLs))
@@ -235,7 +235,7 @@ func TestBridgeProxy_TabContext_StaleCachedTab(t *testing.T) {
 
 func TestBridgeProxy_TabContext_ConcurrentEscalation(t *testing.T) {
 	mb := newMockChromeBridge()
-	ec := &ensureChromeTracker{}
+	ec := &ensureBrowserTracker{}
 	lite := staticfetch.NewBrowser()
 
 	ts := startTestHTTPServer(t)

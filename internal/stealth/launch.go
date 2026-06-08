@@ -25,7 +25,7 @@ func BuildLaunchContract(cfg *config.RuntimeConfig, level Level) LaunchContract 
 	customUA := ""
 	headless := false
 	if cfg != nil {
-		persona = BuildPersona(cfg.UserAgent, cfg.ChromeVersion)
+		persona = BuildPersona(cfg.UserAgent, cfg.BrowserVersion)
 		customUA = strings.TrimSpace(cfg.UserAgent)
 		headless = cfg.Headless
 	}

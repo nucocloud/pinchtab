@@ -649,7 +649,7 @@ func (m *networkFailTabBridge) TabContext(tabID string) (*bridge.TabHandle, stri
 	return nil, "", fmt.Errorf("tab not found")
 }
 
-func (m *networkFailTabBridge) EnsureChrome(cfg *config.RuntimeConfig) error {
+func (m *networkFailTabBridge) EnsureBrowser(cfg *config.RuntimeConfig) error {
 	return nil
 }
 

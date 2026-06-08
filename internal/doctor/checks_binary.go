@@ -15,7 +15,7 @@ func resolveBinary(cfg *config.RuntimeConfig) string {
 	if cfg == nil {
 		return ""
 	}
-	return strings.TrimSpace(cfg.ChromeBinary)
+	return strings.TrimSpace(cfg.BrowserBinary)
 }
 
 func checkBinaryExists(_ context.Context, cfg *config.RuntimeConfig) CheckResult {
@@ -23,7 +23,7 @@ func checkBinaryExists(_ context.Context, cfg *config.RuntimeConfig) CheckResult
 	if bin == "" {
 		return CheckResult{
 			Status: StatusSkip,
-			Detail: "browser.binary not set — relying on system-discovered chrome",
+			Detail: "browser.binary not set; relying on provider discovery",
 		}
 	}
 	info, err := os.Stat(bin)
@@ -49,7 +49,7 @@ func checkBinaryExists(_ context.Context, cfg *config.RuntimeConfig) CheckResult
 func checkBinaryExecutable(_ context.Context, cfg *config.RuntimeConfig) CheckResult {
 	bin := resolveBinary(cfg)
 	if bin == "" {
-		return CheckResult{Status: StatusSkip, Detail: "browser.binary not set — relying on system-discovered chrome"}
+		return CheckResult{Status: StatusSkip, Detail: "browser.binary not set; relying on provider discovery"}
 	}
 	info, err := os.Stat(bin)
 	if err != nil {
@@ -71,7 +71,7 @@ func checkBinaryExecutable(_ context.Context, cfg *config.RuntimeConfig) CheckRe
 func checkBinaryStarts(ctx context.Context, cfg *config.RuntimeConfig) CheckResult {
 	bin := resolveBinary(cfg)
 	if bin == "" {
-		return CheckResult{Status: StatusSkip, Detail: "browser.binary not set — relying on system-discovered chrome"}
+		return CheckResult{Status: StatusSkip, Detail: "browser.binary not set; relying on provider discovery"}
 	}
 	cctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()

@@ -19,6 +19,7 @@ import (
 	"github.com/pinchtab/pinchtab/internal/browserops"
 	"github.com/pinchtab/pinchtab/internal/browsers/ghostchrome"
 	"github.com/pinchtab/pinchtab/internal/browsers/ghostchrome/staticfetch"
+	"github.com/pinchtab/pinchtab/internal/browsers/providerhooks"
 	"github.com/pinchtab/pinchtab/internal/config"
 )
 
@@ -72,20 +73,23 @@ func NewBridgeAdapter(chromeBridge bridge.BridgeAPI, cfg *config.RuntimeConfig) 
 }
 
 func ensureBrowser(b bridge.BridgeAPI, cfg *config.RuntimeConfig) error {
-	if provider, ok := b.(interface {
-		EnsureBrowser(*config.RuntimeConfig) error
-	}); ok {
-		return provider.EnsureBrowser(cfg)
-	}
-	return b.EnsureChrome(cfg)
+	return b.EnsureBrowser(cfg)
 }
 
 func (a *BridgeAdapter) EnsureBrowser(cfg *config.RuntimeConfig) error {
 	return ensureBrowser(a.BridgeAPI, cfg)
 }
 
-func (a *BridgeAdapter) EnsureChrome(cfg *config.RuntimeConfig) error {
-	return a.EnsureBrowser(cfg)
+func init() {
+	providerhooks.Register("ghost-chrome", providerhooks.Hooks{
+		DecorateBridge: func(api bridge.BridgeAPI, cfg *config.RuntimeConfig) bridge.BridgeAPI {
+			return NewBridgeAdapter(api, cfg)
+		},
+		CleanupProfile: bridge.CleanupOrphanedChromeProcesses,
+		Shutdown: func() {
+			bridge.KillAllPinchtabChrome()
+		},
+	})
 }
 
 func (a *BridgeAdapter) TabContext(tabID string) (*bridge.TabHandle, string, error) {

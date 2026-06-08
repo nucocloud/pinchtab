@@ -35,7 +35,7 @@ func TestNewBundleIncludesSeedLevelAndPopupGuard(t *testing.T) {
 }
 
 func TestScriptHashStableAcrossSeeds(t *testing.T) {
-	cfg := &config.RuntimeConfig{StealthLevel: "full", ChromeVersion: "144.0.7559.133"}
+	cfg := &config.RuntimeConfig{StealthLevel: "full", BrowserVersion: "144.0.7559.133"}
 	first := NewBundle(cfg, 111)
 	second := NewBundle(cfg, 222)
 	if first.ScriptHash != second.ScriptHash {
@@ -128,7 +128,7 @@ func TestResolveUserAgent(t *testing.T) {
 }
 
 func TestBuildLaunchContractOwnsStealthLaunchFlags(t *testing.T) {
-	launch := BuildLaunchContract(&config.RuntimeConfig{ChromeVersion: "144.0.0.0"}, LevelLight)
+	launch := BuildLaunchContract(&config.RuntimeConfig{BrowserVersion: "144.0.0.0"}, LevelLight)
 	for _, want := range []string{
 		"--enable-automation=false",
 		"--disable-blink-features=AutomationControlled",
@@ -145,7 +145,7 @@ func TestBuildLaunchContractOwnsStealthLaunchFlags(t *testing.T) {
 		t.Fatalf("did not expect a pinned user-agent without a custom UA, got %v", launch.Args)
 	}
 	// With an explicit custom UA, the launch contract owns --user-agent.
-	custom := BuildLaunchContract(&config.RuntimeConfig{ChromeVersion: "144.0.0.0", UserAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"}, LevelLight)
+	custom := BuildLaunchContract(&config.RuntimeConfig{BrowserVersion: "144.0.0.0", UserAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"}, LevelLight)
 	if !HasLaunchArgPrefix(custom.Args, "--user-agent=Mozilla/5.0") {
 		t.Fatalf("expected an explicit custom UA to pin --user-agent, got %v", custom.Args)
 	}

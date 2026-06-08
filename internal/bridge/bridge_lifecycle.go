@@ -146,7 +146,7 @@ func (b *Bridge) EnsureBrowser(cfg *config.RuntimeConfig) error {
 		if b.BrowserCtx.Err() == nil {
 			return nil
 		}
-		slog.Warn("chrome browser context cancelled, re-initializing")
+		slog.Warn("browser context cancelled, re-initializing")
 		b.initialized = false
 		b.BrowserCtx = nil
 		b.BrowserCancel = nil
@@ -171,7 +171,7 @@ func (b *Bridge) EnsureBrowser(cfg *config.RuntimeConfig) error {
 		return b.ensureRemoteCDPLocked(cfg)
 	}
 
-	slog.Debug("ensure chrome called", "headless", cfg.Headless, "profile", cfg.ProfileDir)
+	slog.Debug("ensure browser called", "headless", cfg.Headless, "profile", cfg.ProfileDir)
 
 	if err := AcquireProfileLock(cfg.ProfileDir); err != nil {
 		if cfg.Headless {
@@ -194,11 +194,11 @@ func (b *Bridge) EnsureBrowser(cfg *config.RuntimeConfig) error {
 		}
 	}
 
-	slog.Info("starting chrome with confirmed profile", "headless", cfg.Headless, "profile", cfg.ProfileDir)
+	slog.Info("starting browser with confirmed profile", "headless", cfg.Headless, "profile", cfg.ProfileDir)
 	b.ensureStealthBundle()
-	allocCtx, allocCancel, browserCtx, browserCancel, launchMode, err := InitChrome(cfg, b.StealthBundle)
+	allocCtx, allocCancel, browserCtx, browserCancel, launchMode, err := InitBrowser(cfg, b.StealthBundle)
 	if err != nil {
-		return fmt.Errorf("failed to initialize chrome: %w", err)
+		return fmt.Errorf("failed to initialize browser: %w", err)
 	}
 
 	b.AllocCtx = allocCtx
@@ -258,11 +258,6 @@ func (b *Bridge) prepareConfigForLaunch(cfg *config.RuntimeConfig) {
 	if b.netMonitor != nil {
 		b.netMonitor.ConfigureBodyRetention(cfg.RetainNetworkBodies, cfg.RetainNetworkBodyMaxBytes)
 	}
-}
-
-// EnsureChrome is the compatibility alias for older callers.
-func (b *Bridge) EnsureChrome(cfg *config.RuntimeConfig) error {
-	return b.EnsureBrowser(cfg)
 }
 
 // RestartBrowser performs a soft restart: drains in-flight requests, tears

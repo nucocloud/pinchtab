@@ -43,7 +43,7 @@ type Bridge struct {
 	pointerByTab         map[string]pointerState
 
 	// Runtime is the provider-specific RuntimeInstance for this browser
-	// session. Initialized during EnsureChrome. Nil before launch.
+	// session. Initialized during EnsureBrowser. Nil before launch.
 	Runtime browsers.RuntimeInstance
 
 	// Lazy initialization / restart coordination

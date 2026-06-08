@@ -563,7 +563,7 @@ func TestFileConfigJSONEmitsCloakBrowserConfig(t *testing.T) {
 	disableDefaultStealthArgs := true
 	fc := DefaultFileConfig()
 	fc.Browser.Provider = BrowserCloak
-	fc.Browser.ChromeBinary = "/opt/cloakbrowser/chrome"
+	fc.Browser.BrowserBinary = "/opt/cloakbrowser/chrome"
 	fc.Browser.Cloak = CloakBrowserConfig{
 		FingerprintSeed:           "42069",
 		Platform:                  "windows",
@@ -610,7 +610,7 @@ func TestFileConfigJSONEmitsExplicitCloakFalseOnChromeProvider(t *testing.T) {
 func TestFileConfigFromRuntimeEmitsCloakStorageQuotaZeroForCloakProvider(t *testing.T) {
 	fc := FileConfigFromRuntime(&RuntimeConfig{
 		DefaultBrowser: BrowserCloak,
-		ChromeBinary:   "/opt/cloakbrowser/chrome",
+		BrowserBinary:  "/opt/cloakbrowser/chrome",
 		Cloak: CloakBrowserRuntimeConfig{
 			StorageQuotaMB:            0,
 			DisableDefaultStealthArgs: true,

@@ -677,18 +677,18 @@ func TestApplyFileConfigToRuntime_CookieSecure(t *testing.T) {
 	}
 }
 
-func TestApplyFileConfigToRuntime_SanitizesChromeExtraFlags(t *testing.T) {
+func TestApplyFileConfigToRuntime_SanitizesBrowserExtraFlags(t *testing.T) {
 	cfg := &RuntimeConfig{}
 	fc := &FileConfig{
 		Browser: BrowserConfig{
-			ChromeExtraFlags: "--disable-gpu --user-agent=Bad/1.0 --disable-web-security --ash-no-nudges",
+			BrowserExtraFlags: "--disable-gpu --user-agent=Bad/1.0 --disable-web-security --ash-no-nudges",
 		},
 	}
 
 	ApplyFileConfigToRuntime(cfg, fc)
 
-	if cfg.ChromeExtraFlags != "--disable-gpu --ash-no-nudges" {
-		t.Fatalf("ChromeExtraFlags = %q, want %q", cfg.ChromeExtraFlags, "--disable-gpu --ash-no-nudges")
+	if cfg.BrowserExtraFlags != "--disable-gpu --ash-no-nudges" {
+		t.Fatalf("BrowserExtraFlags = %q, want %q", cfg.BrowserExtraFlags, "--disable-gpu --ash-no-nudges")
 	}
 }
 
@@ -699,7 +699,7 @@ func TestApplyFileConfigToRuntime_CloakBrowserSettings(t *testing.T) {
 	fc := &FileConfig{
 		Browsers: BrowsersConfig{Default: BrowserCloak},
 		Browser: BrowserConfig{
-			ChromeBinary: "/opt/cloakbrowser/chrome",
+			BrowserBinary: "/opt/cloakbrowser/chrome",
 			Cloak: CloakBrowserConfig{
 				FingerprintSeed:           "42069",
 				Platform:                  "windows",
@@ -718,8 +718,8 @@ func TestApplyFileConfigToRuntime_CloakBrowserSettings(t *testing.T) {
 	if cfg.DefaultBrowser != BrowserCloak {
 		t.Fatalf("DefaultBrowser = %q, want %q", cfg.DefaultBrowser, BrowserCloak)
 	}
-	if cfg.ChromeBinary != "/opt/cloakbrowser/chrome" {
-		t.Fatalf("ChromeBinary = %q, want configured binary", cfg.ChromeBinary)
+	if cfg.BrowserBinary != "/opt/cloakbrowser/chrome" {
+		t.Fatalf("BrowserBinary = %q, want configured binary", cfg.BrowserBinary)
 	}
 	if cfg.Cloak.FingerprintSeed != "42069" ||
 		cfg.Cloak.Platform != "windows" ||
@@ -736,7 +736,7 @@ func TestApplyFileConfigToRuntime_CloakBrowserSettings(t *testing.T) {
 	ApplyFileConfigToRuntime(defaultCfg, &FileConfig{
 		Browsers: BrowsersConfig{Default: BrowserCloak},
 		Browser: BrowserConfig{
-			ChromeBinary: "/opt/cloakbrowser/chrome",
+			BrowserBinary: "/opt/cloakbrowser/chrome",
 		},
 	})
 	if !defaultCfg.Cloak.DisableDefaultStealthArgs {
@@ -865,7 +865,7 @@ func TestFileConfigFromRuntime_UsesDefaultBrowser(t *testing.T) {
 	cfg := &RuntimeConfig{
 		DefaultBrowser:    "chrome",
 		BrowsersAvailable: []string{"chrome"},
-		ChromeVersion:     "100.0.0.0",
+		BrowserVersion:    "100.0.0.0",
 		ExtensionPaths:    []string{},
 	}
 

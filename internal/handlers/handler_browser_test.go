@@ -10,7 +10,7 @@ import (
 func TestResolveEffectiveConfig_WithTarget(t *testing.T) {
 	cfg := &config.RuntimeConfig{
 		DefaultBrowser: config.BrowserChrome,
-		ChromeBinary:   "/usr/bin/chrome",
+		BrowserBinary:  "/usr/bin/chrome",
 		ActionTimeout:  10 * time.Second,
 		Targets: config.BrowserTargetsConfig{
 			"cloak-us": {
@@ -35,15 +35,15 @@ func TestResolveEffectiveConfig_WithTarget(t *testing.T) {
 	if effective.DefaultBrowser != config.BrowserCloak {
 		t.Errorf("expected DefaultBrowser=%q, got %q", config.BrowserCloak, effective.DefaultBrowser)
 	}
-	if effective.ChromeBinary != "/opt/cloakbrowser/chrome" {
-		t.Errorf("expected ChromeBinary=%q, got %q", "/opt/cloakbrowser/chrome", effective.ChromeBinary)
+	if effective.BrowserBinary != "/opt/cloakbrowser/chrome" {
+		t.Errorf("expected BrowserBinary=%q, got %q", "/opt/cloakbrowser/chrome", effective.BrowserBinary)
 	}
 }
 
 func TestResolveEffectiveConfig_NoTargets(t *testing.T) {
 	cfg := &config.RuntimeConfig{
 		DefaultBrowser: config.BrowserChrome,
-		ChromeBinary:   "/usr/bin/chrome",
+		BrowserBinary:  "/usr/bin/chrome",
 	}
 	h := &Handlers{Config: cfg}
 

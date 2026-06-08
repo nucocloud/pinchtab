@@ -173,17 +173,17 @@ func (fc FileConfig) MarshalJSON() ([]byte, error) {
 			CookieSecure:              fc.Server.CookieSecure,
 		},
 		Browser: browserConfigJSON{
-			Provider:         fc.Browser.Provider, // removed; kept for round-trip fidelity, omitted when empty via omitempty
-			ChromeVersion:    fc.Browser.ChromeVersion,
-			ChromeBinary:     fc.Browser.ChromeBinary,
-			ChromeDebugPort:  fc.Browser.ChromeDebugPort,
-			ChromeExtraFlags: fc.Browser.ChromeExtraFlags,
-			Cloak:            cloakBrowserConfigJSONFromFile(fc.Browser.Provider, fc.Browser.Cloak),
-			ExtensionPaths:   copyStringSlice(fc.Browser.ExtensionPaths),
-			Proxy:            browserProxyJSONFromFile(fc.Browser.Proxy),
-			DefaultTarget:    fc.Browser.DefaultTarget,
-			FallbackOrder:    fc.Browser.FallbackOrder,
-			Targets:          fc.Browser.Targets,
+			Provider:          fc.Browser.Provider, // removed; kept for round-trip fidelity, omitted when empty via omitempty
+			BrowserVersion:    fc.Browser.BrowserVersion,
+			BrowserBinary:     fc.Browser.BrowserBinary,
+			BrowserDebugPort:  fc.Browser.BrowserDebugPort,
+			BrowserExtraFlags: fc.Browser.BrowserExtraFlags,
+			Cloak:             cloakBrowserConfigJSONFromFile(fc.Browser.Provider, fc.Browser.Cloak),
+			ExtensionPaths:    copyStringSlice(fc.Browser.ExtensionPaths),
+			Proxy:             browserProxyJSONFromFile(fc.Browser.Proxy),
+			DefaultTarget:     fc.Browser.DefaultTarget,
+			FallbackOrder:     fc.Browser.FallbackOrder,
+			Targets:           fc.Browser.Targets,
 		},
 		InstanceDefaults: instanceDefaultsConfigJSON{
 			Mode:              fc.InstanceDefaults.Mode,
@@ -451,16 +451,16 @@ func FileConfigFromRuntime(cfg *RuntimeConfig) FileConfig {
 		},
 		Browser: BrowserConfig{
 			// Provider intentionally omitted — deprecated in favor of browsers.default.
-			ChromeVersion:    cfg.ChromeVersion,
-			ChromeBinary:     cfg.ChromeBinary,
-			ChromeDebugPort:  intPtrIfPositive(cfg.ChromeDebugPort),
-			ChromeExtraFlags: cfg.ChromeExtraFlags,
-			Cloak:            cloakBrowserConfigFromRuntime(cfg),
-			ExtensionPaths:   append([]string(nil), cfg.ExtensionPaths...),
-			Proxy:            cloneBrowserProxyConfig(cfg.Proxy),
-			DefaultTarget:    cfg.DefaultTarget,
-			FallbackOrder:    append([]string(nil), cfg.FallbackOrder...),
-			Targets:          cloneBrowserTargetsConfig(cfg.Targets),
+			BrowserVersion:    cfg.BrowserVersion,
+			BrowserBinary:     cfg.BrowserBinary,
+			BrowserDebugPort:  intPtrIfPositive(cfg.BrowserDebugPort),
+			BrowserExtraFlags: cfg.BrowserExtraFlags,
+			Cloak:             cloakBrowserConfigFromRuntime(cfg),
+			ExtensionPaths:    append([]string(nil), cfg.ExtensionPaths...),
+			Proxy:             cloneBrowserProxyConfig(cfg.Proxy),
+			DefaultTarget:     cfg.DefaultTarget,
+			FallbackOrder:     append([]string(nil), cfg.FallbackOrder...),
+			Targets:           cloneBrowserTargetsConfig(cfg.Targets),
 		},
 		InstanceDefaults: InstanceDefaultsConfig{
 			Mode:              mode,
@@ -620,8 +620,8 @@ func reconcileDefaultTargetProvider(bc *BrowserConfig, browsersDefault string, c
 	// browsers.default won; rewrite the default target from the authoritative
 	// runtime fields so the round-trip preserves the selected provider.
 	target.Provider = want
-	target.Binary = cfg.ChromeBinary
-	target.ExtraFlags = cfg.ChromeExtraFlags
+	target.Binary = cfg.BrowserBinary
+	target.ExtraFlags = cfg.BrowserExtraFlags
 	target.Cloak = cloakBrowserConfigFromRuntime(cfg)
 	target.Proxy = cloneBrowserProxyConfig(cfg.Proxy)
 	bc.Targets[DefaultBrowserTargetName] = target

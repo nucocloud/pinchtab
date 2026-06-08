@@ -20,6 +20,8 @@ func SetConfigValue(fc *FileConfig, path string, value string) error {
 		return setServerField(&fc.Server, field, value)
 	case "browser":
 		return setBrowserField(&fc.Browser, field, value)
+	case "browsers":
+		return setBrowsersField(&fc.Browsers, field, value)
 	case "instanceDefaults":
 		return setInstanceDefaultsField(&fc.InstanceDefaults, field, value)
 	case "security":
@@ -35,7 +37,7 @@ func SetConfigValue(fc *FileConfig, path string, value string) error {
 	case "sessions":
 		return setSessionsField(&fc.Sessions, field, value)
 	default:
-		return fmt.Errorf("unknown section %q (valid: server, browser, instanceDefaults, security, profiles, multiInstance, timeouts, observability, sessions)", section)
+		return fmt.Errorf("unknown section %q (valid: server, browser, browsers, instanceDefaults, security, profiles, multiInstance, timeouts, observability, sessions)", section)
 	}
 }
 
@@ -81,13 +83,25 @@ func setBrowserField(b *BrowserConfig, field, value string) error {
 	case "provider":
 		return fmt.Errorf("browser.provider is no longer supported; use browsers.default")
 	case "version":
-		b.ChromeVersion = value
+		b.BrowserVersion = value
 	case "binary":
-		b.ChromeBinary = value
+		b.BrowserBinary = value
 	case "extraFlags":
-		b.ChromeExtraFlags = value
+		b.BrowserExtraFlags = value
 	default:
 		return fmt.Errorf("unknown field browser.%s", field)
+	}
+	return nil
+}
+
+func setBrowsersField(b *BrowsersConfig, field, value string) error {
+	switch field {
+	case "default":
+		b.Default = value
+	case "available":
+		b.Available = parseCSVList(value)
+	default:
+		return fmt.Errorf("unknown field browsers.%s", field)
 	}
 	return nil
 }

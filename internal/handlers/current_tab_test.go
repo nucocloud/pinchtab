@@ -69,7 +69,7 @@ func (b *scopedCurrentTabBridge) FocusTab(tabID string) error {
 	return nil
 }
 
-func (b *scopedCurrentTabBridge) EnsureChrome(*config.RuntimeConfig) error {
+func (b *scopedCurrentTabBridge) EnsureBrowser(*config.RuntimeConfig) error {
 	b.ensureCall++
 	return nil
 }

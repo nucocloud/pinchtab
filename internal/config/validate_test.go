@@ -421,7 +421,7 @@ func TestValidateFileConfig_MultipleErrors(t *testing.T) {
 	}
 }
 
-func TestValidateFileConfig_ChromeExtraFlags(t *testing.T) {
+func TestValidateFileConfig_BrowserExtraFlags(t *testing.T) {
 	tests := []struct {
 		name    string
 		flags   string
@@ -461,12 +461,12 @@ func TestValidateFileConfig_ChromeExtraFlags(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fc := &FileConfig{
-				Browser: BrowserConfig{ChromeExtraFlags: tt.flags},
+				Browser: BrowserConfig{BrowserExtraFlags: tt.flags},
 			}
 			errs := ValidateFileConfig(fc)
 			hasErr := len(errs) > 0
 			if hasErr != tt.wantErr {
-				t.Fatalf("ChromeExtraFlags=%q: got error=%v, want %v (errs: %v)", tt.flags, hasErr, tt.wantErr, errs)
+				t.Fatalf("BrowserExtraFlags=%q: got error=%v, want %v (errs: %v)", tt.flags, hasErr, tt.wantErr, errs)
 			}
 			if tt.wantErr && !strings.Contains(errs[0].Error(), tt.wantMsg) {
 				t.Fatalf("expected error containing %q, got %v", tt.wantMsg, errs[0])
@@ -482,7 +482,7 @@ func TestValidateFileConfig_CloakBrowser(t *testing.T) {
 	valid := &FileConfig{
 		Browsers: BrowsersConfig{Default: BrowserCloak},
 		Browser: BrowserConfig{
-			ChromeBinary: "/opt/cloakbrowser/chrome",
+			BrowserBinary: "/opt/cloakbrowser/chrome",
 			Cloak: CloakBrowserConfig{
 				FingerprintSeed: "42069",
 				Platform:        "windows",
@@ -521,56 +521,56 @@ func TestValidateFileConfig_CloakBrowser(t *testing.T) {
 		{
 			name: "invalid platform",
 			fc: &FileConfig{Browser: BrowserConfig{
-				ChromeBinary: "/opt/cloakbrowser/chrome",
-				Cloak:        CloakBrowserConfig{Platform: "ios"},
+				BrowserBinary: "/opt/cloakbrowser/chrome",
+				Cloak:         CloakBrowserConfig{Platform: "ios"},
 			}},
 			want: "browser.cloak.platform",
 		},
 		{
 			name: "negative storage quota",
 			fc: &FileConfig{Browser: BrowserConfig{
-				ChromeBinary: "/opt/cloakbrowser/chrome",
-				Cloak:        CloakBrowserConfig{StorageQuotaMB: &negativeQuota},
+				BrowserBinary: "/opt/cloakbrowser/chrome",
+				Cloak:         CloakBrowserConfig{StorageQuotaMB: &negativeQuota},
 			}},
 			want: "browser.cloak.storageQuotaMB",
 		},
 		{
 			name: "fingerprint seed whitespace",
 			fc: &FileConfig{Browser: BrowserConfig{
-				ChromeBinary: "/opt/cloakbrowser/chrome",
-				Cloak:        CloakBrowserConfig{FingerprintSeed: "42 069"},
+				BrowserBinary: "/opt/cloakbrowser/chrome",
+				Cloak:         CloakBrowserConfig{FingerprintSeed: "42 069"},
 			}},
 			want: "browser.cloak.fingerprintSeed",
 		},
 		{
 			name: "invalid timezone",
 			fc: &FileConfig{Browser: BrowserConfig{
-				ChromeBinary: "/opt/cloakbrowser/chrome",
-				Cloak:        CloakBrowserConfig{Timezone: "Not/AZone"},
+				BrowserBinary: "/opt/cloakbrowser/chrome",
+				Cloak:         CloakBrowserConfig{Timezone: "Not/AZone"},
 			}},
 			want: "browser.cloak",
 		},
 		{
 			name: "invalid locale",
 			fc: &FileConfig{Browser: BrowserConfig{
-				ChromeBinary: "/opt/cloakbrowser/chrome",
-				Cloak:        CloakBrowserConfig{Locale: "en-gb"},
+				BrowserBinary: "/opt/cloakbrowser/chrome",
+				Cloak:         CloakBrowserConfig{Locale: "en-gb"},
 			}},
 			want: "browser.cloak",
 		},
 		{
 			name: "invalid webrtc ip",
 			fc: &FileConfig{Browser: BrowserConfig{
-				ChromeBinary: "/opt/cloakbrowser/chrome",
-				Cloak:        CloakBrowserConfig{WebRTCIP: "not-an-ip"},
+				BrowserBinary: "/opt/cloakbrowser/chrome",
+				Cloak:         CloakBrowserConfig{WebRTCIP: "not-an-ip"},
 			}},
 			want: "browser.cloak.webrtcIP",
 		},
 		{
 			name: "fonts dir must exist",
 			fc: &FileConfig{Browser: BrowserConfig{
-				ChromeBinary: "/opt/cloakbrowser/chrome",
-				Cloak:        CloakBrowserConfig{FontsDir: "/definitely/not/a/real/fonts/dir"},
+				BrowserBinary: "/opt/cloakbrowser/chrome",
+				Cloak:         CloakBrowserConfig{FontsDir: "/definitely/not/a/real/fonts/dir"},
 			}},
 			want: "browser.cloak.fontsDir",
 		},

@@ -12,7 +12,8 @@ import (
 
 	"github.com/pinchtab/pinchtab/internal/activity"
 	"github.com/pinchtab/pinchtab/internal/bridge"
-	"github.com/pinchtab/pinchtab/internal/browsers/ghostchrome/bridgekit"
+	_ "github.com/pinchtab/pinchtab/internal/browsers/all"
+	"github.com/pinchtab/pinchtab/internal/browsers/providerhooks"
 	"github.com/pinchtab/pinchtab/internal/cli"
 	"github.com/pinchtab/pinchtab/internal/config"
 	"github.com/pinchtab/pinchtab/internal/handlers"
@@ -27,8 +28,7 @@ func RunBridgeServer(cfg *config.RuntimeConfig, version string) {
 		ProfileDir:   cfg.ProfileDir,
 	})
 
-	// Clean up orphaned Chrome processes from previous crashed runs
-	bridge.CleanupOrphanedChromeProcesses(cfg.ProfileDir)
+	providerhooks.CleanupProfile(config.NormalizeBrowser(cfg.DefaultBrowser), cfg.ProfileDir)
 
 	bridgeInstance := bridge.New(context.Background(), nil, cfg)
 	actStore, err := activity.NewRecorder(activity.Config{
@@ -108,10 +108,10 @@ func RunBridgeServer(cfg *config.RuntimeConfig, version string) {
 }
 
 func configureBridgeRouter(h *handlers.Handlers, cfg *config.RuntimeConfig) {
-	if cfg.DefaultBrowser != config.BrowserGhostChrome {
+	decorated := providerhooks.DecorateBridge(config.NormalizeBrowser(cfg.DefaultBrowser), h.Bridge, cfg)
+	if decorated == h.Bridge {
 		return
 	}
-	adapter := bridgekit.NewBridgeAdapter(h.Bridge, cfg)
-	h.Bridge = adapter
-	slog.Info("ghost-chrome bridge proxy enabled", "browser", cfg.DefaultBrowser)
+	h.Bridge = decorated
+	slog.Info("browser bridge proxy enabled", "browser", config.NormalizeBrowser(cfg.DefaultBrowser))
 }

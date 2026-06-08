@@ -214,12 +214,12 @@ func TestHandleTabs_CurrentTrackedTabIsReturnedFirst(t *testing.T) {
 	}
 }
 
-// TestHandleHealth_EnsureChromeFailure verifies /health returns 503 when Chrome initialization fails
-func TestHandleHealth_EnsureChromeFailure(t *testing.T) {
+// TestHandleHealth_EnsureBrowserFailure verifies /health returns 503 when browser initialization fails
+func TestHandleHealth_EnsureBrowserFailure(t *testing.T) {
 	mockBridge := &MockBridge{
 		targets:            []bridge.TabTarget{},
-		ensureChromeErr:    "failed to start Chrome: connection refused",
-		ensureChromeCalled: false,
+		ensureBrowserErr:    "failed to start browser: connection refused",
+		ensureBrowserCalled: false,
 	}
 
 	h := &Handlers{
@@ -232,7 +232,7 @@ func TestHandleHealth_EnsureChromeFailure(t *testing.T) {
 
 	h.HandleHealth(w, req)
 
-	// Should fail before calling ListTargets because ensureChrome fails first
+	// Should fail before calling ListTargets because ensureBrowser fails first
 	if w.Code != http.StatusServiceUnavailable {
 		t.Errorf("expected 503, got %d", w.Code)
 	}
@@ -246,26 +246,26 @@ func TestHandleHealth_EnsureChromeFailure(t *testing.T) {
 		t.Errorf("expected status=error, got %v", status)
 	}
 
-	// Verify ensureChrome was actually called
-	if !mockBridge.ensureChromeCalled {
-		t.Error("expected ensureChrome to be called before ListTargets")
+	// Verify ensureBrowser was actually called
+	if !mockBridge.ensureBrowserCalled {
+		t.Error("expected ensureBrowser to be called before ListTargets")
 	}
 
-	// Verify error message mentions chrome initialization
+	// Verify error message mentions browser initialization
 	reason, ok := resp["reason"].(string)
-	if !ok || !contains(reason, "chrome") {
-		t.Errorf("expected error reason mentioning chrome, got %v", reason)
+	if !ok || !contains(reason, "browser") {
+		t.Errorf("expected error reason mentioning browser, got %v", reason)
 	}
 }
 
-// TestHandleHealth_EnsureChromeSuccess verifies /health calls ensureChrome and then checks ListTargets
-func TestHandleHealth_EnsureChromeSuccess(t *testing.T) {
+// TestHandleHealth_EnsureBrowserSuccess verifies /health calls ensureBrowser and then checks ListTargets
+func TestHandleHealth_EnsureBrowserSuccess(t *testing.T) {
 	mockBridge := &MockBridge{
 		targets: []bridge.TabTarget{
 			{TargetID: "target1", URL: "https://pinchtab.com", Title: "Example"},
 		},
-		ensureChromeCalled: false,
-		ensureChromeErr:    "", // No error
+		ensureBrowserCalled: false,
+		ensureBrowserErr:    "", // No error
 	}
 
 	h := &Handlers{
@@ -282,9 +282,9 @@ func TestHandleHealth_EnsureChromeSuccess(t *testing.T) {
 		t.Errorf("expected 200, got %d", w.Code)
 	}
 
-	// Verify ensureChrome was called
-	if !mockBridge.ensureChromeCalled {
-		t.Error("expected ensureChrome to be called before ListTargets")
+	// Verify ensureBrowser was called
+	if !mockBridge.ensureBrowserCalled {
+		t.Error("expected ensureBrowser to be called before ListTargets")
 	}
 
 	var resp map[string]any
@@ -311,8 +311,8 @@ func contains(s, substr string) bool {
 type MockBridge struct {
 	targets            []bridge.TabTarget
 	listTargetsErr     string
-	ensureChromeCalled bool
-	ensureChromeErr    string
+	ensureBrowserCalled bool
+	ensureBrowserErr    string
 	currentTabID       string
 	draining           bool
 	retryAfter         time.Duration
@@ -382,17 +382,17 @@ func (m *MockBridge) Unlock(tabID, owner string) error {
 	return nil
 }
 
-func (m *MockBridge) EnsureChrome(cfg *config.RuntimeConfig) error {
-	m.ensureChromeCalled = true
-	if m.ensureChromeErr != "" {
-		return fmt.Errorf("%s", m.ensureChromeErr)
+func (m *MockBridge) EnsureBrowser(cfg *config.RuntimeConfig) error {
+	m.ensureBrowserCalled = true
+	if m.ensureBrowserErr != "" {
+		return fmt.Errorf("%s", m.ensureBrowserErr)
 	}
 	return nil
 }
 
 func (m *MockBridge) RestartBrowser(cfg *config.RuntimeConfig) error {
-	if m.ensureChromeErr != "" {
-		return fmt.Errorf("%s", m.ensureChromeErr)
+	if m.ensureBrowserErr != "" {
+		return fmt.Errorf("%s", m.ensureBrowserErr)
 	}
 	return nil
 }

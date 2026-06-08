@@ -419,7 +419,7 @@ func (o *Orchestrator) cleanupDetachedFailedAttemptProfile(profileName string) {
 		}
 	}
 	o.mu.RUnlock()
-	o.cleanupStoppedProfile(profileName)
+	o.cleanupStoppedProfile(profileName, "")
 }
 
 // dedupCandidates trims whitespace, drops empty/duplicate entries, preserves order.

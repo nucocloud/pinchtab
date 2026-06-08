@@ -53,7 +53,7 @@ func (b *Bridge) applyWorkerStealth(parent context.Context, targetID target.ID, 
 		ua = b.StealthBundle.LaunchUserAgent()
 	}
 
-	persona := workerStealthPersona(ua, b.Config.ChromeVersion)
+	persona := workerStealthPersona(ua, b.Config.BrowserVersion)
 
 	if err := chromedp.Run(runCtx,
 		chromedp.ActionFunc(func(ctx context.Context) error {

@@ -115,7 +115,7 @@ func (h *Handlers) HandleSnapshot(w http.ResponseWriter, r *http.Request) {
 
 	h.recordReadRequest(r, "snapshot", tabID)
 
-	snapChromeRoute := browserops.SingleBrowserRoute("chrome")
+	snapChromeRoute := browserops.SingleBrowserRoute(browser)
 	snapChromeRoute.Attempts = append(snapChromeRoute.Attempts, browserops.RouteAttempt{
 		Browser:  browser,
 		Accepted: handleDecision.Decision == browsers.DecisionHandle,

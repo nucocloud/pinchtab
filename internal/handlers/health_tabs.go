@@ -32,9 +32,9 @@ func (h *Handlers) HandleHealth(w http.ResponseWriter, r *http.Request) {
 		if h.writeBridgeUnavailable(w, err) {
 			return
 		}
-		httpx.JSON(w, 503, map[string]any{"status": "error", "reason": fmt.Sprintf("chrome initialization failed: %v", err)})
-		return
-	}
+			httpx.JSON(w, 503, map[string]any{"status": "error", "reason": fmt.Sprintf("browser initialization failed: %v", err)})
+			return
+		}
 
 	targets, err := h.Bridge.ListTargets()
 	if err != nil {
@@ -57,15 +57,15 @@ func (h *Handlers) HandleHealth(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, 200, resp)
 }
 
-func (h *Handlers) HandleEnsureChrome(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) HandleEnsureBrowser(w http.ResponseWriter, r *http.Request) {
 	if err := h.ensureBrowser(h.Config); err != nil {
 		if h.writeBridgeUnavailable(w, err) {
 			return
 		}
-		httpx.Error(w, 500, fmt.Errorf("chrome initialization failed: %w", err))
+		httpx.Error(w, 500, fmt.Errorf("browser initialization failed: %w", err))
 		return
 	}
-	httpx.JSON(w, 200, map[string]string{"status": "chrome_ready"})
+	httpx.JSON(w, 200, map[string]string{"status": "browser_ready"})
 }
 
 func (h *Handlers) HandleBrowserRestart(w http.ResponseWriter, r *http.Request) {

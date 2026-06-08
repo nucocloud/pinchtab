@@ -84,7 +84,7 @@ func NewBundle(cfg *config.RuntimeConfig, seed int64) *Bundle {
 	disablePinchTabStealth := config.PinchTabStealthDefaultsDisabled(cfg)
 	personaJSON := "{}"
 	if cfg != nil {
-		if encoded, err := json.Marshal(BuildPersona(cfg.UserAgent, cfg.ChromeVersion)); err == nil {
+		if encoded, err := json.Marshal(BuildPersona(cfg.UserAgent, cfg.BrowserVersion)); err == nil {
 			personaJSON = string(encoded)
 		}
 	}
@@ -209,7 +209,7 @@ func statusFlags(bundle *Bundle, cfg *config.RuntimeConfig) map[string]bool {
 	var extraFlags []string
 	headless := false
 	if cfg != nil {
-		extraFlags = config.AllowedChromeExtraFlags(cfg.ChromeExtraFlags)
+		extraFlags = config.AllowedBrowserExtraFlags(cfg.BrowserExtraFlags)
 		headless = cfg.Headless
 	}
 

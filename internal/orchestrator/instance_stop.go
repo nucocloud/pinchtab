@@ -12,7 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pinchtab/pinchtab/internal/bridge"
+	"github.com/pinchtab/pinchtab/internal/browsers/providerhooks"
+	"github.com/pinchtab/pinchtab/internal/config"
 )
 
 func (o *Orchestrator) Stop(id string) error {
@@ -129,6 +130,7 @@ func (o *Orchestrator) markStopped(id string) {
 	}
 
 	profileName := inst.ProfileName
+	browser := inst.browser
 	delete(o.instances, id)
 	o.mu.Unlock()
 
@@ -136,7 +138,7 @@ func (o *Orchestrator) markStopped(id string) {
 	o.removeInstanceFromManager(id)
 
 	slog.Info("instance stopped and removed", "id", id, "profile", profileName)
-	o.cleanupStoppedProfile(profileName)
+	o.cleanupStoppedProfile(profileName, browser)
 }
 
 func (o *Orchestrator) releaseInstancePorts(id string, inst *InstanceInternal) {
@@ -150,7 +152,7 @@ func (o *Orchestrator) releaseInstancePorts(id string, inst *InstanceInternal) {
 	}
 	if inst.cdpPort > 0 {
 		o.portAllocator.ReleasePort(inst.cdpPort)
-		slog.Debug("released chrome debug port", "id", id, "port", inst.cdpPort)
+		slog.Debug("released browser debug port", "id", id, "port", inst.cdpPort)
 	}
 }
 
@@ -161,12 +163,12 @@ func (o *Orchestrator) removeInstanceFromManager(id string) {
 	}
 }
 
-func (o *Orchestrator) cleanupStoppedProfile(profileName string) {
-	// Kill any orphaned Chrome processes using this profile's directory.
-	// Chrome spawns helpers (GPU, renderer) in their own process groups,
-	// so killing the bridge process group doesn't reach them.
+func (o *Orchestrator) cleanupStoppedProfile(profileName, browser string) {
 	profilePath := filepath.Join(o.baseDir, profileName)
-	bridge.CleanupOrphanedChromeProcesses(profilePath)
+	if browser == "" && o.runtimeCfg != nil {
+		browser = config.NormalizeBrowser(o.runtimeCfg.DefaultBrowser)
+	}
+	providerhooks.CleanupProfile(browser, profilePath)
 
 	if strings.HasPrefix(profileName, "instance-") {
 		profilePath := filepath.Join(o.baseDir, profileName)

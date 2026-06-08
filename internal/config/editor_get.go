@@ -21,6 +21,8 @@ func GetConfigValue(fc *FileConfig, path string) (string, error) {
 		return getServerField(&fc.Server, field)
 	case "browser":
 		return getBrowserField(&fc.Browser, field)
+	case "browsers":
+		return getBrowsersField(&fc.Browsers, field)
 	case "instanceDefaults":
 		return getInstanceDefaultsField(&fc.InstanceDefaults, field)
 	case "security":
@@ -36,7 +38,7 @@ func GetConfigValue(fc *FileConfig, path string) (string, error) {
 	case "sessions":
 		return getSessionsField(&fc.Sessions, field)
 	default:
-		return "", fmt.Errorf("unknown section %q (valid: server, browser, instanceDefaults, security, profiles, multiInstance, timeouts, observability, sessions)", section)
+		return "", fmt.Errorf("unknown section %q (valid: server, browser, browsers, instanceDefaults, security, profiles, multiInstance, timeouts, observability, sessions)", section)
 	}
 }
 
@@ -67,13 +69,24 @@ func getBrowserField(b *BrowserConfig, field string) (string, error) {
 	case "provider":
 		return "", fmt.Errorf("browser.provider is no longer supported; use browsers.default")
 	case "version":
-		return b.ChromeVersion, nil
+		return b.BrowserVersion, nil
 	case "binary":
-		return b.ChromeBinary, nil
+		return b.BrowserBinary, nil
 	case "extraFlags":
-		return b.ChromeExtraFlags, nil
+		return b.BrowserExtraFlags, nil
 	default:
 		return "", fmt.Errorf("unknown field browser.%s", field)
+	}
+}
+
+func getBrowsersField(b *BrowsersConfig, field string) (string, error) {
+	switch field {
+	case "default":
+		return b.Default, nil
+	case "available":
+		return strings.Join(b.Available, ","), nil
+	default:
+		return "", fmt.Errorf("unknown field browsers.%s", field)
 	}
 }
 

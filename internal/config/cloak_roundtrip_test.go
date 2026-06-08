@@ -81,7 +81,7 @@ func TestCloakTargetResolution(t *testing.T) {
 	cfg.DefaultBrowser = "cloak"
 	cfg.Cloak.DisableDefaultStealthArgs = true
 	cfg.Cloak.FingerprintSeed = "42069"
-	cfg.ChromeBinary = "/opt/cloakbrowser/chrome"
+	cfg.BrowserBinary = "/opt/cloakbrowser/chrome"
 
 	// The FileConfigFromRuntime → Load round-trip produces targets via migration.
 	fc := config.FileConfigFromRuntime(cfg)

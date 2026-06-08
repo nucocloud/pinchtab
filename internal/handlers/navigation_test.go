@@ -34,8 +34,8 @@ func TestHandleNavigate_InvalidJSON(t *testing.T) {
 	}
 }
 
-func TestHandleNavigate_EnsureChromeFailureStopsBeforeCreateTab(t *testing.T) {
-	m := &mockBridge{ensureChromeErr: fmt.Errorf("bridge init failed")}
+func TestHandleNavigate_EnsureBrowserFailureStopsBeforeCreateTab(t *testing.T) {
+	m := &mockBridge{ensureBrowserErr: fmt.Errorf("bridge init failed")}
 	h := New(m, &config.RuntimeConfig{}, nil, nil, nil)
 
 	req := httptest.NewRequest("POST", "/navigate", bytes.NewReader([]byte(`{"url":"about:blank"}`)))
@@ -45,19 +45,19 @@ func TestHandleNavigate_EnsureChromeFailureStopsBeforeCreateTab(t *testing.T) {
 	if w.Code != 500 {
 		t.Fatalf("expected 500, got %d: %s", w.Code, w.Body.String())
 	}
-	if m.ensureChromeCall != 1 {
-		t.Fatalf("expected EnsureChrome to be called once, got %d", m.ensureChromeCall)
+	if m.ensureBrowserCall != 1 {
+		t.Fatalf("expected EnsureBrowser to be called once, got %d", m.ensureBrowserCall)
 	}
 	if len(m.createTabURLs) != 0 {
-		t.Fatalf("CreateTab should not be called when EnsureChrome fails, got %v", m.createTabURLs)
+		t.Fatalf("CreateTab should not be called when EnsureBrowser fails, got %v", m.createTabURLs)
 	}
 	if !strings.Contains(w.Body.String(), "browser initialization") {
 		t.Fatalf("expected browser initialization error, got %s", w.Body.String())
 	}
 }
 
-func TestHandleTab_EnsureChromeFailureStopsBeforeCreateTab(t *testing.T) {
-	m := &mockBridge{ensureChromeErr: fmt.Errorf("bridge init failed")}
+func TestHandleTab_EnsureBrowserFailureStopsBeforeCreateTab(t *testing.T) {
+	m := &mockBridge{ensureBrowserErr: fmt.Errorf("bridge init failed")}
 	h := New(m, &config.RuntimeConfig{}, nil, nil, nil)
 
 	req := httptest.NewRequest("POST", "/tab", bytes.NewReader([]byte(`{"action":"new","url":"about:blank"}`)))
@@ -67,11 +67,11 @@ func TestHandleTab_EnsureChromeFailureStopsBeforeCreateTab(t *testing.T) {
 	if w.Code != 500 {
 		t.Fatalf("expected 500, got %d: %s", w.Code, w.Body.String())
 	}
-	if m.ensureChromeCall != 1 {
-		t.Fatalf("expected EnsureChrome to be called once, got %d", m.ensureChromeCall)
+	if m.ensureBrowserCall != 1 {
+		t.Fatalf("expected EnsureBrowser to be called once, got %d", m.ensureBrowserCall)
 	}
 	if len(m.createTabURLs) != 0 {
-		t.Fatalf("CreateTab should not be called when EnsureChrome fails, got %v", m.createTabURLs)
+		t.Fatalf("CreateTab should not be called when EnsureBrowser fails, got %v", m.createTabURLs)
 	}
 	if !strings.Contains(w.Body.String(), "browser initialization") {
 		t.Fatalf("expected browser initialization error, got %s", w.Body.String())

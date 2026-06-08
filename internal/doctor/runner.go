@@ -168,7 +168,7 @@ func buildDoctorEnv(cfg *config.RuntimeConfig) *browsers.DoctorEnv {
 		return nil
 	}
 	return &browsers.DoctorEnv{
-		Binary: cfg.ChromeBinary,
+		Binary: strings.TrimSpace(cfg.BrowserBinary),
 		Cloak: browsers.CloakFingerprint{
 			FingerprintSeed: cfg.Cloak.FingerprintSeed,
 			Platform:        cfg.Cloak.Platform,

@@ -138,7 +138,7 @@ func (c *chromeBridgeAPI) Text(_ context.Context, _ string, _ bridge.ContentPara
 	return c.mock.textResult, c.mock.textErr
 }
 
-func (c *chromeBridgeAPI) EnsureChrome(_ *config.RuntimeConfig) error { return nil }
+func (c *chromeBridgeAPI) EnsureBrowser(_ *config.RuntimeConfig) error { return nil }
 
 func (c *chromeBridgeAPI) GetRefCache(string) *bridge.RefCache  { return nil }
 func (c *chromeBridgeAPI) SetRefCache(string, *bridge.RefCache) {}

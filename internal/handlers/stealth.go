@@ -122,27 +122,27 @@ func (h *Handlers) generateFingerprint(req fingerprintRequest) fingerprint {
 	fp := fingerprint{}
 
 	// Match the launch-pinned UA: real Chrome (UA reduction, v100+) freezes
-	// navigator.userAgent to <major>.0.0.0. Using h.Config.ChromeVersion
+	// navigator.userAgent to <major>.0.0.0. Using h.Config.BrowserVersion
 	// verbatim here would emit Chrome/144.0.7559.133 while the launch path
 	// pins Chrome/144.0.0.0 — a page/post-rotate version drift.
-	reducedChromeVersion := stealth.ReducedChromeVersion(h.Config.ChromeVersion)
+	reducedBrowserVersion := stealth.ReducedBrowserVersion(h.Config.BrowserVersion)
 
 	osConfigs := map[string]map[string]fingerprint{
 		"windows": {
 			"chrome": {
-				UserAgent: fmt.Sprintf("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/%s Safari/537.36", reducedChromeVersion),
+				UserAgent: fmt.Sprintf("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/%s Safari/537.36", reducedBrowserVersion),
 				Platform:  "Win32",
 				Vendor:    "Google Inc.",
 			},
 			"edge": {
-				UserAgent: fmt.Sprintf("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/%s Safari/537.36 Edg/%s", reducedChromeVersion, reducedChromeVersion),
+				UserAgent: fmt.Sprintf("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/%s Safari/537.36 Edg/%s", reducedBrowserVersion, reducedBrowserVersion),
 				Platform:  "Win32",
 				Vendor:    "Google Inc.",
 			},
 		},
 		"mac": {
 			"chrome": {
-				UserAgent: fmt.Sprintf("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/%s Safari/537.36", reducedChromeVersion),
+				UserAgent: fmt.Sprintf("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/%s Safari/537.36", reducedBrowserVersion),
 				Platform:  "MacIntel",
 				Vendor:    "Google Inc.",
 			},

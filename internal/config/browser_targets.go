@@ -102,7 +102,7 @@ func ValidateBrowserTargets(bc BrowserConfig) []error {
 			if b, ok := browsers.Get(provID); ok {
 				binary := strings.TrimSpace(t.Binary)
 				if binary == "" {
-					binary = strings.TrimSpace(bc.ChromeBinary)
+					binary = strings.TrimSpace(bc.BrowserBinary)
 				}
 				tcfg := browsers.TargetConfig{
 					Provider:   provID,
@@ -175,7 +175,7 @@ func ValidateBrowserTargets(bc BrowserConfig) []error {
 }
 
 func validateTargetExtraFlags(targetName, raw string) []error {
-	flagErrs := validateChromeExtraFlags(raw)
+	flagErrs := validateBrowserExtraFlags(raw)
 	if len(flagErrs) == 0 {
 		return nil
 	}
@@ -200,8 +200,8 @@ func migrateLegacyBrowserConfig(bc *BrowserConfig, browsersDefault string) (synt
 	}
 
 	hasLegacy := strings.TrimSpace(bc.Provider) != "" ||
-		strings.TrimSpace(bc.ChromeBinary) != "" ||
-		strings.TrimSpace(bc.ChromeExtraFlags) != "" ||
+		strings.TrimSpace(bc.BrowserBinary) != "" ||
+		strings.TrimSpace(bc.BrowserExtraFlags) != "" ||
 		hasCloakBrowserConfig(bc.Cloak) ||
 		!bc.Proxy.IsZero()
 
@@ -223,8 +223,8 @@ func migrateLegacyBrowserConfig(bc *BrowserConfig, browsersDefault string) (synt
 	provider := NormalizeBrowser(providerRaw)
 	target := BrowserTargetConfig{
 		Provider:   provider,
-		Binary:     bc.ChromeBinary,
-		ExtraFlags: bc.ChromeExtraFlags,
+		Binary:     bc.BrowserBinary,
+		ExtraFlags: bc.BrowserExtraFlags,
 		Cloak:      cloneCloakBrowserConfig(bc.Cloak),
 		Proxy:      cloneBrowserProxyConfig(bc.Proxy),
 	}
@@ -385,10 +385,10 @@ func applyTargetToRuntime(out *RuntimeConfig, t BrowserTargetConfig) {
 	}
 	out.DefaultBrowser = NormalizeBrowser(t.Provider)
 	if strings.TrimSpace(t.Binary) != "" {
-		out.ChromeBinary = t.Binary
+		out.BrowserBinary = t.Binary
 	}
 	if strings.TrimSpace(t.ExtraFlags) != "" {
-		out.ChromeExtraFlags = t.ExtraFlags
+		out.BrowserExtraFlags = t.ExtraFlags
 	}
 	out.Cloak = mergeCloakConfig(out.Cloak, t.Cloak)
 	if !t.Proxy.IsZero() {

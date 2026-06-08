@@ -52,8 +52,8 @@ func TestSetConfigValue_BrowserAndInstanceDefaultsFields(t *testing.T) {
 		wantErr bool
 	}{
 		{"browser.provider", "cloak", nil, true},
-		{"browser.version", "144.0.7559.133", func(fc *FileConfig) bool { return fc.Browser.ChromeVersion == "144.0.7559.133" }, false},
-		{"browser.binary", "/tmp/chrome", func(fc *FileConfig) bool { return fc.Browser.ChromeBinary == "/tmp/chrome" }, false},
+		{"browser.version", "144.0.7559.133", func(fc *FileConfig) bool { return fc.Browser.BrowserVersion == "144.0.7559.133" }, false},
+		{"browser.binary", "/tmp/chrome", func(fc *FileConfig) bool { return fc.Browser.BrowserBinary == "/tmp/chrome" }, false},
 		{"browser.cloak.fingerprintSeed", "42069", func(fc *FileConfig) bool { return fc.Browser.Cloak.FingerprintSeed == "42069" }, false},
 		{"browser.cloak.storageQuotaMB", "2048", func(fc *FileConfig) bool { return *fc.Browser.Cloak.StorageQuotaMB == 2048 }, false},
 		{"browser.cloak.disableDefaultStealthArgs", "false", func(fc *FileConfig) bool {
@@ -70,6 +70,38 @@ func TestSetConfigValue_BrowserAndInstanceDefaultsFields(t *testing.T) {
 		{"instanceDefaults.noRestore", "maybe", nil, true},
 		{"instanceDefaults.maxTabs", "many", nil, true},
 		{"instanceDefaults.unknown", "value", nil, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path+"="+tt.value, func(t *testing.T) {
+			fc := &FileConfig{}
+			err := SetConfigValue(fc, tt.path, tt.value)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("SetConfigValue() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr && !tt.check(fc) {
+				t.Errorf("SetConfigValue() did not set value correctly")
+			}
+		})
+	}
+}
+
+func TestSetConfigValue_BrowsersFields(t *testing.T) {
+	tests := []struct {
+		path    string
+		value   string
+		check   func(*FileConfig) bool
+		wantErr bool
+	}{
+		{"browsers.default", "cloak", func(fc *FileConfig) bool { return fc.Browsers.Default == "cloak" }, false},
+		{"browsers.available", "chrome, cloak, ghost-chrome", func(fc *FileConfig) bool {
+			return len(fc.Browsers.Available) == 3 &&
+				fc.Browsers.Available[0] == "chrome" &&
+				fc.Browsers.Available[1] == "cloak" &&
+				fc.Browsers.Available[2] == "ghost-chrome"
+		}, false},
+		{"browsers.unknown", "value", nil, true},
 	}
 
 	for _, tt := range tests {

@@ -74,7 +74,7 @@ func (h *Handlers) HandleText(w http.ResponseWriter, r *http.Request) {
 
 	h.recordReadRequest(r, "text", tabID)
 
-	textRoute := browserops.SingleBrowserRoute("chrome")
+	textRoute := browserops.SingleBrowserRoute(browser)
 	textRoute.Attempts = append(textRoute.Attempts, browserops.RouteAttempt{
 		Browser:  browser,
 		Accepted: handleDecision.Decision == browsers.DecisionHandle,

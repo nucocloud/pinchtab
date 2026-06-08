@@ -91,7 +91,7 @@ func (o *Orchestrator) LaunchWithOptions(name, port string, headless bool, opts 
 
 	cdpPort, err := o.portAllocator.AllocatePort()
 	if err != nil {
-		return nil, fmt.Errorf("failed to allocate chrome debug port: %w", err)
+		return nil, fmt.Errorf("failed to allocate browser debug port: %w", err)
 	}
 	reservedPorts = append(reservedPorts, cdpPort)
 

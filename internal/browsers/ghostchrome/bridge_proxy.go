@@ -48,20 +48,20 @@ const (
 type BridgeProxy struct {
 	chrome       ChromeBridge         // underlying Chrome bridge (all unhandled methods forwarded here)
 	lite         *staticfetch.Browser // static fetch browser (may be nil → pure passthrough)
-	ensureChrome func() error         // ensures Chrome is running before escalation
+	ensureBrowser func() error        // ensures the browser runtime is running before escalation
 	tabMap       tabMapping           // lite tabID → Chrome tabID
 	escalationMu sync.Map             // lite tabID → *sync.Mutex (serializes per-tab escalation)
 }
 
 // NewBridgeProxy creates a BridgeProxy that transparently routes between
-// the static fetch browser and the Chrome bridge. The ensureChrome
+// the static fetch browser and the Chrome bridge. The ensureBrowser
 // function is called before escalating a lite tab to Chrome; it should
-// call bridge.EnsureChrome with the appropriate config.
-func NewBridgeProxy(chrome ChromeBridge, lite *staticfetch.Browser, ensureChrome func() error) *BridgeProxy {
+// call the bridge browser-init path with the appropriate config.
+func NewBridgeProxy(chrome ChromeBridge, lite *staticfetch.Browser, ensureBrowser func() error) *BridgeProxy {
 	return &BridgeProxy{
 		chrome:       chrome,
 		lite:         lite,
-		ensureChrome: ensureChrome,
+		ensureBrowser: ensureBrowser,
 	}
 }
 
@@ -108,8 +108,8 @@ func (p *BridgeProxy) TabContext(tabID string) (context.Context, string, error) 
 	}
 
 	// Escalate: ensure Chrome is running and create a tab.
-	if p.ensureChrome != nil {
-		if ensureErr := p.ensureChrome(); ensureErr != nil {
+	if p.ensureBrowser != nil {
+		if ensureErr := p.ensureBrowser(); ensureErr != nil {
 			return nil, "", ensureErr
 		}
 	}

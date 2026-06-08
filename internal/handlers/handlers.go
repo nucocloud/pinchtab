@@ -154,18 +154,11 @@ type restartStatusProvider interface {
 	RestartStatus() (bool, time.Duration)
 }
 
-type ensureBrowserProvider interface {
-	EnsureBrowser(cfg *config.RuntimeConfig) error
-}
-
 func (h *Handlers) ensureBrowser(cfg *config.RuntimeConfig) error {
 	if cfg == nil {
 		cfg = h.Config
 	}
-	if provider, ok := h.Bridge.(ensureBrowserProvider); ok {
-		return provider.EnsureBrowser(cfg)
-	}
-	return h.Bridge.EnsureChrome(cfg)
+	return h.Bridge.EnsureBrowser(cfg)
 }
 
 func (h *Handlers) ensureBrowserOrRespond(w http.ResponseWriter, cfg *config.RuntimeConfig) bool {
@@ -244,7 +237,7 @@ func (h *Handlers) writeBridgeUnavailable(w http.ResponseWriter, err error) bool
 
 func (h *Handlers) RegisterRoutes(mux *http.ServeMux, doShutdown func()) {
 	mux.HandleFunc("GET /health", h.HandleHealth)
-	mux.HandleFunc("POST /ensure-chrome", h.HandleEnsureChrome)
+	mux.HandleFunc("POST /ensure-browser", h.HandleEnsureBrowser)
 	mux.HandleFunc("POST /browser/restart", h.HandleBrowserRestart)
 	mux.HandleFunc("GET /tabs", h.HandleTabs)
 	mux.HandleFunc("POST /tabs/{id}/navigate", h.HandleTabNavigate)

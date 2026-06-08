@@ -78,7 +78,7 @@ func (h *Handlers) handleInspect(w http.ResponseWriter, r *http.Request, kind in
 		if h.writeBridgeUnavailable(w, err) {
 			return
 		}
-		httpx.Error(w, 500, fmt.Errorf("chrome initialization: %w", err))
+		httpx.Error(w, 500, fmt.Errorf("browser initialization: %w", err))
 		return
 	}
 

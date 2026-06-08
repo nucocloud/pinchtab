@@ -249,7 +249,7 @@ func TestOrchestrator_Launch_RejectsInvalidPort(t *testing.T) {
 	}
 }
 
-func TestOrchestrator_Launch_ReservesDistinctChromeDebugPort(t *testing.T) {
+func TestOrchestrator_Launch_ReservesDistinctBrowserDebugPort(t *testing.T) {
 	old := processAliveFunc
 	processAliveFunc = func(pid int) bool { return pid > 0 }
 	defer func() { processAliveFunc = old }()
@@ -286,13 +286,13 @@ func TestOrchestrator_Launch_ReservesDistinctChromeDebugPort(t *testing.T) {
 	if err := json.Unmarshal(data, &fc); err != nil {
 		t.Fatalf("Unmarshal child config error = %v", err)
 	}
-	if fc.Browser.ChromeDebugPort == nil {
+	if fc.Browser.BrowserDebugPort == nil {
 		t.Fatal("child config missing browser.remoteDebuggingPort")
 	}
-	if *fc.Browser.ChromeDebugPort != 9901 {
-		t.Fatalf("chrome debug port = %d, want 9901", *fc.Browser.ChromeDebugPort)
+	if *fc.Browser.BrowserDebugPort != 9901 {
+		t.Fatalf("chrome debug port = %d, want 9901", *fc.Browser.BrowserDebugPort)
 	}
-	if *fc.Browser.ChromeDebugPort == 9900 {
+	if *fc.Browser.BrowserDebugPort == 9900 {
 		t.Fatal("chrome debug port should differ from bridge port")
 	}
 
@@ -305,7 +305,7 @@ func TestOrchestrator_Launch_ReservesDistinctChromeDebugPort(t *testing.T) {
 	}
 }
 
-func TestOrchestrator_Launch_ExplicitPortAlsoReservesDistinctChromeDebugPort(t *testing.T) {
+func TestOrchestrator_Launch_ExplicitPortAlsoReservesDistinctBrowserDebugPort(t *testing.T) {
 	old := processAliveFunc
 	processAliveFunc = func(pid int) bool { return pid > 0 }
 	defer func() { processAliveFunc = old }()
@@ -336,11 +336,11 @@ func TestOrchestrator_Launch_ExplicitPortAlsoReservesDistinctChromeDebugPort(t *
 	if err := json.Unmarshal(data, &fc); err != nil {
 		t.Fatalf("Unmarshal child config error = %v", err)
 	}
-	if fc.Browser.ChromeDebugPort == nil {
+	if fc.Browser.BrowserDebugPort == nil {
 		t.Fatal("child config missing browser.remoteDebuggingPort")
 	}
-	if *fc.Browser.ChromeDebugPort == 9911 {
-		t.Fatalf("chrome debug port = %d, must differ from bridge port", *fc.Browser.ChromeDebugPort)
+	if *fc.Browser.BrowserDebugPort == 9911 {
+		t.Fatalf("chrome debug port = %d, must differ from bridge port", *fc.Browser.BrowserDebugPort)
 	}
 	if !o.portAllocator.IsAllocated(9911) {
 		t.Fatal("explicit bridge port should remain reserved in allocator while instance is active")
@@ -397,7 +397,7 @@ func TestOrchestrator_Launch_DoesNotInjectSharedActivityStateDir(t *testing.T) {
 	}
 }
 
-func TestOrchestrator_Stop_ReleasesBridgeAndChromeDebugPorts(t *testing.T) {
+func TestOrchestrator_Stop_ReleasesBridgeAndBrowserDebugPorts(t *testing.T) {
 	old := processAliveFunc
 	processAliveFunc = func(pid int) bool { return false }
 	defer func() { processAliveFunc = old }()

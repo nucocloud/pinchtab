@@ -127,7 +127,7 @@ func (o *Orchestrator) handleStartByInstanceID(w http.ResponseWriter, r *http.Re
 	}
 
 	if active {
-		targetURL, targetErr := o.instancePathURL(inst, "/ensure-chrome", "")
+		targetURL, targetErr := o.instancePathURL(inst, "/ensure-browser", "")
 		if targetErr != nil {
 			httpx.Error(w, 502, targetErr)
 			return

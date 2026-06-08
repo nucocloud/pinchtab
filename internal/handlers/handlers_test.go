@@ -25,9 +25,9 @@ type mockBridge struct {
 	lastErrorLimit    int
 	fingerprintTabs   map[string]bool
 	frameScopes       map[string]bridge.FrameScope
-	ensureChromeErr   error
-	ensureChromeCall  int
-	ensureChromeCfg   *config.RuntimeConfig
+	ensureBrowserErr   error
+	ensureBrowserCall  int
+	ensureBrowserCfg   *config.RuntimeConfig
 	dialogManager     *bridge.DialogManager
 	executeActionErr  error
 	autoCloseArmed    []string
@@ -90,10 +90,10 @@ func (m *mockBridge) CancelAutoClose(tabID string) {
 	m.autoCloseCanceled = append(m.autoCloseCanceled, tabID)
 }
 
-func (m *mockBridge) EnsureChrome(cfg *config.RuntimeConfig) error {
-	m.ensureChromeCall++
-	m.ensureChromeCfg = cfg
-	return m.ensureChromeErr
+func (m *mockBridge) EnsureBrowser(cfg *config.RuntimeConfig) error {
+	m.ensureBrowserCall++
+	m.ensureBrowserCfg = cfg
+	return m.ensureBrowserErr
 }
 
 func (m *mockBridge) RestartBrowser(cfg *config.RuntimeConfig) error {

@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chromedp/cdproto/page"
 	"github.com/pinchtab/pinchtab/internal/activity"
 	"github.com/pinchtab/pinchtab/internal/bridge"
 	"github.com/pinchtab/pinchtab/internal/browserops"
@@ -102,7 +101,7 @@ func (h *Handlers) HandleCapture(w http.ResponseWriter, r *http.Request) {
 
 	h.recordReadRequest(r, "capture", tabID)
 
-	captureRoute := browserops.SingleBrowserRoute("chrome")
+	captureRoute := browserops.SingleBrowserRoute(browser)
 	captureRoute.Attempts = append(captureRoute.Attempts, browserops.RouteAttempt{
 		Browser:  browser,
 		Accepted: handleDecision.Decision == browsers.DecisionHandle,
@@ -172,10 +171,10 @@ func (h *Handlers) HandleCapture(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	format := page.CaptureScreenshotFormatJpeg
+	format := bridge.ScreenshotFormatJpeg
 	ext := ".jpg"
 	if q.Get("format") == "png" {
-		format = page.CaptureScreenshotFormatPng
+		format = bridge.ScreenshotFormatPng
 		ext = ".png"
 	}
 
@@ -219,7 +218,7 @@ func (h *Handlers) HandleCapture(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		opts.ScopeBackendNodeID = nodeID
-		clip, cErr := screenshotClipForNode(tCtx, nodeID)
+			clip, cErr := bridge.ScreenshotClipForNode(tCtx, nodeID)
 		if cErr != nil {
 			httpx.Error(w, 500, fmt.Errorf("selector clip: %w", cErr))
 			return

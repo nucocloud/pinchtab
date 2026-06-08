@@ -15,8 +15,8 @@ import (
 
 	"github.com/pinchtab/pinchtab/internal/activity"
 	"github.com/pinchtab/pinchtab/internal/authn"
-	"github.com/pinchtab/pinchtab/internal/bridge"
 	_ "github.com/pinchtab/pinchtab/internal/browsers/all"
+	"github.com/pinchtab/pinchtab/internal/browsers/providerhooks"
 	"github.com/pinchtab/pinchtab/internal/browsersession"
 	"github.com/pinchtab/pinchtab/internal/cli"
 	"github.com/pinchtab/pinchtab/internal/config"
@@ -40,8 +40,7 @@ func RunDashboard(cfg *config.RuntimeConfig, version string) {
 		slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	}
 
-	// Clean up orphaned Chrome processes from previous crashed runs
-	bridge.CleanupOrphanedChromeProcesses(cfg.ProfileDir)
+	providerhooks.CleanupProfile(config.NormalizeBrowser(cfg.DefaultBrowser), cfg.ProfileDir)
 
 	dashPort := cfg.Port
 	startedAt := time.Now()
@@ -341,7 +340,7 @@ func RunDashboard(cfg *config.RuntimeConfig, version string) {
 			maintenanceCancel()
 			dash.Shutdown()
 			gracefulShutdownWithCap(orch, bridgeShutdownTotalCap)
-			bridge.KillAllPinchtabChrome()
+			providerhooks.Shutdown(config.NormalizeBrowser(cfg.DefaultBrowser))
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			if err := srv.Shutdown(ctx); err != nil {

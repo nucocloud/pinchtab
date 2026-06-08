@@ -112,7 +112,7 @@ func (h *Handlers) requireRouteContext(w http.ResponseWriter, r *http.Request, t
 		if h.writeBridgeUnavailable(w, err) {
 			return nil, "", false
 		}
-		httpx.Error(w, 500, fmt.Errorf("chrome initialization: %w", err))
+		httpx.Error(w, 500, fmt.Errorf("browser initialization: %w", err))
 		return nil, "", false
 	}
 	ctx, id, err := h.tabContext(r, tabID)

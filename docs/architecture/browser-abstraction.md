@@ -13,7 +13,7 @@ Current branch points:
 |---|---|---|
 | Launch flags | `internal/bridge/runtime/init.go` | `IsCloakBrowserProvider()` gate + `CloakBrowserFlagArgs()` |
 | Geo alignment | `internal/bridge/runtime/geo_align.go` | `switch NormalizeBrowserProvider(...)` |
-| Binary discovery | `internal/browserprobe/binary.go` | Parallel `DiscoverChromeBinary`, `DiscoverCloakBrowserBinary` |
+| Binary discovery | `internal/browsers/runtimekit/runtimekit.go` | Provider-driven `FindBrowserBinary(...)` discovery |
 | Doctor registry | `internal/doctor/runner.go` | `if IsCloakBrowserProvider()` adds checks |
 | Config validation | `internal/config/browser_targets.go` | Hardcoded `{chrome, cloak}` allowlist |
 
@@ -198,7 +198,7 @@ geo := b.GeoAlignment(geoCfg)
 Extract-then-rewire. Each step lands independently with no behavior change.
 
 1. **Skeleton.** Add `internal/browsers/` with the interface, registry, and empty `chrome` package. Wire a barrel import in one place (`cmd/pinchtab/root.go`). No call sites change yet.
-2. **Chrome extraction.** Move `DiscoverChromeBinary`, chrome flag builders, chrome geo logic into `browsers/chrome/`. Old call sites delegate to `browsers.Get("chrome")`. Tests stay green.
+2. **Chrome extraction.** Move Chrome-specific launch helpers, geo logic, and provider discovery behind `browsers/chrome/` plus shared `runtimekit` entry points. Old call sites delegate through `browsers.Get("chrome")` / `FindBrowserBinary(...)`. Tests stay green.
 3. **Cloak extraction.** Move stealth flag builder, cloak geo, cloak binary discovery into `browsers/cloak/` as composition over chrome. Remove `IsCloakBrowserProvider()` callers one at a time.
 4. **Doctor migration.** Move provider-specific checks into `browsers/{chrome,cloak}/doctor.go`. `doctor/runner.go` collapses to a registry walk.
 5. **Geo migration.** Replace `geo_align.go` switch with `b.GeoAlignment(...)` call. Delete `geo_align.go` body.

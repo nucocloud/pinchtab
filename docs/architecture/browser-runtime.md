@@ -113,7 +113,7 @@ type Instance struct{}          // implements browsers.RuntimeInstance (post-lau
 ```
 
 The Bridge calls `browser.NewRuntimeInstance(browserCtx, headless)`
-during `EnsureChrome()` and holds the returned `RuntimeInstance` for the
+during `EnsureBrowser()` and holds the returned `RuntimeInstance` for the
 session lifetime.
 
 ## TabHandle

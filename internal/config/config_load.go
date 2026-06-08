@@ -78,7 +78,7 @@ func Load() *RuntimeConfig {
 		ProfileDir:         "",
 		ProfilesBaseDir:    "",
 		DefaultProfile:     "default",
-		ChromeVersion:      "144.0.7559.133",
+		BrowserVersion:     "144.0.7559.133",
 		Timezone:           "",
 		BlockImages:        false,
 		BlockMedia:         false,
@@ -86,8 +86,8 @@ func Load() *RuntimeConfig {
 		MaxTabs:            20,
 		MaxParallelTabs:    0,
 		DefaultBrowser:     BrowserChrome,
-		ChromeBinary:       "", // Set via config.json only
-		ChromeExtraFlags:   "",
+		BrowserBinary:      "", // Set via config.json only
+		BrowserExtraFlags:  "",
 		Cloak:              CloakBrowserRuntimeConfig{DisableDefaultStealthArgs: true},
 		ExtensionPaths:     []string{defaultExtensionsDir(userConfigDir())},
 		UserAgent:          "",
@@ -471,17 +471,17 @@ func applyFileConfig(cfg *RuntimeConfig, fc *FileConfig) {
 		cfg.Cloak.DisableDefaultStealthArgs = true
 	}
 
-	if fc.Browser.ChromeVersion != "" {
-		cfg.ChromeVersion = fc.Browser.ChromeVersion
+	if fc.Browser.BrowserVersion != "" {
+		cfg.BrowserVersion = fc.Browser.BrowserVersion
 	}
-	if fc.Browser.ChromeBinary != "" {
-		cfg.ChromeBinary = fc.Browser.ChromeBinary
+	if fc.Browser.BrowserBinary != "" {
+		cfg.BrowserBinary = fc.Browser.BrowserBinary
 	}
-	if fc.Browser.ChromeDebugPort != nil && *fc.Browser.ChromeDebugPort > 0 {
-		cfg.ChromeDebugPort = *fc.Browser.ChromeDebugPort
+	if fc.Browser.BrowserDebugPort != nil && *fc.Browser.BrowserDebugPort > 0 {
+		cfg.BrowserDebugPort = *fc.Browser.BrowserDebugPort
 	}
-	if fc.Browser.ChromeExtraFlags != "" {
-		cfg.ChromeExtraFlags = SanitizeChromeExtraFlags(fc.Browser.ChromeExtraFlags)
+	if fc.Browser.BrowserExtraFlags != "" {
+		cfg.BrowserExtraFlags = SanitizeBrowserExtraFlags(fc.Browser.BrowserExtraFlags)
 	}
 	applyCloakBrowserConfigToRuntime(cfg, fc.Browser.Cloak)
 	if !fc.Browser.Proxy.IsZero() {

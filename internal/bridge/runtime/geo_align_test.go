@@ -74,15 +74,18 @@ func TestBuildChromeArgsWithBundleUsesProvidedGeoAlignment(t *testing.T) {
 	old := geoProviderForConfigFunc
 	t.Cleanup(func() { geoProviderForConfigFunc = old })
 	geoProviderForConfigFunc = func(*config.RuntimeConfig) geo.Provider {
-		t.Fatal("buildChromeArgsWithBundle should use cached alignment")
+		t.Fatal("buildBrowserArgsWithBundle should use cached alignment")
 		return geo.Noop{}
 	}
 
-	args := buildChromeArgsWithBundle(&config.RuntimeConfig{
+	args, _, err := buildBrowserArgsWithBundle(&config.RuntimeConfig{
 		DefaultBrowser: config.BrowserCloak,
 	}, nil, 9222, launchGeoAlignment{
 		flags: []string{"--fingerprint-locale=en-GB"},
 	})
+	if err != nil {
+		t.Fatalf("buildBrowserArgsWithBundle() error = %v", err)
+	}
 	if !stealth.HasLaunchArg(args, "--fingerprint-locale=en-GB") {
 		t.Fatalf("cached geo flag missing from args: %v", args)
 	}
@@ -204,17 +207,17 @@ func TestApplyGeoAlignment_UnknownProviderNoop(t *testing.T) {
 	}
 }
 
-func TestBuildChromeArgs_ChromeDoesNotApplyProxyGeoFlagsByDefault(t *testing.T) {
+func TestBuildBrowserArgs_ChromeDoesNotApplyProxyGeoFlagsByDefault(t *testing.T) {
 	old := geoProviderForConfigFunc
 	t.Cleanup(func() { geoProviderForConfigFunc = old })
 	geoProviderForConfigFunc = func(*config.RuntimeConfig) geo.Provider {
-		t.Fatal("BuildChromeArgs should not perform geo lookup for the chrome provider")
+		t.Fatal("BuildBrowserArgs should not perform geo lookup for the chrome provider")
 		return geo.Noop{}
 	}
 
 	cfg := &config.RuntimeConfig{
 		DefaultBrowser: config.BrowserChrome,
-		ChromeVersion:  "144.0.0.0",
+		BrowserVersion: "144.0.0.0",
 		Proxy: config.BrowserProxyConfig{
 			Server: "http://proxy.example.com:8080",
 			Geo: &config.BrowserProxyGeoConfig{
@@ -223,18 +226,18 @@ func TestBuildChromeArgs_ChromeDoesNotApplyProxyGeoFlagsByDefault(t *testing.T) 
 			},
 		},
 	}
-	args := BuildChromeArgs(cfg, 9222)
+	args := BuildBrowserArgs(cfg, 9222)
 	for _, blocked := range []string{
 		"--lang=en-GB",
 		"--webrtc-ip-handling-policy=disable_non_proxied_udp",
 	} {
 		if stealth.HasLaunchArg(args, blocked) {
-			t.Errorf("BuildChromeArgs() included proxy-derived geo flag %q in %v", blocked, args)
+			t.Errorf("BuildBrowserArgs() included proxy-derived geo flag %q in %v", blocked, args)
 		}
 	}
 }
 
-func TestBuildChromeArgs_CloakAppliesGeoFlagsAndRespectsExplicit(t *testing.T) {
+func TestBuildBrowserArgs_CloakAppliesGeoFlagsAndRespectsExplicit(t *testing.T) {
 	cfg := &config.RuntimeConfig{
 		DefaultBrowser: config.BrowserCloak,
 		Cloak: config.CloakBrowserRuntimeConfig{
@@ -248,7 +251,7 @@ func TestBuildChromeArgs_CloakAppliesGeoFlagsAndRespectsExplicit(t *testing.T) {
 			},
 		},
 	}
-	args := BuildChromeArgs(cfg, 9222)
+	args := BuildBrowserArgs(cfg, 9222)
 	// Locale derived (no explicit cloak locale)
 	if !stealth.HasLaunchArg(args, "--fingerprint-locale=en-GB") {
 		t.Errorf("expected --fingerprint-locale=en-GB in %v", args)

@@ -54,7 +54,7 @@ type BridgeAPI interface {
 	Lock(tabID, owner string, ttl time.Duration) error
 	Unlock(tabID, owner string) error
 
-	EnsureChrome(cfg *config.RuntimeConfig) error
+	EnsureBrowser(cfg *config.RuntimeConfig) error
 	RestartBrowser(cfg *config.RuntimeConfig) error
 	StealthStatus() *stealth.Status
 

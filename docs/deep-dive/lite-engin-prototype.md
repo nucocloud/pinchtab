@@ -89,7 +89,7 @@ No handler, config, or CMD changes needed.
 |------|--------|
 | `internal/config/config_types.go` | Added `Engine` field to RuntimeConfig + ServerConfig |
 | `internal/handlers/handlers.go` | Added `Router *engine.Router` field, `useLite()` helper |
-| `internal/handlers/navigation.go` | Lite fast path before ensureChrome |
+| `internal/handlers/navigation.go` | Lite fast path before ensureBrowser |
 | `internal/handlers/snapshot.go` | Lite fast path with SnapshotNode → A11yNode conversion |
 | `internal/handlers/text.go` | Lite fast path returning plain text |
 | `cmd/pinchtab/cmd_bridge.go` | Resolves engine mode (`resolveBridgeEngine`) from CLI flag and config |

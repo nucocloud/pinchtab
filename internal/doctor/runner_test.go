@@ -51,7 +51,7 @@ func TestExitCode(t *testing.T) {
 }
 
 func TestRun_RegistryOrdering_Chrome(t *testing.T) {
-	cfg := &config.RuntimeConfig{DefaultBrowser: config.BrowserChrome, ChromeBinary: "/does/not/exist"}
+	cfg := &config.RuntimeConfig{DefaultBrowser: config.BrowserChrome, BrowserBinary: "/does/not/exist"}
 	got := Run(context.Background(), cfg, "")
 	wantOrder := []string{
 		"config_file",
@@ -72,7 +72,7 @@ func TestRun_RegistryOrdering_Chrome(t *testing.T) {
 }
 
 func TestRun_RegistryOrdering_Cloak(t *testing.T) {
-	cfg := &config.RuntimeConfig{DefaultBrowser: config.BrowserCloak, ChromeBinary: "/does/not/exist"}
+	cfg := &config.RuntimeConfig{DefaultBrowser: config.BrowserCloak, BrowserBinary: "/does/not/exist"}
 	got := Run(context.Background(), cfg, "")
 	// The three cloak-specific checks now come from Browser.DoctorChecks(),
 	// so they appear right after cloakbrowser_present (provider block) and
@@ -99,7 +99,7 @@ func TestRun_RegistryOrdering_Cloak(t *testing.T) {
 }
 
 func TestRun_CheckFilter(t *testing.T) {
-	cfg := &config.RuntimeConfig{DefaultBrowser: config.BrowserChrome, ChromeBinary: "/does/not/exist"}
+	cfg := &config.RuntimeConfig{DefaultBrowser: config.BrowserChrome, BrowserBinary: "/does/not/exist"}
 	got := Run(context.Background(), cfg, "binary_exists")
 	if len(got) != 1 {
 		t.Fatalf("filter binary_exists: got %d results, want 1", len(got))
@@ -127,7 +127,7 @@ func TestKnownCheck(t *testing.T) {
 }
 
 func TestBinaryExists_MissingFile(t *testing.T) {
-	cfg := &config.RuntimeConfig{ChromeBinary: filepath.Join(t.TempDir(), "nope")}
+	cfg := &config.RuntimeConfig{BrowserBinary: filepath.Join(t.TempDir(), "nope")}
 	r := checkBinaryExists(context.Background(), cfg)
 	if r.Status != StatusFail {
 		t.Fatalf("status = %v, want fail (err=%v)", r.Status, r.Err)
@@ -140,7 +140,7 @@ func TestBinaryExists_FoundFile(t *testing.T) {
 	if err := os.WriteFile(path, []byte("#!/bin/sh\necho hi\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cfg := &config.RuntimeConfig{ChromeBinary: path}
+	cfg := &config.RuntimeConfig{BrowserBinary: path}
 	r := checkBinaryExists(context.Background(), cfg)
 	if r.Status != StatusPass {
 		t.Fatalf("status = %v, want pass; detail=%q err=%v", r.Status, r.Detail, r.Err)
@@ -156,7 +156,7 @@ func TestBinaryExecutable_NotExecutable(t *testing.T) {
 	if err := os.WriteFile(path, []byte("data"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cfg := &config.RuntimeConfig{ChromeBinary: path}
+	cfg := &config.RuntimeConfig{BrowserBinary: path}
 	r := checkBinaryExecutable(context.Background(), cfg)
 	if r.Status != StatusFail {
 		t.Fatalf("status = %v, want fail", r.Status)
@@ -169,7 +169,7 @@ func TestBinaryExecutable_Executable(t *testing.T) {
 	if err := os.WriteFile(path, []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cfg := &config.RuntimeConfig{ChromeBinary: path}
+	cfg := &config.RuntimeConfig{BrowserBinary: path}
 	r := checkBinaryExecutable(context.Background(), cfg)
 	if r.Status != StatusPass {
 		t.Fatalf("status = %v, want pass; detail=%q", r.Status, r.Detail)
@@ -186,7 +186,7 @@ func TestBinaryStarts_FakeVersion(t *testing.T) {
 	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cfg := &config.RuntimeConfig{ChromeBinary: path}
+	cfg := &config.RuntimeConfig{BrowserBinary: path}
 	r := checkBinaryStarts(context.Background(), cfg)
 	if r.Status != StatusPass {
 		t.Fatalf("status = %v, want pass; detail=%q err=%v", r.Status, r.Detail, r.Err)
@@ -205,7 +205,7 @@ func TestBinaryStarts_NonZeroExit(t *testing.T) {
 	if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 3\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cfg := &config.RuntimeConfig{ChromeBinary: path}
+	cfg := &config.RuntimeConfig{BrowserBinary: path}
 	r := checkBinaryStarts(context.Background(), cfg)
 	if r.Status != StatusFail {
 		t.Fatalf("status = %v, want fail", r.Status)

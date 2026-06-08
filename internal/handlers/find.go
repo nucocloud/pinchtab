@@ -58,7 +58,7 @@ func (h *Handlers) HandleFind(w http.ResponseWriter, r *http.Request) {
 		if h.writeBridgeUnavailable(w, err) {
 			return
 		}
-		httpx.Error(w, 500, fmt.Errorf("chrome initialization: %w", err))
+		httpx.Error(w, 500, fmt.Errorf("browser initialization: %w", err))
 		return
 	}
 

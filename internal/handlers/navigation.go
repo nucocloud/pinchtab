@@ -180,7 +180,7 @@ func (h *Handlers) HandleNavigate(w http.ResponseWriter, r *http.Request) {
 	trustedCIDRs := buildNavigateTrustedProxyCIDRs(effectiveCfg)
 	h.recordNavigateRequest(r, req.TabID, req.URL)
 
-	navRoute := browserops.SingleBrowserRoute("chrome")
+	navRoute := browserops.SingleBrowserRoute(resolvedBrowser)
 	navRoute.Attempts = append(navRoute.Attempts, browserops.RouteAttempt{
 		Browser:  resolvedBrowser,
 		Accepted: handleDecision.Decision == browsers.DecisionHandle,
@@ -262,8 +262,8 @@ func (h *Handlers) HandleNavigate(w http.ResponseWriter, r *http.Request) {
 		blockPatterns = bridge.CombineBlockPatterns(blockPatterns, bridge.ImageBlockPatterns)
 	}
 
-	if req.NewTab {
-		h.navigateNewTabChrome(w, r, navigateChromeOptions{
+		if req.NewTab {
+			h.navigateNewTabBrowser(w, r, navigateBrowserOptions{
 			URL:            req.URL,
 			WaitFor:        req.WaitFor,
 			WaitSelector:   req.WaitSelector,
@@ -281,8 +281,8 @@ func (h *Handlers) HandleNavigate(w http.ResponseWriter, r *http.Request) {
 
 	ctx, resolvedTabID, err := h.tabContext(r, req.TabID)
 	if err != nil {
-		if scopedCurrentForNavigate {
-			h.navigateNewTabChrome(w, r, navigateChromeOptions{
+			if scopedCurrentForNavigate {
+				h.navigateNewTabBrowser(w, r, navigateBrowserOptions{
 				URL:            req.URL,
 				WaitFor:        req.WaitFor,
 				WaitSelector:   req.WaitSelector,
@@ -361,7 +361,7 @@ func (h *Handlers) HandleNavigate(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, 200, map[string]any{"tabId": resolvedTabID, "url": navURL, "title": title, "route": navRoute})
 }
 
-type navigateChromeOptions struct {
+type navigateBrowserOptions struct {
 	URL            string
 	WaitFor        string
 	WaitSelector   string
@@ -375,7 +375,7 @@ type navigateChromeOptions struct {
 	MaxRedirects   int
 }
 
-func (h *Handlers) navigateNewTabChrome(w http.ResponseWriter, r *http.Request, opts navigateChromeOptions) {
+func (h *Handlers) navigateNewTabBrowser(w http.ResponseWriter, r *http.Request, opts navigateBrowserOptions) {
 	// Create a blank tab first so the requested URL becomes the first
 	// real history entry.
 	newTabID, newCtx, _, err := h.Bridge.CreateTab("")

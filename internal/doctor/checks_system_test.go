@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	_ "github.com/pinchtab/pinchtab/internal/browsers/all" // register browser providers for DiscoverChromeBinary
+	_ "github.com/pinchtab/pinchtab/internal/browsers/all" // register browser providers for DiscoverBrowserBinary
 	"github.com/pinchtab/pinchtab/internal/config"
 )
 

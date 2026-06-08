@@ -198,8 +198,8 @@ func ValidateFileConfig(fc *FileConfig) []error {
 		}
 	}
 
-	if fc.Browser.ChromeExtraFlags != "" {
-		errs = append(errs, validateChromeExtraFlags(fc.Browser.ChromeExtraFlags)...)
+	if fc.Browser.BrowserExtraFlags != "" {
+		errs = append(errs, validateBrowserExtraFlags(fc.Browser.BrowserExtraFlags)...)
 	}
 
 	// IDPI validation

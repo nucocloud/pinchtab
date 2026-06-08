@@ -98,7 +98,7 @@ func (m *failMockBridge) ListTargets() ([]bridge.TabTarget, error) {
 	return nil, fmt.Errorf("list targets failed")
 }
 
-func (m *failMockBridge) EnsureChrome(cfg *config.RuntimeConfig) error {
+func (m *failMockBridge) EnsureBrowser(cfg *config.RuntimeConfig) error {
 	return nil
 }
 

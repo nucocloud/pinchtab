@@ -16,10 +16,10 @@ func fakeOrch(cfg *config.RuntimeConfig) *Orchestrator {
 
 func runtimeCfgWithTargets() *config.RuntimeConfig {
 	return &config.RuntimeConfig{
-		Port:             "9867",
-		DefaultBrowser:   config.BrowserChrome,
-		ChromeBinary:     "/global/chrome",
-		ChromeExtraFlags: "--global-flag",
+		Port:              "9867",
+		DefaultBrowser:    config.BrowserChrome,
+		BrowserBinary:     "/global/chrome",
+		BrowserExtraFlags: "--global-flag",
 		Cloak: config.CloakBrowserRuntimeConfig{
 			FingerprintSeed: "global-seed",
 			Platform:        "linux",
@@ -57,11 +57,11 @@ func TestBuildChildFileConfig_TargetSelectedLaunchPromotesTargetBlock(t *testing
 	if fc.Browsers.Default != config.BrowserCloak {
 		t.Errorf("Browsers.Default = %q, want cloak", fc.Browsers.Default)
 	}
-	if fc.Browser.ChromeBinary != "/opt/cloak/cloakbrowser" {
-		t.Errorf("Browser.ChromeBinary = %q, want /opt/cloak/cloakbrowser", fc.Browser.ChromeBinary)
+	if fc.Browser.BrowserBinary != "/opt/cloak/cloakbrowser" {
+		t.Errorf("Browser.BrowserBinary = %q, want /opt/cloak/cloakbrowser", fc.Browser.BrowserBinary)
 	}
-	if fc.Browser.ChromeExtraFlags != "--target-flag" {
-		t.Errorf("Browser.ChromeExtraFlags = %q, want --target-flag", fc.Browser.ChromeExtraFlags)
+	if fc.Browser.BrowserExtraFlags != "--target-flag" {
+		t.Errorf("Browser.BrowserExtraFlags = %q, want --target-flag", fc.Browser.BrowserExtraFlags)
 	}
 	if fc.Browser.Cloak.FingerprintSeed != "target-seed" {
 		t.Errorf("Cloak.FingerprintSeed = %q, want target-seed", fc.Browser.Cloak.FingerprintSeed)
@@ -73,7 +73,7 @@ func TestBuildChildFileConfig_TargetSelectedLaunchPromotesTargetBlock(t *testing
 		t.Errorf("Cloak.Platform = %q, want preserved linux", fc.Browser.Cloak.Platform)
 	}
 	if cfg.DefaultBrowser != config.BrowserChrome ||
-		cfg.ChromeBinary != "/global/chrome" {
+		cfg.BrowserBinary != "/global/chrome" {
 		t.Errorf("runtime cfg mutated by override: %+v", cfg)
 	}
 }
@@ -86,20 +86,20 @@ func TestBuildChildFileConfig_NoTargetSelected_UsesGlobalFields(t *testing.T) {
 	if fc.Browsers.Default != config.BrowserChrome {
 		t.Errorf("Browsers.Default = %q, want chrome (global)", fc.Browsers.Default)
 	}
-	if fc.Browser.ChromeBinary != "/global/chrome" {
-		t.Errorf("Browser.ChromeBinary = %q, want /global/chrome", fc.Browser.ChromeBinary)
+	if fc.Browser.BrowserBinary != "/global/chrome" {
+		t.Errorf("Browser.BrowserBinary = %q, want /global/chrome", fc.Browser.BrowserBinary)
 	}
-	if fc.Browser.ChromeExtraFlags != "--global-flag" {
-		t.Errorf("Browser.ChromeExtraFlags = %q, want --global-flag", fc.Browser.ChromeExtraFlags)
+	if fc.Browser.BrowserExtraFlags != "--global-flag" {
+		t.Errorf("Browser.BrowserExtraFlags = %q, want --global-flag", fc.Browser.BrowserExtraFlags)
 	}
 }
 
 func TestBuildChildFileConfig_LegacyConfigByteStable(t *testing.T) {
 	cfg := &config.RuntimeConfig{
-		Port:             "9867",
-		DefaultBrowser:   config.BrowserChrome,
-		ChromeBinary:     "/usr/bin/chrome",
-		ChromeExtraFlags: "--flag",
+		Port:              "9867",
+		DefaultBrowser:    config.BrowserChrome,
+		BrowserBinary:     "/usr/bin/chrome",
+		BrowserExtraFlags: "--flag",
 	}
 	o := fakeOrch(cfg)
 
