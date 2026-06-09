@@ -241,8 +241,8 @@ if [ -n "$DEFAULT_INST_ID" ] && [ "$DEFAULT_INST_ID" != "null" ]; then
 
   assert_instance_logs_poll \
     "$DEFAULT_INST_ID" \
-    "chrome initialized successfully" \
-    "default instance chrome initialized"
+    "browser initialized successfully" \
+    "default instance browser initialized"
 fi
 
 if [ $DEFAULT_LOG_PASS -ne 0 ]; then

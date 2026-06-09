@@ -46,11 +46,11 @@ const (
 // transparent ghost-chrome routing. Lite tabs are lazily escalated to
 // Chrome when Chrome-only operations are requested.
 type BridgeProxy struct {
-	chrome       ChromeBridge         // underlying Chrome bridge (all unhandled methods forwarded here)
-	lite         *staticfetch.Browser // static fetch browser (may be nil → pure passthrough)
-	ensureBrowser func() error        // ensures the browser runtime is running before escalation
-	tabMap       tabMapping           // lite tabID → Chrome tabID
-	escalationMu sync.Map             // lite tabID → *sync.Mutex (serializes per-tab escalation)
+	chrome        ChromeBridge         // underlying Chrome bridge (all unhandled methods forwarded here)
+	lite          *staticfetch.Browser // static fetch browser (may be nil → pure passthrough)
+	ensureBrowser func() error         // ensures the browser runtime is running before escalation
+	tabMap        tabMapping           // lite tabID → Chrome tabID
+	escalationMu  sync.Map             // lite tabID → *sync.Mutex (serializes per-tab escalation)
 }
 
 // NewBridgeProxy creates a BridgeProxy that transparently routes between
@@ -59,8 +59,8 @@ type BridgeProxy struct {
 // call the bridge browser-init path with the appropriate config.
 func NewBridgeProxy(chrome ChromeBridge, lite *staticfetch.Browser, ensureBrowser func() error) *BridgeProxy {
 	return &BridgeProxy{
-		chrome:       chrome,
-		lite:         lite,
+		chrome:        chrome,
+		lite:          lite,
 		ensureBrowser: ensureBrowser,
 	}
 }

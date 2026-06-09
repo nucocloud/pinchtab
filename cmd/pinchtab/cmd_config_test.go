@@ -105,8 +105,8 @@ func TestConfigSetAllowsDashPrefixedValue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadFileConfig() error = %v", err)
 	}
-	if saved.Browser.ChromeExtraFlags != "--disable-gpu --ash-no-nudges" {
-		t.Fatalf("ChromeExtraFlags = %q, want %q", saved.Browser.ChromeExtraFlags, "--disable-gpu --ash-no-nudges")
+	if saved.Browser.BrowserExtraFlags != "--disable-gpu --ash-no-nudges" {
+		t.Fatalf("BrowserExtraFlags = %q, want %q", saved.Browser.BrowserExtraFlags, "--disable-gpu --ash-no-nudges")
 	}
 }
 
@@ -140,8 +140,8 @@ func TestConfigSetRejectsUnsafeChromeExtraFlags(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadFileConfig() error = %v", err)
 	}
-	if saved.Browser.ChromeExtraFlags != "" {
-		t.Fatalf("ChromeExtraFlags = %q, want empty string after declining unsafe save", saved.Browser.ChromeExtraFlags)
+	if saved.Browser.BrowserExtraFlags != "" {
+		t.Fatalf("BrowserExtraFlags = %q, want empty string after declining unsafe save", saved.Browser.BrowserExtraFlags)
 	}
 }
 

@@ -217,7 +217,7 @@ func TestHandleTabs_CurrentTrackedTabIsReturnedFirst(t *testing.T) {
 // TestHandleHealth_EnsureBrowserFailure verifies /health returns 503 when browser initialization fails
 func TestHandleHealth_EnsureBrowserFailure(t *testing.T) {
 	mockBridge := &MockBridge{
-		targets:            []bridge.TabTarget{},
+		targets:             []bridge.TabTarget{},
 		ensureBrowserErr:    "failed to start browser: connection refused",
 		ensureBrowserCalled: false,
 	}
@@ -309,13 +309,13 @@ func contains(s, substr string) bool {
 
 // MockBridge is a test implementation of the BridgeAPI interface
 type MockBridge struct {
-	targets            []bridge.TabTarget
-	listTargetsErr     string
+	targets             []bridge.TabTarget
+	listTargetsErr      string
 	ensureBrowserCalled bool
 	ensureBrowserErr    string
-	currentTabID       string
-	draining           bool
-	retryAfter         time.Duration
+	currentTabID        string
+	draining            bool
+	retryAfter          time.Duration
 }
 
 func (m *MockBridge) ListTargets() ([]bridge.TabTarget, error) {

@@ -7,7 +7,9 @@ import (
 	"testing"
 
 	"github.com/pinchtab/pinchtab/internal/browsers"
-	_ "github.com/pinchtab/pinchtab/internal/browsers/all"
+	_ "github.com/pinchtab/pinchtab/internal/browsers/chrome"
+	_ "github.com/pinchtab/pinchtab/internal/browsers/cloak"
+	_ "github.com/pinchtab/pinchtab/internal/browsers/ghostchrome"
 )
 
 func TestValidateFileConfig_Valid(t *testing.T) {

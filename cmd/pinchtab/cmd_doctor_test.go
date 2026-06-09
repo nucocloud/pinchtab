@@ -74,7 +74,7 @@ func TestRunDoctorReturnsUsageErrorWithoutMutatingCheckFlag(t *testing.T) {
 func TestRunDoctorReturnsFailureCodeWithoutExiting(t *testing.T) {
 	missingBinary := filepath.Join(t.TempDir(), "missing-browser")
 	writeDoctorTestConfig(t, func(fc *config.FileConfig) {
-		fc.Browser.ChromeBinary = missingBinary
+		fc.Browser.BrowserBinary = missingBinary
 	})
 	restore := setDoctorGlobals("binary_exists", false)
 	t.Cleanup(restore)

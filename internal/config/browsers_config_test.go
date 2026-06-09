@@ -7,7 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	_ "github.com/pinchtab/pinchtab/internal/browsers/all"
+	_ "github.com/pinchtab/pinchtab/internal/browsers/chrome"
+	_ "github.com/pinchtab/pinchtab/internal/browsers/cloak"
+	_ "github.com/pinchtab/pinchtab/internal/browsers/ghostchrome"
 )
 
 // --- Validation tests ---

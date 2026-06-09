@@ -218,7 +218,7 @@ func (h *Handlers) HandleCapture(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		opts.ScopeBackendNodeID = nodeID
-			clip, cErr := bridge.ScreenshotClipForNode(tCtx, nodeID)
+		clip, cErr := bridge.ScreenshotClipForNode(tCtx, nodeID)
 		if cErr != nil {
 			httpx.Error(w, 500, fmt.Errorf("selector clip: %w", cErr))
 			return

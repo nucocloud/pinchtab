@@ -25,9 +25,9 @@ type mockBridge struct {
 	lastErrorLimit    int
 	fingerprintTabs   map[string]bool
 	frameScopes       map[string]bridge.FrameScope
-	ensureBrowserErr   error
-	ensureBrowserCall  int
-	ensureBrowserCfg   *config.RuntimeConfig
+	ensureBrowserErr  error
+	ensureBrowserCall int
+	ensureBrowserCfg  *config.RuntimeConfig
 	dialogManager     *bridge.DialogManager
 	executeActionErr  error
 	autoCloseArmed    []string

@@ -529,13 +529,3 @@ func cryptoRandSeed() int64 {
 	}
 	return n.Int64()
 }
-
-// defaultBrowserToLaunchMode maps the DefaultBrowser identifier to the appropriate
-// LaunchMode. ghost-chrome uses LaunchModeAuto; everything else (chrome, cloak, ...)
-// uses LaunchModeChrome.
-func defaultBrowserToLaunchMode(defaultBrowser string) browsers.LaunchMode {
-	if config.NormalizeBrowser(defaultBrowser) == config.BrowserGhostChrome {
-		return browsers.LaunchModeAuto
-	}
-	return browsers.LaunchModeChrome
-}

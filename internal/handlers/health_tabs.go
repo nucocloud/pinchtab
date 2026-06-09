@@ -32,9 +32,9 @@ func (h *Handlers) HandleHealth(w http.ResponseWriter, r *http.Request) {
 		if h.writeBridgeUnavailable(w, err) {
 			return
 		}
-			httpx.JSON(w, 503, map[string]any{"status": "error", "reason": fmt.Sprintf("browser initialization failed: %v", err)})
-			return
-		}
+		httpx.JSON(w, 503, map[string]any{"status": "error", "reason": fmt.Sprintf("browser initialization failed: %v", err)})
+		return
+	}
 
 	targets, err := h.Bridge.ListTargets()
 	if err != nil {

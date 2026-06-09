@@ -262,8 +262,8 @@ func (h *Handlers) HandleNavigate(w http.ResponseWriter, r *http.Request) {
 		blockPatterns = bridge.CombineBlockPatterns(blockPatterns, bridge.ImageBlockPatterns)
 	}
 
-		if req.NewTab {
-			h.navigateNewTabBrowser(w, r, navigateBrowserOptions{
+	if req.NewTab {
+		h.navigateNewTabBrowser(w, r, navigateBrowserOptions{
 			URL:            req.URL,
 			WaitFor:        req.WaitFor,
 			WaitSelector:   req.WaitSelector,
@@ -281,8 +281,8 @@ func (h *Handlers) HandleNavigate(w http.ResponseWriter, r *http.Request) {
 
 	ctx, resolvedTabID, err := h.tabContext(r, req.TabID)
 	if err != nil {
-			if scopedCurrentForNavigate {
-				h.navigateNewTabBrowser(w, r, navigateBrowserOptions{
+		if scopedCurrentForNavigate {
+			h.navigateNewTabBrowser(w, r, navigateBrowserOptions{
 				URL:            req.URL,
 				WaitFor:        req.WaitFor,
 				WaitSelector:   req.WaitSelector,
