@@ -59,7 +59,7 @@ tests/e2e/results/*
 tests/benchmark/results/
 tests/tools/browserbench/results/
 /runner
-tests/tools/scripts/runner
+tests/tools/scripts/.runner.bin
 skills/agent-browser
 tests/stealth-score/results/
 # Per-lane ephemeral state written by up.sh / setup scripts (provider configs,
