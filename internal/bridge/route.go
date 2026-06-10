@@ -190,6 +190,13 @@ type RouteManager struct {
 	mu               sync.Mutex
 	perTab           map[string]*tabRouteState
 	allowedDomainsFn func() []string // nil ⇒ no allowlist enforcement
+
+	// Fetch-domain coordination with proxy auth (see Bridge.tabSetup): while
+	// rules own a tab's Fetch domain, the proxy-auth listener's blanket
+	// ContinueRequest is suppressed and the route enable must keep
+	// handleAuthRequests so challenges stay answerable.
+	proxyAuthActive    func() bool                // nil ⇒ no proxy auth configured
+	setPauseSuppressed func(tabID string, v bool) // nil ⇒ no coordination
 }
 
 // tabRouteState holds per-tab interception state. listenCtx, when non-nil, is
@@ -209,6 +216,27 @@ type tabRouteState struct {
 // Pass nil to disable that check.
 func NewRouteManager(allowedDomainsFn func() []string) *RouteManager {
 	return &RouteManager{perTab: make(map[string]*tabRouteState), allowedDomainsFn: allowedDomainsFn}
+}
+
+// SetFetchAuthCoordination wires the proxy-auth coordination callbacks: the
+// gate reporting whether proxy credentials are configured, and the per-tab
+// pause-suppression setter on the owning Bridge.
+func (rm *RouteManager) SetFetchAuthCoordination(proxyAuthActive func() bool, setPauseSuppressed func(tabID string, v bool)) {
+	if rm == nil {
+		return
+	}
+	rm.proxyAuthActive = proxyAuthActive
+	rm.setPauseSuppressed = setPauseSuppressed
+}
+
+func (rm *RouteManager) proxyAuthOn() bool {
+	return rm.proxyAuthActive != nil && rm.proxyAuthActive()
+}
+
+func (rm *RouteManager) suppressPause(tabID string, v bool) {
+	if rm.setPauseSuppressed != nil {
+		rm.setPauseSuppressed(tabID, v)
+	}
 }
 
 // MaxFulfillBodyBytes caps the size of a fulfill rule's response body. The
@@ -351,11 +379,18 @@ func (rm *RouteManager) AddRule(ctx context.Context, tabID string, rule RouteRul
 		rm.registerListener(listenCtx, tabID)
 	}
 	if needEnable {
+		// Suppress the proxy-auth listener's blanket continue BEFORE rules
+		// take over dispatch, and keep handleAuthRequests on so proxy
+		// challenges stay answerable while routes own the Fetch domain.
+		rm.suppressPause(tabID, true)
+		handleAuth := rm.proxyAuthOn()
 		if err := chromedp.Run(ctx, chromedp.ActionFunc(func(c context.Context) error {
 			return fetch.Enable().
 				WithPatterns([]*fetch.RequestPattern{{URLPattern: "*"}}).
+				WithHandleAuthRequests(handleAuth).
 				Do(c)
 		})); err != nil {
+			rm.suppressPause(tabID, false)
 			rm.rollbackAddRule(tabID, isNewState, needRegister, priorRules, priorListenCtx, priorListenCancel, priorFetchEnabled)
 			return fmt.Errorf("fetch.enable: %w", err)
 		}
@@ -442,11 +477,26 @@ func (rm *RouteManager) Remove(ctx context.Context, tabID string, pattern string
 
 	if teardown {
 		if wasEnabled {
-			if err := chromedp.Run(ctx, chromedp.ActionFunc(func(c context.Context) error {
-				return fetch.Disable().Do(c)
-			})); err != nil {
-				slog.Debug("fetch.disable failed during route teardown", "tabId", tabID, "err", err)
+			if rm.proxyAuthOn() {
+				// Hand the Fetch domain back to proxy auth instead of
+				// disabling it (which would kill auth handling too).
+				// Unsuppress first so no paused request goes unanswered.
+				rm.suppressPause(tabID, false)
+				if err := chromedp.Run(ctx, chromedp.ActionFunc(func(c context.Context) error {
+					return fetch.Enable().WithHandleAuthRequests(true).Do(c)
+				})); err != nil {
+					slog.Debug("fetch re-enable for proxy auth failed during route teardown", "tabId", tabID, "err", err)
+				}
+			} else {
+				if err := chromedp.Run(ctx, chromedp.ActionFunc(func(c context.Context) error {
+					return fetch.Disable().Do(c)
+				})); err != nil {
+					slog.Debug("fetch.disable failed during route teardown", "tabId", tabID, "err", err)
+				}
+				rm.suppressPause(tabID, false)
 			}
+		} else {
+			rm.suppressPause(tabID, false)
 		}
 		if cancel != nil {
 			cancel()
@@ -475,6 +525,10 @@ func (rm *RouteManager) RemoveTab(tabID string) {
 	cancel := state.listenCancel
 	delete(rm.perTab, tabID)
 	rm.mu.Unlock()
+	// Hand pause dispatch back even though the Bridge drops the whole flag in
+	// its own onTabRemoved hook right after — RemoveTab must stay correct on
+	// its own, not by courtesy of the caller's cleanup ordering.
+	rm.suppressPause(tabID, false)
 	if cancel != nil {
 		cancel()
 	}

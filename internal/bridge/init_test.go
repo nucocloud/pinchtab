@@ -44,7 +44,6 @@ func TestBuildBrowserArgsHeadlessUsesSoftwareRendering(t *testing.T) {
 
 	for _, want := range []string{
 		"--headless=new",
-		"--disable-gpu",
 		"--disable-vulkan",
 		"--use-angle=swiftshader",
 		"--enable-unsafe-swiftshader",
@@ -52,6 +51,11 @@ func TestBuildBrowserArgsHeadlessUsesSoftwareRendering(t *testing.T) {
 		if !slices.Contains(args, want) {
 			t.Fatalf("missing headless browser arg %q in %v", want, args)
 		}
+	}
+	// --disable-gpu would remove the compositor backend that the swiftshader
+	// flags above provide; capture/print CDP calls then hang.
+	if slices.Contains(args, "--disable-gpu") {
+		t.Fatalf("headless args must not contain --disable-gpu: %v", args)
 	}
 }
 

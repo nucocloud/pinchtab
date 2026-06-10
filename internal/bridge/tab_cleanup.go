@@ -132,6 +132,9 @@ func (tm *TabManager) purgeTrackedTabState(tabID, cdpTargetID string) bool {
 	if tm.routeMgr != nil {
 		tm.routeMgr.RemoveTab(resolvedTabID)
 	}
+	if tm.onTabRemoved != nil {
+		tm.onTabRemoved(resolvedTabID)
+	}
 	// Notify listeners (e.g. session persistence) that a tab disappeared,
 	// regardless of whether the trigger was a deliberate CloseTab, an eviction,
 	// the auto-close lifecycle timer, or Chrome reporting the target gone

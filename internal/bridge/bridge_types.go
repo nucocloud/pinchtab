@@ -2,6 +2,7 @@ package bridge
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"time"
 
@@ -133,6 +134,27 @@ type NavigateParams struct {
 	TrustedProxyCIDRs  []net.IPNet
 	TrustedResolvedIPs []net.IP
 	IDPIGuard          idpi.Guard
+	// NoEscalate makes a static-first bridge return *StaticEscalateError
+	// instead of internally escalating to Chrome. Handlers use it to defer
+	// the Chrome launch until the static path has proven insufficient.
+	NoEscalate bool
+	// SkipStatic bypasses the static-first attempt entirely (the handler
+	// already ran it via NoEscalate and is escalating).
+	SkipStatic bool
+}
+
+// StaticEscalateError signals that the static-first path cannot serve a
+// navigate (NavigateParams.NoEscalate mode) and the caller should launch
+// Chrome and retry with SkipStatic. Route carries the static attempt's
+// metadata so the caller can merge it with the Chrome attempt.
+type StaticEscalateError struct {
+	Quality int
+	Reason  string
+	Route   *browserops.RouteMetadata
+}
+
+func (e *StaticEscalateError) Error() string {
+	return fmt.Sprintf("static path cannot serve this navigate (quality %d): %s", e.Quality, e.Reason)
 }
 
 // ContentParams carries per-request IDPI policy for content operations.

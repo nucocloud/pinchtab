@@ -1,9 +1,12 @@
 package bridge
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
+
+	"github.com/chromedp/chromedp"
 )
 
 func TestGlobMatch(t *testing.T) {
@@ -698,5 +701,52 @@ func TestRouteManager_AddRule_Validation(t *testing.T) {
 	}
 	if err := rm.AddRule(t.Context(), "tab1", RouteRule{Pattern: "x", Action: "bogus"}); err == nil {
 		t.Error("expected error for invalid action")
+	}
+}
+
+// M16: route teardown must release the proxy-auth pause suppression even
+// when Fetch was never enabled (no CDP call path).
+func TestRouteManager_TeardownReleasesPauseSuppression(t *testing.T) {
+	rm := NewRouteManager(nil)
+	var calls []string
+	rm.SetFetchAuthCoordination(
+		func() bool { return true },
+		func(tabID string, v bool) { calls = append(calls, fmt.Sprintf("%s=%v", tabID, v)) },
+	)
+
+	rm.mu.Lock()
+	rm.perTab["tab1"] = &tabRouteState{rules: []RouteRule{
+		{Pattern: "*.png", Action: RouteActionAbort},
+	}}
+	rm.mu.Unlock()
+
+	if _, err := rm.Remove(t.Context(), "tab1", ""); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	if len(calls) != 1 || calls[0] != "tab1=false" {
+		t.Fatalf("teardown should unsuppress exactly once, got %v", calls)
+	}
+}
+
+// M16: a failed Fetch enable must roll the suppression back so the
+// proxy-auth listener resumes continuing paused requests.
+func TestRouteManager_FailedEnableRollsBackSuppression(t *testing.T) {
+	rm := NewRouteManager(nil)
+	var calls []string
+	rm.SetFetchAuthCoordination(
+		func() bool { return true },
+		func(tabID string, v bool) { calls = append(calls, fmt.Sprintf("%s=%v", tabID, v)) },
+	)
+
+	// A canceled chromedp context makes fetch.Enable fail deterministically.
+	parent, cancel := chromedp.NewContext(context.Background())
+	cancel()
+
+	err := rm.AddRule(parent, "tab1", RouteRule{Pattern: "*.png", Action: RouteActionAbort})
+	if err == nil {
+		t.Fatal("expected enable failure on dead chromedp context")
+	}
+	if len(calls) != 2 || calls[0] != "tab1=true" || calls[1] != "tab1=false" {
+		t.Fatalf("expected suppress-then-rollback, got %v", calls)
 	}
 }

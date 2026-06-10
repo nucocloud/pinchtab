@@ -316,3 +316,77 @@ func TestIsProfileOwnedByRunningPinchtabKeepsLockWhenChromeUsesProfile(t *testin
 		t.Fatalf("expected profile with active chrome to stay locked, got owned=%v pid=%d", owned, pid)
 	}
 }
+
+// M11 regression: quarantine must wait for the dying browser to release the
+// profile before renaming, proceed anyway after the bounded wait times out,
+// and recreate the dir with 0700.
+func TestQuarantineCorruptedProfile_WaitsForBrowserExit(t *testing.T) {
+	profileDir := filepath.Join(t.TempDir(), "profile")
+	if err := os.MkdirAll(profileDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	oldFind := findChromePIDsByProfileDirFunc
+	oldWait := quarantineExitWait
+	oldPoll := chromeExitPollInterval
+	quarantineExitWait = 20 * time.Millisecond
+	chromeExitPollInterval = 5 * time.Millisecond
+	calls := 0
+	findChromePIDsByProfileDirFunc = func(dir string) []int {
+		calls++
+		if calls < 2 {
+			return []int{4242} // first poll: browser still holds the profile
+		}
+		return nil
+	}
+	t.Cleanup(func() {
+		findChromePIDsByProfileDirFunc = oldFind
+		quarantineExitWait = oldWait
+		chromeExitPollInterval = oldPoll
+	})
+
+	quarantinePath, err := quarantineCorruptedProfile(profileDir)
+	if err != nil {
+		t.Fatalf("quarantineCorruptedProfile: %v", err)
+	}
+	if calls < 2 {
+		t.Fatalf("expected quarantine to poll for browser exit, polls=%d", calls)
+	}
+	if quarantinePath == "" {
+		t.Fatal("expected quarantine to proceed after the browser exited")
+	}
+	info, err := os.Stat(profileDir)
+	if err != nil {
+		t.Fatalf("recreated profile dir missing: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o700 {
+		t.Fatalf("recreated profile dir perms = %o, want 0700", perm)
+	}
+}
+
+func TestQuarantineCorruptedProfile_ProceedsAfterWaitTimeout(t *testing.T) {
+	profileDir := filepath.Join(t.TempDir(), "profile")
+	if err := os.MkdirAll(profileDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	oldFind := findChromePIDsByProfileDirFunc
+	oldWait := quarantineExitWait
+	oldPoll := chromeExitPollInterval
+	quarantineExitWait = 10 * time.Millisecond
+	chromeExitPollInterval = 2 * time.Millisecond
+	findChromePIDsByProfileDirFunc = func(dir string) []int { return []int{4242} } // never exits
+	t.Cleanup(func() {
+		findChromePIDsByProfileDirFunc = oldFind
+		quarantineExitWait = oldWait
+		chromeExitPollInterval = oldPoll
+	})
+
+	quarantinePath, err := quarantineCorruptedProfile(profileDir)
+	if err != nil {
+		t.Fatalf("quarantine should proceed (with a warning) after the wait times out: %v", err)
+	}
+	if quarantinePath == "" {
+		t.Fatal("expected a quarantine path despite the timed-out wait")
+	}
+}

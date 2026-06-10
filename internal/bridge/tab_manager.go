@@ -15,7 +15,7 @@ import (
 	"github.com/pinchtab/pinchtab/internal/ids"
 )
 
-type TabSetupFunc func(ctx context.Context)
+type TabSetupFunc func(ctx context.Context, tabID string)
 
 type TabManager struct {
 	browserCtx   context.Context
@@ -30,6 +30,7 @@ type TabManager struct {
 	dialogMgr    *DialogManager
 	logStore     *ConsoleLogStore
 	routeMgr     *RouteManager
+	onTabRemoved func(tabID string)
 	netMonitor   *NetworkMonitor
 	currentTab   string // ID of the most recently used tab
 	executor     *TabExecutor
@@ -89,6 +90,12 @@ func (tm *TabManager) SetNetworkMonitor(nm *NetworkMonitor) {
 // network-monitor / log-store / executor cleanup hooks in tab_cleanup.go).
 func (tm *TabManager) SetRouteManager(rm *RouteManager) {
 	tm.routeMgr = rm
+}
+
+// SetOnTabRemoved registers a per-tab cleanup callback fired alongside the
+// route/log/executor cleanup whenever a tracked tab is removed.
+func (tm *TabManager) SetOnTabRemoved(fn func(tabID string)) {
+	tm.onTabRemoved = fn
 }
 
 // browserExecutorContext returns a context bound to the top-level browser
@@ -157,16 +164,16 @@ func (tm *TabManager) CreateTab(url string) (string, context.Context, context.Ca
 		chromedp.WithTargetID(targetID),
 	)
 
+	rawCDPID := string(targetID)
+	tabID := tm.idMgr.TabIDFromCDPTarget(rawCDPID)
+
 	if tm.onTabSetup != nil {
-		tm.onTabSetup(ctx)
+		tm.onTabSetup(ctx, tabID)
 	}
 
 	if blockPatterns := tm.tabBlockPatterns(); len(blockPatterns) > 0 {
 		_ = SetResourceBlocking(ctx, blockPatterns)
 	}
-
-	rawCDPID := string(targetID)
-	tabID := tm.idMgr.TabIDFromCDPTarget(rawCDPID)
 
 	// Start network capture before navigation so CDP events are captured.
 	if tm.netMonitor != nil {

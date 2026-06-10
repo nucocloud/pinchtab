@@ -14,6 +14,7 @@ import (
 	"github.com/chromedp/cdproto/page"
 	cdpruntime "github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
+	bridgeruntime "github.com/pinchtab/pinchtab/internal/bridge/runtime"
 	"github.com/pinchtab/pinchtab/internal/browsers"
 	"github.com/pinchtab/pinchtab/internal/browsers/chrome"
 	"github.com/pinchtab/pinchtab/internal/config"
@@ -82,7 +83,19 @@ func (b *Bridge) applyTargetStealth(ctx context.Context) {
 	}
 }
 
-func (b *Bridge) tabSetup(ctx context.Context) {
+func (b *Bridge) tabSetup(ctx context.Context, tabID string) {
+	// Fetch auth events are session-scoped, so each new tab needs its own
+	// proxy-auth listener + Fetch enablement; the initial tab is covered by
+	// the launch/attach init paths. The suppression flag quiets this
+	// listener's request-pause continue while RouteManager rules or the
+	// credentials handler own dispatch on the tab.
+	if b.Config != nil {
+		if err := bridgeruntime.EnableProxyAuth(ctx, b.Config.Proxy, b.fetchPauseSuppression(tabID)); err != nil {
+			slog.Warn("per-tab proxy auth setup failed", "err", err)
+		} else if bridgeruntime.ProxyAuthEnabled(b.Config.Proxy) {
+			slog.Debug("per-tab proxy auth enabled", "tab", tabID)
+		}
+	}
 	if !config.PinchTabStealthDefaultsDisabled(b.Config) {
 		b.applyTargetStealth(ctx)
 		b.installWorkerStealthParity(ctx)
@@ -121,6 +134,17 @@ func (b *Bridge) ensureStealthBundle() {
 func (b *Bridge) StealthStatus() *stealth.Status {
 	b.ensureStealthBundle()
 	return stealth.StatusFromBundle(b.StealthBundle, b.Config, b.stealthLaunchMode)
+}
+
+// RunningBrowser reports the provider of the live browser process, or
+// ("", false) when no browser is initialized (or its context died).
+func (b *Bridge) RunningBrowser() (string, bool) {
+	b.initMu.Lock()
+	defer b.initMu.Unlock()
+	if !b.initialized || b.BrowserCtx == nil || b.BrowserCtx.Err() != nil || b.Config == nil {
+		return "", false
+	}
+	return b.Config.DefaultBrowser, true
 }
 
 func (b *Bridge) EnsureBrowser(cfg *config.RuntimeConfig) error {

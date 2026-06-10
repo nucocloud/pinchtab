@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/chromedp/chromedp"
+	bridgeruntime "github.com/pinchtab/pinchtab/internal/bridge/runtime"
 	"github.com/pinchtab/pinchtab/internal/browsers"
 	"github.com/pinchtab/pinchtab/internal/config"
 	"github.com/pinchtab/pinchtab/internal/ids"
@@ -33,6 +35,12 @@ type Bridge struct {
 	// Network route interception (Fetch domain). Lazy: enables CDP fetch
 	// only when at least one rule is active for a tab.
 	routeMgr *RouteManager
+
+	// fetchPauseMu guards fetchPauseFlags: per-tab suppression of the
+	// proxy-auth listener's blanket ContinueRequest while another Fetch
+	// user (route rules, credentials handler) owns request-pause dispatch.
+	fetchPauseMu    sync.Mutex
+	fetchPauseFlags map[string]*atomic.Bool
 
 	fingerprintMu        sync.RWMutex
 	fingerprintOverlays  map[string]bool
@@ -90,6 +98,10 @@ func New(allocCtx, browserCtx context.Context, cfg *config.RuntimeConfig) *Bridg
 		}
 		return b.Config.AllowedDomains
 	})
+	b.routeMgr.SetFetchAuthCoordination(
+		func() bool { return b.Config != nil && bridgeruntime.ProxyAuthEnabled(b.Config.Proxy) },
+		b.SetFetchPauseSuppressed,
+	)
 	b.ensureStealthBundle()
 	b.Dialogs = NewDialogManager()
 	if cfg != nil && browserCtx != nil {
@@ -98,6 +110,7 @@ func New(allocCtx, browserCtx context.Context, cfg *config.RuntimeConfig) *Bridg
 		b.SetDialogManager(b.Dialogs)
 		b.SetNetworkMonitor(b.netMonitor)
 		b.SetRouteManager(b.routeMgr)
+		b.SetOnTabRemoved(b.dropFetchPauseSuppression)
 		if !b.quietStealthObservers() {
 			b.StartBrowserGuards()
 		}
@@ -105,6 +118,42 @@ func New(allocCtx, browserCtx context.Context, cfg *config.RuntimeConfig) *Bridg
 	b.Locks = NewLockManager()
 	b.InitActionRegistry()
 	return b
+}
+
+// fetchPauseSuppression returns (creating if needed) the per-tab flag that
+// quiets the proxy-auth listener's request-pause continue while another
+// Fetch user owns dispatch on the tab.
+func (b *Bridge) fetchPauseSuppression(tabID string) *atomic.Bool {
+	if tabID == "" {
+		return nil
+	}
+	b.fetchPauseMu.Lock()
+	defer b.fetchPauseMu.Unlock()
+	if b.fetchPauseFlags == nil {
+		b.fetchPauseFlags = map[string]*atomic.Bool{}
+	}
+	flag, ok := b.fetchPauseFlags[tabID]
+	if !ok {
+		flag = &atomic.Bool{}
+		b.fetchPauseFlags[tabID] = flag
+	}
+	return flag
+}
+
+// SetFetchPauseSuppressed marks whether another Fetch user (route rules, the
+// credentials handler) currently owns request-pause dispatch on the tab.
+func (b *Bridge) SetFetchPauseSuppressed(tabID string, v bool) {
+	if b == nil || tabID == "" {
+		return
+	}
+	b.fetchPauseSuppression(tabID).Store(v)
+}
+
+// dropFetchPauseSuppression releases the per-tab flag when a tab goes away.
+func (b *Bridge) dropFetchPauseSuppression(tabID string) {
+	b.fetchPauseMu.Lock()
+	defer b.fetchPauseMu.Unlock()
+	delete(b.fetchPauseFlags, tabID)
 }
 
 // StartNetworkCapture enables network monitoring for a specific tab.

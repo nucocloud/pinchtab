@@ -2,14 +2,28 @@ package bridge
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/fetch"
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
+	bridgeruntime "github.com/pinchtab/pinchtab/internal/bridge/runtime"
+)
+
+// downloadNavTimeout caps the navigate-and-capture phase of a browser-based
+// download, matching the pre-refactor handler behavior.
+const downloadNavTimeout = 30 * time.Second
+
+// Sentinels for handler-side status mapping via errors.Is. Texts match the
+// historical messages so anything still string-matching keeps working.
+var (
+	ErrDownloadTooLarge = errors.New("download response too large")
+	ErrDownloadTimeout  = errors.New("download timed out")
 )
 
 // DownloadOpts configures a browser-based download.
@@ -46,21 +60,28 @@ func (b *Bridge) DownloadURL(ctx context.Context, dlURL string, opts DownloadOpt
 	tabCtx, tabCancel := chromedp.NewContext(browserCtx)
 	defer tabCancel()
 
-	tCtx, tCancel := context.WithCancel(ctx)
+	// Bound all tab work by the download deadline AND the caller's
+	// cancellation: tCtx derives from tabCtx so chromedp ops keep their
+	// target, and AfterFunc bridges caller disconnect/deadline into tCancel.
+	// The guard listeners below also call tCancel to abort an in-flight
+	// transfer (size cap, blocked remote IP).
+	tCtx, tCancel := context.WithTimeout(tabCtx, downloadNavTimeout)
 	defer tCancel()
+	stop := context.AfterFunc(ctx, tCancel)
+	defer stop()
 
-	// Replace the tab context with one that inherits the caller's deadline.
-	_ = tabCtx // ensure tabCtx stays alive for the chromedp target
+	done := make(chan struct{}, 1)
+	var receivedBytes atomic.Int64
 
+	// mu guards blockedErr and the capture fields, which are written from the
+	// event-dispatch goroutine and read by this goroutine; the done channel
+	// only orders events sent before the read, not stragglers.
+	var mu sync.Mutex
+	var blockedErr error
 	var requestID network.RequestID
 	var responseMIME string
 	var responseStatus int
 	var mainFrameID cdp.FrameID
-	done := make(chan struct{}, 1)
-	var receivedBytes atomic.Int64
-
-	var mu sync.Mutex
-	var blockedErr error
 
 	noteBlocked := func(err error) {
 		mu.Lock()
@@ -76,19 +97,43 @@ func (b *Bridge) DownloadURL(ctx context.Context, dlURL string, opts DownloadOpt
 		return blockedErr
 	}
 
-	if err := chromedp.Run(tabCtx, chromedp.ActionFunc(func(ctx context.Context) error {
-		return fetch.Enable().Do(ctx)
+	isMainRequest := func(id network.RequestID) bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return requestID != "" && id == requestID
+	}
+
+	// The temp tab bypasses TabManager's tabSetup, so proxy auth handling
+	// must be wired here; this listener's EventAuthRequired case answers
+	// the challenges.
+	proxyAuth := b.Config != nil && bridgeruntime.ProxyAuthEnabled(b.Config.Proxy)
+	enableFetch := fetch.Enable()
+	if proxyAuth {
+		enableFetch = enableFetch.WithHandleAuthRequests(true)
+	}
+	if err := chromedp.Run(tCtx, chromedp.ActionFunc(func(ctx context.Context) error {
+		return enableFetch.Do(ctx)
 	})); err != nil {
 		return nil, fmt.Errorf("fetch enable: %w", err)
 	}
+	// Cleanup runs on tabCtx, not tCtx: it must still work after the
+	// download deadline fired.
 	defer func() {
 		_ = chromedp.Run(tabCtx, chromedp.ActionFunc(func(ctx context.Context) error {
 			return fetch.Disable().Do(ctx)
 		}))
 	}()
 
-	chromedp.ListenTarget(tabCtx, func(ev interface{}) {
+	chromedp.ListenTarget(tCtx, func(ev interface{}) {
 		switch e := ev.(type) {
+		case *fetch.EventAuthRequired:
+			if !proxyAuth {
+				return
+			}
+			go func() {
+				resp := bridgeruntime.AuthChallengeResponse(e, b.Config.Proxy.Username, b.Config.Proxy.Password)
+				_ = fetch.ContinueWithAuth(e.RequestID, resp).Do(cdp.WithExecutor(tCtx, chromedp.FromContext(tCtx).Target))
+			}()
 		case *fetch.EventRequestPaused:
 			go func() {
 				reqID := e.RequestID
@@ -100,27 +145,33 @@ func (b *Bridge) DownloadURL(ctx context.Context, dlURL string, opts DownloadOpt
 						case done <- struct{}{}:
 						default:
 						}
-						_ = fetch.FailRequest(reqID, network.ErrorReasonBlockedByClient).Do(cdp.WithExecutor(tabCtx, chromedp.FromContext(tabCtx).Target))
+						_ = fetch.FailRequest(reqID, network.ErrorReasonBlockedByClient).Do(cdp.WithExecutor(tCtx, chromedp.FromContext(tCtx).Target))
 						return
 					}
 				}
-				_ = fetch.ContinueRequest(reqID).Do(cdp.WithExecutor(tabCtx, chromedp.FromContext(tabCtx).Target))
+				_ = fetch.ContinueRequest(reqID).Do(cdp.WithExecutor(tCtx, chromedp.FromContext(tCtx).Target))
 			}()
 		case *network.EventRequestWillBeSent:
 			if e.Type != network.ResourceTypeDocument {
 				return
 			}
+			mu.Lock()
 			if mainFrameID == "" {
 				mainFrameID = e.FrameID
 			}
 			if e.FrameID == mainFrameID {
 				requestID = e.RequestID
 			}
+			mu.Unlock()
 		case *network.EventResponseReceived:
-			if e.RequestID == requestID && requestID != "" {
-				requestID = e.RequestID
+			mu.Lock()
+			match := e.RequestID == requestID && requestID != ""
+			if match {
 				responseMIME = e.Response.MimeType
 				responseStatus = int(e.Response.Status)
+			}
+			mu.Unlock()
+			if match {
 				if opts.IsDomainAllowed != nil && !opts.IsDomainAllowed(e.Response.URL) {
 					if opts.ValidateRemoteIP != nil {
 						if err := opts.ValidateRemoteIP(e.Response.RemoteIPAddress); err != nil {
@@ -136,7 +187,7 @@ func (b *Bridge) DownloadURL(ctx context.Context, dlURL string, opts DownloadOpt
 				}
 				if opts.MaxBytes > 0 && opts.ParseContentLength != nil {
 					if contentLength, ok := opts.ParseContentLength(e.Response.Headers); ok && contentLength > int64(opts.MaxBytes) {
-						noteBlocked(fmt.Errorf("download response too large: received %d bytes, max %d", contentLength, opts.MaxBytes))
+						noteBlocked(fmt.Errorf("%w: received %d bytes, max %d", ErrDownloadTooLarge, contentLength, opts.MaxBytes))
 						select {
 						case done <- struct{}{}:
 						default:
@@ -147,13 +198,13 @@ func (b *Bridge) DownloadURL(ctx context.Context, dlURL string, opts DownloadOpt
 				}
 			}
 		case *network.EventDataReceived:
-			if e.RequestID == requestID && requestID != "" {
+			if isMainRequest(e.RequestID) {
 				chunk := e.EncodedDataLength
 				if chunk <= 0 {
 					chunk = e.DataLength
 				}
 				if opts.MaxBytes > 0 && chunk > 0 && receivedBytes.Add(chunk) > int64(opts.MaxBytes) {
-					noteBlocked(fmt.Errorf("download response too large: received %d bytes, max %d", receivedBytes.Load(), opts.MaxBytes))
+					noteBlocked(fmt.Errorf("%w: received %d bytes, max %d", ErrDownloadTooLarge, receivedBytes.Load(), opts.MaxBytes))
 					select {
 					case done <- struct{}{}:
 					default:
@@ -163,14 +214,14 @@ func (b *Bridge) DownloadURL(ctx context.Context, dlURL string, opts DownloadOpt
 				}
 			}
 		case *network.EventLoadingFinished:
-			if e.RequestID == requestID && requestID != "" {
+			if isMainRequest(e.RequestID) {
 				select {
 				case done <- struct{}{}:
 				default:
 				}
 			}
 		case *network.EventLoadingFailed:
-			if e.RequestID == requestID && requestID != "" {
+			if isMainRequest(e.RequestID) {
 				select {
 				case done <- struct{}{}:
 				default:
@@ -179,14 +230,17 @@ func (b *Bridge) DownloadURL(ctx context.Context, dlURL string, opts DownloadOpt
 		}
 	})
 
-	if err := chromedp.Run(tabCtx, network.Enable()); err != nil {
+	if err := chromedp.Run(tCtx, network.Enable()); err != nil {
 		return nil, fmt.Errorf("network enable: %w", err)
 	}
 
-	navErr := chromedp.Run(tabCtx, chromedp.Navigate(dlURL))
+	navErr := chromedp.Run(tCtx, chromedp.Navigate(dlURL))
 	if navErr != nil {
 		if bErr := getBlockedErr(); bErr != nil {
 			return nil, bErr
+		}
+		if tCtx.Err() != nil {
+			return nil, ErrDownloadTimeout
 		}
 		return nil, navErr
 	}
@@ -197,23 +251,29 @@ func (b *Bridge) DownloadURL(ctx context.Context, dlURL string, opts DownloadOpt
 		if bErr := getBlockedErr(); bErr != nil {
 			return nil, bErr
 		}
-		return nil, fmt.Errorf("download timed out")
+		return nil, ErrDownloadTimeout
 	}
 
 	if bErr := getBlockedErr(); bErr != nil {
 		return nil, bErr
 	}
 
-	if responseStatus >= 400 {
-		return &DownloadResult{StatusCode: responseStatus, MIMEType: responseMIME}, fmt.Errorf("remote server returned HTTP %d", responseStatus)
+	mu.Lock()
+	reqID := requestID
+	respMIME := responseMIME
+	respStatus := responseStatus
+	mu.Unlock()
+
+	if respStatus >= 400 {
+		return &DownloadResult{StatusCode: respStatus, MIMEType: respMIME}, fmt.Errorf("remote server returned HTTP %d", respStatus)
 	}
-	if requestID == "" {
+	if reqID == "" {
 		return nil, fmt.Errorf("download response was not captured")
 	}
 
 	var body []byte
-	if err := chromedp.Run(tabCtx, chromedp.ActionFunc(func(ctx context.Context) error {
-		b, err := network.GetResponseBody(requestID).Do(ctx)
+	if err := chromedp.Run(tCtx, chromedp.ActionFunc(func(ctx context.Context) error {
+		b, err := network.GetResponseBody(reqID).Do(ctx)
 		if err != nil {
 			return err
 		}
@@ -225,7 +285,7 @@ func (b *Bridge) DownloadURL(ctx context.Context, dlURL string, opts DownloadOpt
 
 	return &DownloadResult{
 		Body:       body,
-		MIMEType:   responseMIME,
-		StatusCode: responseStatus,
+		MIMEType:   respMIME,
+		StatusCode: respStatus,
 	}, nil
 }

@@ -38,7 +38,7 @@ func (tm *TabManager) tabBlockPatterns() []string {
 
 func (tm *TabManager) setupManagedTarget(ctx context.Context, tabID, rawCDPID string) bool {
 	if tm.onTabSetup != nil {
-		tm.onTabSetup(ctx)
+		tm.onTabSetup(ctx, tabID)
 	}
 	if blockPatterns := tm.tabBlockPatterns(); len(blockPatterns) > 0 {
 		if err := SetResourceBlocking(ctx, blockPatterns); err != nil {

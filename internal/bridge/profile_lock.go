@@ -124,6 +124,10 @@ func clearStaleProfileLocks(profileDir, errMsg string) (bool, error) {
 	return removed, nil
 }
 
+// quarantineExitWait bounds how long quarantine waits for the dying browser
+// to release the profile before renaming. Var so tests can shrink it.
+var quarantineExitWait = 5 * time.Second
+
 // quarantineCorruptedProfile renames profileDir to "<profileDir>.quarantine-<ts>"
 // and recreates an empty directory at the original path. Used to recover
 // from silent CDP attach failures where CloakBrowser refuses to ingest
@@ -139,11 +143,18 @@ func quarantineCorruptedProfile(profileDir string) (string, error) {
 		}
 		return "", fmt.Errorf("stat profile dir: %w", err)
 	}
+	// The caller cancels chromedp contexts without waiting for the process to
+	// exit; renaming under a still-running browser fails on Windows and lets
+	// the old process keep writing into the quarantined dir on POSIX. On
+	// timeout, proceed anyway — refusing entirely would block recovery.
+	if !waitForChromeExit(profileDir, quarantineExitWait) {
+		slog.Warn("quarantining profile while a browser process may still hold it", "profile", profileDir)
+	}
 	quarantinePath := fmt.Sprintf("%s.quarantine-%d", profileDir, time.Now().Unix())
 	if err := os.Rename(profileDir, quarantinePath); err != nil {
 		return "", fmt.Errorf("rename profile dir: %w", err)
 	}
-	if err := os.MkdirAll(profileDir, 0755); err != nil {
+	if err := os.MkdirAll(profileDir, 0700); err != nil {
 		return quarantinePath, fmt.Errorf("recreate profile dir: %w", err)
 	}
 	return quarantinePath, nil

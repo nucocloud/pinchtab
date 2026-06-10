@@ -56,6 +56,11 @@ type BridgeAPI interface {
 
 	EnsureBrowser(cfg *config.RuntimeConfig) error
 	RestartBrowser(cfg *config.RuntimeConfig) error
+	// RunningBrowser reports the provider of the live browser process, or
+	// ("", false) when nothing is running. EnsureBrowser ignores the requested
+	// config once initialized, so handlers use this to reject explicit
+	// browser params that the running process cannot honor.
+	RunningBrowser() (string, bool)
 	StealthStatus() *stealth.Status
 
 	// Memory metrics

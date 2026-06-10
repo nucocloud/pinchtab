@@ -228,3 +228,23 @@ func TestCleanup_RemoteCDP_SkipsKillLogic(t *testing.T) {
 		t.Errorf("remote-CDP cleanup must not SIGKILL, got %d", got)
 	}
 }
+
+// M16: per-tab pause-suppression flag lifecycle on the Bridge.
+func TestFetchPauseSuppressionLifecycle(t *testing.T) {
+	b := &Bridge{}
+	flag := b.fetchPauseSuppression("t1")
+	if flag == nil || flag.Load() {
+		t.Fatal("fresh flag should exist and be false")
+	}
+	b.SetFetchPauseSuppressed("t1", true)
+	if !flag.Load() {
+		t.Fatal("the same flag instance must observe SetFetchPauseSuppressed")
+	}
+	b.dropFetchPauseSuppression("t1")
+	if recreated := b.fetchPauseSuppression("t1"); recreated == flag || recreated.Load() {
+		t.Fatal("dropped flag should be recreated fresh and unset")
+	}
+	if b.fetchPauseSuppression("") != nil {
+		t.Fatal("empty tab ID must not allocate a flag")
+	}
+}
