@@ -446,22 +446,39 @@ func applyFileConfig(cfg *RuntimeConfig, fc *FileConfig) {
 	}
 
 	// Migration shim must run before consuming legacy provider/binary/cloak fields below.
-	if synthesized, conflict := migrateLegacyBrowserConfig(&fc.Browser, fc.Browsers.Default); conflict {
-		slog.Warn("config has both browser.targets and legacy browser.provider/binary/cloak set; explicit targets win, legacy fields ignored for target resolution")
+	synthesized, conflict := migrateLegacyBrowserConfig(&fc.Browser, fc.Browsers.Default)
+	if conflict {
+		slog.Warn("config has both browser.targets and legacy browser.binary/extraFlags/cloak/proxy set; targets are used as authored (no legacy synthesis), but the legacy fields still seed the base runtime config that target resolution overlays per-field")
 	} else if synthesized {
 		slog.Debug("migrated legacy browser config into browser.targets.default")
 	}
-	if len(fc.Browser.Targets) > 0 {
-		cfg.Targets = cloneBrowserTargetsConfig(fc.Browser.Targets)
-		cfg.DefaultTarget = fc.Browser.DefaultTarget
-		cfg.FallbackOrder = append([]string(nil), fc.Browser.FallbackOrder...)
-	}
+	// Assigned unconditionally — unlike most fields below, which only apply
+	// when present, a reload must be able to REMOVE targets: stale routing
+	// (and the proxy credentials inside targets) staying live after the user
+	// deleted them is dangerous. Absent blocks clear to zero values; the
+	// migration shim above re-synthesizes targets for legacy-only files first.
+	cfg.Targets = cloneBrowserTargetsConfig(fc.Browser.Targets)
+	cfg.DefaultTarget = fc.Browser.DefaultTarget
+	cfg.FallbackOrder = append([]string(nil), fc.Browser.FallbackOrder...)
+	cfg.TargetsSynthesized = synthesized && len(fc.Browser.Targets) > 0
 
 	// Resolve the effective browser provider: browsers.default is the
 	// authoritative source. browser.provider and server.engine are no longer
-	// supported (rejected at validation time).
+	// supported (rejected at validation time), so a target synthesized from
+	// those legacy fields must not select the provider either. A USER-AUTHORED
+	// default target, however, is the user's provider choice — forcing chrome
+	// would contradict it and destructively "reconcile" it on the next
+	// FileConfigFromRuntime round-trip.
 	if fc.Browsers.Default != "" {
 		cfg.DefaultBrowser = fc.Browsers.Default
+		// Launch paths coerce unknown providers to chrome via
+		// NormalizeBrowser; name that consequence loudly at load time.
+		if _, ok := browsers.Get(strings.ToLower(strings.TrimSpace(fc.Browsers.Default))); !ok {
+			slog.Warn("browsers.default is not a known browser; launches will fall back to chrome",
+				"configured", fc.Browsers.Default, "known", browsers.IDs())
+		}
+	} else if name := ResolveDefaultTarget(cfg); name != "" && !cfg.TargetsSynthesized && cfg.Targets[name].Provider != "" {
+		cfg.DefaultBrowser = NormalizeBrowser(cfg.Targets[name].Provider)
 	} else {
 		cfg.DefaultBrowser = "chrome"
 	}
@@ -484,17 +501,19 @@ func applyFileConfig(cfg *RuntimeConfig, fc *FileConfig) {
 		cfg.BrowserExtraFlags = SanitizeBrowserExtraFlags(fc.Browser.BrowserExtraFlags)
 	}
 	applyCloakBrowserConfigToRuntime(cfg, fc.Browser.Cloak)
-	if !fc.Browser.Proxy.IsZero() {
-		cfg.Proxy = BrowserProxyConfig{
-			Server:     fc.Browser.Proxy.Server,
-			BypassList: append([]string(nil), fc.Browser.Proxy.BypassList...),
-			Username:   fc.Browser.Proxy.Username,
-			Password:   fc.Browser.Proxy.Password,
-		}
-		if fc.Browser.Proxy.Geo != nil {
-			geoCopy := *fc.Browser.Proxy.Geo
-			cfg.Proxy.Geo = &geoCopy
-		}
+	// Assigned unconditionally (see Targets above): removing browser.proxy
+	// from the file must clear the runtime proxy — leaving stale credentials
+	// live in a long-running process is worse than the asymmetry with the
+	// presence-guarded fields around this one.
+	cfg.Proxy = BrowserProxyConfig{
+		Server:     fc.Browser.Proxy.Server,
+		BypassList: append([]string(nil), fc.Browser.Proxy.BypassList...),
+		Username:   fc.Browser.Proxy.Username,
+		Password:   fc.Browser.Proxy.Password,
+	}
+	if fc.Browser.Proxy.Geo != nil {
+		geoCopy := *fc.Browser.Proxy.Geo
+		cfg.Proxy.Geo = &geoCopy
 	}
 	if fc.Browser.ExtensionPaths != nil {
 		cfg.ExtensionPaths = append([]string(nil), fc.Browser.ExtensionPaths...)

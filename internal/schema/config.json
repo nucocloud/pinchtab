@@ -249,6 +249,24 @@
         },
         "extensionPaths": {
           "$ref": "#/definitions/stringArray"
+        },
+        "proxy": {
+          "$ref": "#/definitions/browserProxy"
+        },
+        "defaultTarget": {
+          "type": "string",
+          "description": "Name of the target used when no browser is requested."
+        },
+        "fallbackOrder": {
+          "$ref": "#/definitions/stringArray",
+          "description": "Target names tried in order when an implicit launch fails."
+        },
+        "targets": {
+          "type": "object",
+          "description": "Named browser targets keyed by target name.",
+          "additionalProperties": {
+            "$ref": "#/definitions/browserTarget"
+          }
         }
       }
     },
@@ -1000,7 +1018,11 @@
         "default": {
           "type": "string",
           "description": "Default browser for new instances.",
-          "enum": ["chrome", "ghost-chrome", "cloak"],
+          "enum": [
+            "chrome",
+            "ghost-chrome",
+            "cloak"
+          ],
           "default": "chrome"
         },
         "available": {
@@ -1008,46 +1030,88 @@
           "description": "Available browser names.",
           "items": {
             "type": "string",
-            "enum": ["chrome", "ghost-chrome", "cloak"]
+            "enum": [
+              "chrome",
+              "ghost-chrome",
+              "cloak"
+            ]
           }
+        }
+      }
+    },
+    "browserProxy": {
+      "type": "object",
+      "description": "Upstream proxy for browser traffic. Credentials are delivered via CDP, never on the command line.",
+      "additionalProperties": false,
+      "properties": {
+        "server": {
+          "type": "string",
+          "description": "Proxy server URL (e.g. http://proxy.example:8080)."
         },
-        "config": {
+        "bypassList": {
+          "$ref": "#/definitions/stringArray",
+          "description": "Hosts that bypass the proxy."
+        },
+        "username": {
+          "type": "string",
+          "description": "Proxy username."
+        },
+        "password": {
+          "type": "string",
+          "description": "Proxy password. Redacted in API responses."
+        },
+        "geo": {
           "type": "object",
-          "description": "Per-browser configuration overrides.",
-          "additionalProperties": {
-            "type": "object",
-            "properties": {
-              "binary": {
-                "type": "string",
-                "description": "Path to browser binary."
-              },
-              "extraFlags": {
-                "type": "string",
-                "description": "Additional launch flags."
-              },
-              "cloak": {
-                "$ref": "#/definitions/cloakBrowser"
-              },
-              "proxy": {
-                "type": "object",
-                "description": "Per-browser proxy configuration.",
-                "properties": {
-                  "server": {
-                    "type": "string"
-                  },
-                  "bypassList": {
-                    "$ref": "#/definitions/stringArray"
-                  },
-                  "username": {
-                    "type": "string"
-                  },
-                  "password": {
-                    "type": "string"
-                  }
-                }
-              }
+          "description": "Geo alignment hints applied when the proxy egress is in another region.",
+          "additionalProperties": false,
+          "properties": {
+            "timezone": {
+              "type": "string",
+              "description": "IANA timezone matching the proxy egress (e.g. Europe/Paris)."
+            },
+            "locale": {
+              "type": "string",
+              "description": "BCP-47 locale matching the proxy egress (e.g. fr-FR)."
+            },
+            "webrtcIP": {
+              "type": "string",
+              "description": "Public IP to expose via WebRTC instead of the local address."
+            },
+            "countryISO": {
+              "type": "string",
+              "description": "ISO 3166-1 alpha-2 country code of the proxy egress."
             }
           }
+        }
+      }
+    },
+    "browserTarget": {
+      "type": "object",
+      "description": "A named browser target: a provider plus per-target overrides.",
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "type": "string",
+          "description": "Browser provider for this target.",
+          "enum": [
+            "chrome",
+            "ghost-chrome",
+            "cloak"
+          ]
+        },
+        "binary": {
+          "type": "string",
+          "description": "Path to the browser binary for this target."
+        },
+        "extraFlags": {
+          "type": "string",
+          "description": "Additional space-separated browser flags for this target."
+        },
+        "cloak": {
+          "$ref": "#/definitions/cloakBrowser"
+        },
+        "proxy": {
+          "$ref": "#/definitions/browserProxy"
         }
       }
     }

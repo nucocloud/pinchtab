@@ -97,11 +97,13 @@ func ParseProxyServer(server string) (scheme, host string, port int, err error) 
 	if rest == "" {
 		return "", "", 0, fmt.Errorf("proxy server %q is missing host:port", server)
 	}
-	if strings.ContainsRune(rest, '@') {
-		return "", "", 0, fmt.Errorf("proxy server %q must not include embedded credentials; use the username/password fields", server)
-	}
+	// Strip any path before the credential check: an '@' in the path
+	// (http://host:8080/p@th) is not embedded userinfo.
 	if slash := strings.Index(rest, "/"); slash >= 0 {
 		rest = rest[:slash]
+	}
+	if strings.ContainsRune(rest, '@') {
+		return "", "", 0, fmt.Errorf("proxy server %q must not include embedded credentials; use the username/password fields", server)
 	}
 	h, p, splitErr := net.SplitHostPort(rest)
 	if splitErr != nil {
@@ -179,14 +181,16 @@ func ValidateBrowserProxy(field string, p BrowserProxyConfig) []error {
 }
 
 // BrowserProxyFlags returns credential-free --proxy-server/--proxy-bypass-list flags; auth is delivered via CDP.
-func BrowserProxyFlags(p BrowserProxyConfig) []string {
+// A malformed server is a hard error: launching without the configured proxy
+// would silently egress traffic from the real IP — the worst failure mode for
+// users who configured a proxy for anonymity.
+func BrowserProxyFlags(p BrowserProxyConfig) ([]string, error) {
 	if p.IsZero() {
-		return nil
+		return nil, nil
 	}
 	scheme, host, port, err := ParseProxyServer(p.Server)
 	if err != nil {
-		// Caller should have validated; fail open rather than crash the launch.
-		return nil
+		return nil, fmt.Errorf("browser.proxy.server is invalid; refusing to launch without the configured proxy (traffic would egress directly): %w", err)
 	}
 	authority := net.JoinHostPort(host, strconv.Itoa(port))
 	flags := []string{
@@ -195,7 +199,7 @@ func BrowserProxyFlags(p BrowserProxyConfig) []string {
 	if bypass := joinBypassList(p.BypassList); bypass != "" {
 		flags = append(flags, "--proxy-bypass-list="+bypass)
 	}
-	return flags
+	return flags, nil
 }
 
 func joinBypassList(items []string) string {

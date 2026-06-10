@@ -139,6 +139,9 @@ func tabPolicyDefaultsFromRuntime(cfg *RuntimeConfig) *TabPolicyDefaults {
 	return out
 }
 
+// browsersConfigJSONFromFile copies the browsers block for serialization. The
+// retired Config map is still copied for round-trip byte fidelity even though
+// validation rejects it — we warn, we don't destroy user input.
 func browsersConfigJSONFromFile(bc BrowsersConfig) *BrowsersConfig {
 	if bc.Default == "" && len(bc.Available) == 0 && len(bc.Config) == 0 {
 		return nil
@@ -604,9 +607,11 @@ func FileConfigFromRuntime(cfg *RuntimeConfig) FileConfig {
 // orchestrator selecting cloak for a child instance) without rewriting Targets,
 // the stale target would otherwise shadow browsers.default on reload because
 // explicit targets win over the legacy fields. Only the lone auto-synthesized
-// "default" target is reconciled; explicit multi-target configs are left intact.
+// "default" target is reconciled; user-authored targets (single or multi) are
+// left intact — rewriting them would flip the user's provider and wipe
+// target-scoped binary/flags/cloak/proxy with global runtime values.
 func reconcileDefaultTargetProvider(bc *BrowserConfig, browsersDefault string, cfg *RuntimeConfig) {
-	if bc == nil || cfg == nil || len(bc.Targets) != 1 {
+	if bc == nil || cfg == nil || !cfg.TargetsSynthesized || len(bc.Targets) != 1 {
 		return
 	}
 	target, ok := bc.Targets[DefaultBrowserTargetName]

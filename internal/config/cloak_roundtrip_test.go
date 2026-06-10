@@ -10,6 +10,9 @@ import (
 )
 
 func TestCloakChildConfigRoundTrip(t *testing.T) {
+	// Isolate from the developer's real config: the first Load must read
+	// defaults, not whatever ~/.pinchtab or PINCHTAB_CONFIG points at.
+	t.Setenv("PINCHTAB_CONFIG", filepath.Join(t.TempDir(), "absent.json"))
 	// Step 1: Simulate the orchestrator's RuntimeConfig with DefaultBrowser = "cloak"
 	cfg := config.Load()
 	cfg.DefaultBrowser = "cloak"
@@ -74,6 +77,9 @@ func TestCloakChildConfigRoundTrip(t *testing.T) {
 }
 
 func TestCloakTargetResolution(t *testing.T) {
+	// Isolate from the developer's real config: the first Load must read
+	// defaults, not whatever ~/.pinchtab or PINCHTAB_CONFIG points at.
+	t.Setenv("PINCHTAB_CONFIG", filepath.Join(t.TempDir(), "absent.json"))
 	// Simulate what happens when a cloak E2E config is loaded:
 	// browsers.default = "cloak" but browser.provider is NOT set.
 	// The legacy migration must use browsers.default as the provider.

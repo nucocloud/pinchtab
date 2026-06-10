@@ -65,6 +65,12 @@ func getBrowserField(b *BrowserConfig, field string) (string, error) {
 	if strings.HasPrefix(field, "cloak.") {
 		return getCloakBrowserField(&b.Cloak, strings.TrimPrefix(field, "cloak."))
 	}
+	if strings.HasPrefix(field, "proxy.") {
+		return getBrowserProxyField(&b.Proxy, strings.TrimPrefix(field, "proxy."))
+	}
+	if strings.HasPrefix(field, "targets.") {
+		return getBrowserTargetField(b.Targets, strings.TrimPrefix(field, "targets."))
+	}
 	switch field {
 	case "provider":
 		return "", fmt.Errorf("browser.provider is no longer supported; use browsers.default")
@@ -74,8 +80,71 @@ func getBrowserField(b *BrowserConfig, field string) (string, error) {
 		return b.BrowserBinary, nil
 	case "extraFlags":
 		return b.BrowserExtraFlags, nil
+	case "defaultTarget":
+		return b.DefaultTarget, nil
+	case "fallbackOrder":
+		return strings.Join(b.FallbackOrder, ","), nil
 	default:
 		return "", fmt.Errorf("unknown field browser.%s", field)
+	}
+}
+
+// getBrowserProxyField returns proxy values plainly — like server.token, the
+// CLI editor reads the operator's own file.
+func getBrowserProxyField(p *BrowserProxyConfig, field string) (string, error) {
+	if strings.HasPrefix(field, "geo.") {
+		if p.Geo == nil {
+			return "", nil
+		}
+		switch strings.TrimPrefix(field, "geo.") {
+		case "timezone":
+			return p.Geo.Timezone, nil
+		case "locale":
+			return p.Geo.Locale, nil
+		case "webrtcIP":
+			return p.Geo.WebRTCIP, nil
+		case "countryISO":
+			return p.Geo.CountryISO, nil
+		default:
+			return "", fmt.Errorf("unknown field proxy.%s", field)
+		}
+	}
+	switch field {
+	case "server":
+		return p.Server, nil
+	case "bypassList":
+		return strings.Join(p.BypassList, ","), nil
+	case "username":
+		return p.Username, nil
+	case "password":
+		return p.Password, nil
+	default:
+		return "", fmt.Errorf("unknown field proxy.%s", field)
+	}
+}
+
+func getBrowserTargetField(targets BrowserTargetsConfig, path string) (string, error) {
+	name, field, ok := strings.Cut(path, ".")
+	if !ok || name == "" || field == "" {
+		return "", fmt.Errorf("invalid browser.targets path %q (expected targets.<name>.<field>)", path)
+	}
+	t, ok := targets[name]
+	if !ok {
+		return "", fmt.Errorf("browser target %q not found", name)
+	}
+	switch {
+	case strings.HasPrefix(field, "cloak."):
+		return getCloakBrowserField(&t.Cloak, strings.TrimPrefix(field, "cloak."))
+	case strings.HasPrefix(field, "proxy."):
+		return getBrowserProxyField(&t.Proxy, strings.TrimPrefix(field, "proxy."))
+	case field == "provider":
+		return t.Provider, nil
+	case field == "binary":
+		return t.Binary, nil
+	case field == "extraFlags":
+		return t.ExtraFlags, nil
+	default:
+		return "", fmt.Errorf("unknown field browser.targets.%s.%s", name, field)
 	}
 }
 

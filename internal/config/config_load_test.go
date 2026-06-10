@@ -1,7 +1,9 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -928,6 +930,99 @@ func writeTestConfig(t *testing.T, body string) {
 	t.Cleanup(func() { _ = os.Unsetenv("PINCHTAB_CONFIG") })
 }
 
+// Pins the precedence contract when both legacy browser fields and explicit
+// browser.targets are set: targets are kept as authored (no legacy synthesis),
+// the legacy fields still seed the base runtime config, and target resolution
+// overlays target fields per-field on top of that base.
+func TestLoadConfig_LegacyAndTargetsBothSet_PrecedenceContract(t *testing.T) {
+	clearConfigEnvVars(t)
+	writeTestConfig(t, `{
+		"browser": {
+			"binary": "/legacy/bin/chrome",
+			"extraFlags": "--disable-gpu",
+			"proxy": {"server": "http://legacy-proxy.example:8080"},
+			"defaultTarget": "default",
+			"targets": {
+				"default": {
+					"provider": "chrome",
+					"binary": "/target/bin/chrome",
+					"proxy": {"server": "http://target-proxy.example:9090"}
+				}
+			}
+		}
+	}`)
+
+	var warned bool
+	logs := captureConfigSlog(t, func() {
+		cfg := Load()
+
+		if cfg.TargetsSynthesized {
+			t.Errorf("TargetsSynthesized = true, want false (explicit targets must not be marked as migrated)")
+		}
+		target, ok := cfg.Targets["default"]
+		if !ok {
+			t.Fatalf("Targets missing authored default entry: %v", cfg.Targets)
+		}
+		if target.Binary != "/target/bin/chrome" {
+			t.Errorf("target Binary = %q, want authored /target/bin/chrome", target.Binary)
+		}
+
+		// Legacy fields seed the BASE runtime config.
+		if cfg.BrowserBinary != "/legacy/bin/chrome" {
+			t.Errorf("base BrowserBinary = %q, want legacy /legacy/bin/chrome", cfg.BrowserBinary)
+		}
+		if cfg.BrowserExtraFlags != "--disable-gpu" {
+			t.Errorf("base BrowserExtraFlags = %q, want legacy --disable-gpu", cfg.BrowserExtraFlags)
+		}
+		if cfg.Proxy.Server != "http://legacy-proxy.example:8080" {
+			t.Errorf("base Proxy.Server = %q, want legacy proxy", cfg.Proxy.Server)
+		}
+
+		// A user-authored default target supplies the provider.
+		if cfg.DefaultBrowser != BrowserChrome {
+			t.Errorf("DefaultBrowser = %q, want %s from the authored target", cfg.DefaultBrowser, BrowserChrome)
+		}
+
+		// Target resolution overlays target fields on the legacy-seeded base.
+		resolved, err := ResolveDefaultBrowserTarget(cfg)
+		if err != nil {
+			t.Fatalf("ResolveDefaultBrowserTarget returned %v", err)
+		}
+		if resolved.Legacy {
+			t.Errorf("resolved.Legacy = true, want false with explicit targets")
+		}
+		if resolved.Config.BrowserBinary != "/target/bin/chrome" {
+			t.Errorf("resolved Binary = %q, want target /target/bin/chrome", resolved.Config.BrowserBinary)
+		}
+		if resolved.Config.Proxy.Server != "http://target-proxy.example:9090" {
+			t.Errorf("resolved Proxy.Server = %q, want target proxy", resolved.Config.Proxy.Server)
+		}
+		// Fields the target omits fall back to the legacy base.
+		if resolved.Config.BrowserExtraFlags != "--disable-gpu" {
+			t.Errorf("resolved BrowserExtraFlags = %q, want legacy --disable-gpu fallback", resolved.Config.BrowserExtraFlags)
+		}
+	})
+	warned = strings.Contains(logs, "config has both browser.targets and legacy")
+	if !warned {
+		t.Errorf("expected conflict warning in logs, got: %s", logs)
+	}
+	if strings.Contains(logs, "legacy fields ignored") {
+		t.Errorf("warning still claims legacy fields are ignored; they seed the base runtime config: %s", logs)
+	}
+}
+
+// captureConfigSlog redirects the default slog logger to a buffer for the
+// duration of fn and returns everything logged.
+func captureConfigSlog(t *testing.T, fn func()) string {
+	t.Helper()
+	var buf bytes.Buffer
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	defer slog.SetDefault(old)
+	fn()
+	return buf.String()
+}
+
 func TestLoadConfig_TabLifecycleDefaults(t *testing.T) {
 	clearConfigEnvVars(t)
 	_ = os.Setenv("PINCHTAB_CONFIG", filepath.Join(t.TempDir(), "nonexistent.json"))
@@ -1041,5 +1136,70 @@ func TestLoadConfig_DefaultBrowsersNeverIncludesHighTrust(t *testing.T) {
 	// Default browser must also be chrome.
 	if cfg.DefaultBrowser != "chrome" {
 		t.Errorf("DefaultBrowser = %q, want chrome", cfg.DefaultBrowser)
+	}
+}
+
+// M3 regression: a reload must be able to REMOVE targets and proxy — stale
+// routing and credentials must not survive deletion from the file.
+func TestApplyFileConfig_ReloadClearsRemovedProxyAndTargets(t *testing.T) {
+	cfg := &RuntimeConfig{}
+
+	withBlocks := &FileConfig{
+		Browser: BrowserConfig{
+			DefaultTarget: "cloak-1",
+			FallbackOrder: []string{"cloak-1"},
+			Targets: BrowserTargetsConfig{
+				"cloak-1": {Provider: BrowserCloak, Binary: "/opt/cloak/bin"},
+			},
+			Proxy: BrowserProxyConfig{
+				Server:   "http://proxy.example:8080",
+				Username: "user",
+				Password: "secret",
+			},
+		},
+	}
+	applyFileConfig(cfg, withBlocks)
+	if len(cfg.Targets) == 0 || cfg.Proxy.IsZero() {
+		t.Fatalf("setup failed: targets=%v proxy=%+v", cfg.Targets, cfg.Proxy.Redacted())
+	}
+
+	without := &FileConfig{}
+	applyFileConfig(cfg, without)
+
+	if len(cfg.Targets) != 0 {
+		t.Fatalf("targets not cleared on reload: %v", cfg.Targets)
+	}
+	if cfg.DefaultTarget != "" || len(cfg.FallbackOrder) != 0 {
+		t.Fatalf("defaultTarget/fallbackOrder not cleared: %q %v", cfg.DefaultTarget, cfg.FallbackOrder)
+	}
+	if cfg.TargetsSynthesized {
+		t.Fatal("TargetsSynthesized should clear with the targets")
+	}
+	if !cfg.Proxy.IsZero() {
+		t.Fatalf("proxy (and credentials) not cleared on reload: %+v", cfg.Proxy.Redacted())
+	}
+}
+
+func TestApplyFileConfig_ReloadLegacyOnlyStillSynthesizesTargets(t *testing.T) {
+	cfg := &RuntimeConfig{}
+	applyFileConfig(cfg, &FileConfig{
+		Browser: BrowserConfig{
+			Targets: BrowserTargetsConfig{"cloak-1": {Provider: BrowserCloak}},
+		},
+	})
+
+	legacyOnly := &FileConfig{
+		Browser: BrowserConfig{BrowserBinary: "/usr/bin/chrome"},
+	}
+	applyFileConfig(cfg, legacyOnly)
+
+	if len(cfg.Targets) == 0 {
+		t.Fatal("legacy-only reload should re-synthesize targets via the migration shim")
+	}
+	if !cfg.TargetsSynthesized {
+		t.Fatal("re-synthesized targets should be marked synthesized")
+	}
+	if _, ok := cfg.Targets[DefaultBrowserTargetName]; !ok {
+		t.Fatalf("expected synthesized default target, got %v", cfg.Targets)
 	}
 }

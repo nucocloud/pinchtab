@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/pinchtab/pinchtab/internal/browsers"
 )
 
 // SetConfigValue sets a dotted path in FileConfig (e.g., "server.port", "instanceDefaults.mode").
@@ -79,6 +81,12 @@ func setBrowserField(b *BrowserConfig, field, value string) error {
 	if strings.HasPrefix(field, "cloak.") {
 		return setCloakBrowserField(&b.Cloak, strings.TrimPrefix(field, "cloak."), value)
 	}
+	if strings.HasPrefix(field, "proxy.") {
+		return setBrowserProxyField(&b.Proxy, strings.TrimPrefix(field, "proxy."), value)
+	}
+	if strings.HasPrefix(field, "targets.") {
+		return setBrowserTargetField(&b.Targets, strings.TrimPrefix(field, "targets."), value)
+	}
 	switch field {
 	case "provider":
 		return fmt.Errorf("browser.provider is no longer supported; use browsers.default")
@@ -88,6 +96,10 @@ func setBrowserField(b *BrowserConfig, field, value string) error {
 		b.BrowserBinary = value
 	case "extraFlags":
 		b.BrowserExtraFlags = value
+	case "defaultTarget":
+		b.DefaultTarget = value
+	case "fallbackOrder":
+		b.FallbackOrder = parseCSVList(value)
 	default:
 		return fmt.Errorf("unknown field browser.%s", field)
 	}
@@ -97,12 +109,88 @@ func setBrowserField(b *BrowserConfig, field, value string) error {
 func setBrowsersField(b *BrowsersConfig, field, value string) error {
 	switch field {
 	case "default":
-		b.Default = value
+		id := strings.ToLower(strings.TrimSpace(value))
+		if _, ok := browsers.Get(id); !ok {
+			return fmt.Errorf("unknown browser %q (known: %v)", value, browsers.IDs())
+		}
+		b.Default = id
 	case "available":
 		b.Available = parseCSVList(value)
 	default:
 		return fmt.Errorf("unknown field browsers.%s", field)
 	}
+	return nil
+}
+
+func setBrowserProxyField(p *BrowserProxyConfig, field, value string) error {
+	if strings.HasPrefix(field, "geo.") {
+		if p.Geo == nil {
+			p.Geo = &BrowserProxyGeoConfig{}
+		}
+		switch strings.TrimPrefix(field, "geo.") {
+		case "timezone":
+			p.Geo.Timezone = value
+		case "locale":
+			p.Geo.Locale = value
+		case "webrtcIP":
+			p.Geo.WebRTCIP = value
+		case "countryISO":
+			p.Geo.CountryISO = value
+		default:
+			return fmt.Errorf("unknown field proxy.%s", field)
+		}
+		return nil
+	}
+	switch field {
+	case "server":
+		p.Server = value
+	case "bypassList":
+		p.BypassList = parseCSVList(value)
+	case "username":
+		p.Username = value
+	case "password":
+		p.Password = value
+	default:
+		return fmt.Errorf("unknown field proxy.%s", field)
+	}
+	return nil
+}
+
+func setBrowserTargetField(targets *BrowserTargetsConfig, path, value string) error {
+	name, field, ok := strings.Cut(path, ".")
+	if !ok || name == "" || field == "" {
+		return fmt.Errorf("invalid browser.targets path %q (expected targets.<name>.<field>)", path)
+	}
+	if !IsValidBrowserTargetName(name) {
+		return fmt.Errorf("invalid browser target name %q (must match ^[a-z][a-z0-9-]{0,31}$)", name)
+	}
+	if *targets == nil {
+		*targets = BrowserTargetsConfig{}
+	}
+	t := (*targets)[name]
+	switch {
+	case strings.HasPrefix(field, "cloak."):
+		if err := setCloakBrowserField(&t.Cloak, strings.TrimPrefix(field, "cloak."), value); err != nil {
+			return err
+		}
+	case strings.HasPrefix(field, "proxy."):
+		if err := setBrowserProxyField(&t.Proxy, strings.TrimPrefix(field, "proxy."), value); err != nil {
+			return err
+		}
+	case field == "provider":
+		id := strings.ToLower(strings.TrimSpace(value))
+		if _, ok := browsers.Get(id); !ok {
+			return fmt.Errorf("unknown browser %q (known: %v)", value, browsers.IDs())
+		}
+		t.Provider = id
+	case field == "binary":
+		t.Binary = value
+	case field == "extraFlags":
+		t.ExtraFlags = value
+	default:
+		return fmt.Errorf("unknown field browser.targets.%s.%s", name, field)
+	}
+	(*targets)[name] = t
 	return nil
 }
 

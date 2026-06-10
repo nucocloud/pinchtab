@@ -1102,3 +1102,98 @@ func TestApplyTargetOverride_ClonesTargetProxyAndTargetsMap(t *testing.T) {
 		t.Fatalf("target map shared with override: %+v", original)
 	}
 }
+
+// --- Round-trip preservation of user-authored targets (H3 regression) ---
+
+func TestApplyFileConfig_ExplicitDefaultTargetDrivesDefaultBrowser(t *testing.T) {
+	fc := &FileConfig{
+		Browser: BrowserConfig{
+			Targets: BrowserTargetsConfig{
+				DefaultBrowserTargetName: {
+					Provider: BrowserCloak,
+					Binary:   "/opt/cloak/bin",
+					Proxy: BrowserProxyConfig{
+						Server:   "http://proxy.example:8080",
+						Username: "user",
+						Password: "secret",
+					},
+				},
+			},
+		},
+	}
+	cfg := &RuntimeConfig{}
+	applyFileConfig(cfg, fc)
+
+	if cfg.DefaultBrowser != BrowserCloak {
+		t.Fatalf("DefaultBrowser = %q, want %q (derived from explicit default target)", cfg.DefaultBrowser, BrowserCloak)
+	}
+	if cfg.TargetsSynthesized {
+		t.Fatal("user-authored targets must not be marked synthesized")
+	}
+
+	out := FileConfigFromRuntime(cfg)
+	got, ok := out.Browser.Targets[DefaultBrowserTargetName]
+	if !ok {
+		t.Fatalf("default target lost in round-trip: %+v", out.Browser.Targets)
+	}
+	if got.Provider != BrowserCloak {
+		t.Fatalf("Provider = %q, want %q (user target must survive round-trip)", got.Provider, BrowserCloak)
+	}
+	if got.Binary != "/opt/cloak/bin" {
+		t.Fatalf("Binary = %q, want /opt/cloak/bin", got.Binary)
+	}
+	if got.Proxy.Password != "secret" {
+		t.Fatalf("proxy credentials wiped in round-trip: %+v", got.Proxy)
+	}
+}
+
+func TestFileConfigFromRuntime_UserTargetSurvivesContradictoryDefaultBrowser(t *testing.T) {
+	fc := &FileConfig{
+		Browsers: BrowsersConfig{Default: BrowserChrome},
+		Browser: BrowserConfig{
+			Targets: BrowserTargetsConfig{
+				DefaultBrowserTargetName: {
+					Provider: BrowserCloak,
+					Binary:   "/opt/cloak/bin",
+					Proxy:    BrowserProxyConfig{Server: "http://proxy.example:8080", Username: "u", Password: "secret"},
+				},
+			},
+		},
+	}
+	cfg := &RuntimeConfig{}
+	applyFileConfig(cfg, fc)
+
+	if cfg.DefaultBrowser != BrowserChrome {
+		t.Fatalf("DefaultBrowser = %q, want explicit browsers.default to win", cfg.DefaultBrowser)
+	}
+
+	out := FileConfigFromRuntime(cfg)
+	got := out.Browser.Targets[DefaultBrowserTargetName]
+	if got.Provider != BrowserCloak || got.Binary != "/opt/cloak/bin" || got.Proxy.Password != "secret" {
+		t.Fatalf("user-authored target rewritten despite contradictory browsers.default: %+v", got)
+	}
+}
+
+func TestFileConfigFromRuntime_SynthesizedTargetStillReconciles(t *testing.T) {
+	fc := &FileConfig{
+		Browser: BrowserConfig{BrowserBinary: "/usr/bin/chrome"},
+	}
+	cfg := &RuntimeConfig{}
+	applyFileConfig(cfg, fc)
+
+	if !cfg.TargetsSynthesized {
+		t.Fatal("legacy-only config should synthesize targets")
+	}
+	if cfg.DefaultBrowser != BrowserChrome {
+		t.Fatalf("DefaultBrowser = %q, want chrome", cfg.DefaultBrowser)
+	}
+
+	// Orchestrator child-launch scenario: caller overrides the provider
+	// without rewriting Targets; the synthesized target must follow.
+	cfg.DefaultBrowser = BrowserCloak
+	out := FileConfigFromRuntime(cfg)
+	got := out.Browser.Targets[DefaultBrowserTargetName]
+	if got.Provider != BrowserCloak {
+		t.Fatalf("synthesized target Provider = %q, want reconciled to %q", got.Provider, BrowserCloak)
+	}
+}

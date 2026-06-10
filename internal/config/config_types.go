@@ -70,14 +70,19 @@ type RuntimeConfig struct {
 	// agent to drive the user's actual Chrome (extensions, profile, signed-in
 	// state) rather than a fresh isolated profile. Cleanup never kills the
 	// external Chrome — pinchtab only owns the CDP connection.
-	CDPAttachURL       string
-	Cloak              CloakBrowserRuntimeConfig
-	Proxy              BrowserProxyConfig
-	DefaultBrowser     string
-	BrowsersAvailable  []string
-	Targets            BrowserTargetsConfig
-	DefaultTarget      string
-	FallbackOrder      []string
+	CDPAttachURL      string
+	Cloak             CloakBrowserRuntimeConfig
+	Proxy             BrowserProxyConfig
+	DefaultBrowser    string
+	BrowsersAvailable []string
+	Targets           BrowserTargetsConfig
+	DefaultTarget     string
+	FallbackOrder     []string
+	// TargetsSynthesized marks Targets as auto-migrated from legacy
+	// browser.binary/cloak/proxy fields rather than user-authored; only
+	// synthesized targets may be rewritten by provider reconciliation on
+	// serialization. Load-time bookkeeping, never serialized.
+	TargetsSynthesized bool
 	ExtensionPaths     []string
 	UserAgent          string
 	NoAnimations       bool
@@ -364,8 +369,10 @@ type BrowsersConfig struct {
 	Config    map[string]BrowserItemConfig `json:"config,omitempty"`
 }
 
-// BrowserItemConfig holds per-browser configuration overrides within the
-// browsers.config map.
+// BrowserItemConfig holds the retired browsers.config per-browser overrides.
+// The block was never applied anywhere and is superseded by browser.targets;
+// it is parsed only so validation can reject it with guidance and so existing
+// files round-trip byte-for-byte.
 type BrowserItemConfig struct {
 	Binary     string             `json:"binary,omitempty"`
 	ExtraFlags string             `json:"extraFlags,omitempty"`

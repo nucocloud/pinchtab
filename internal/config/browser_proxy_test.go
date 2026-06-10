@@ -226,14 +226,20 @@ func TestBrowserProxyRedacted(t *testing.T) {
 
 func TestBrowserProxyFlags(t *testing.T) {
 	t.Run("disabled proxy emits no flags", func(t *testing.T) {
-		flags := BrowserProxyFlags(BrowserProxyConfig{})
+		flags, err := BrowserProxyFlags(BrowserProxyConfig{})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 		if len(flags) != 0 {
 			t.Fatalf("expected no flags, got %v", flags)
 		}
 	})
 
 	t.Run("server only", func(t *testing.T) {
-		flags := BrowserProxyFlags(BrowserProxyConfig{Server: "http://proxy.example.com:8080"})
+		flags, err := BrowserProxyFlags(BrowserProxyConfig{Server: "http://proxy.example.com:8080"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 		if len(flags) != 1 {
 			t.Fatalf("expected 1 flag, got %v", flags)
 		}
@@ -244,10 +250,13 @@ func TestBrowserProxyFlags(t *testing.T) {
 	})
 
 	t.Run("with bypass list", func(t *testing.T) {
-		flags := BrowserProxyFlags(BrowserProxyConfig{
+		flags, err := BrowserProxyFlags(BrowserProxyConfig{
 			Server:     "socks5://10.0.0.1:1080",
 			BypassList: []string{"*.local", "127.0.0.1"},
 		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 		if len(flags) != 2 {
 			t.Fatalf("expected 2 flags, got %v", flags)
 		}
@@ -260,7 +269,10 @@ func TestBrowserProxyFlags(t *testing.T) {
 	})
 
 	t.Run("ipv6 host stays bracketed", func(t *testing.T) {
-		flags := BrowserProxyFlags(BrowserProxyConfig{Server: "http://[2001:db8::1]:8080"})
+		flags, err := BrowserProxyFlags(BrowserProxyConfig{Server: "http://[2001:db8::1]:8080"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 		if len(flags) != 1 {
 			t.Fatalf("expected 1 flag, got %v", flags)
 		}
@@ -270,15 +282,33 @@ func TestBrowserProxyFlags(t *testing.T) {
 	})
 
 	t.Run("credentials never leak into flag", func(t *testing.T) {
-		flags := BrowserProxyFlags(BrowserProxyConfig{
+		flags, err := BrowserProxyFlags(BrowserProxyConfig{
 			Server:   "http://proxy.example.com:8080",
 			Username: "alice",
 			Password: "s3cr3t",
 		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 		for _, f := range flags {
 			if strings.Contains(f, "alice") || strings.Contains(f, "s3cr3t") {
 				t.Errorf("credential leaked into Chrome flag: %q", f)
 			}
+		}
+	})
+
+	// M2 regression: a malformed server must fail closed — launching without
+	// the configured proxy would egress traffic from the real IP.
+	t.Run("malformed server fails closed", func(t *testing.T) {
+		flags, err := BrowserProxyFlags(BrowserProxyConfig{Server: "not a proxy url"})
+		if err == nil {
+			t.Fatalf("expected error for malformed server, got flags %v", flags)
+		}
+		if !strings.Contains(err.Error(), "refusing to launch") {
+			t.Fatalf("error should name the fail-closed consequence: %v", err)
+		}
+		if len(flags) != 0 {
+			t.Fatalf("no flags expected on error, got %v", flags)
 		}
 	})
 }
@@ -481,4 +511,18 @@ func TestFileConfig_ProxyRoundTrip(t *testing.T) {
 			t.Errorf("proxy did not round-trip: got %+v want %+v", rt.Browser.Proxy, fc.Browser.Proxy)
 		}
 	})
+}
+
+// L7(a): an '@' in the URL path is not embedded userinfo.
+func TestParseProxyServer_PathWithAtSignAccepted(t *testing.T) {
+	scheme, host, port, err := ParseProxyServer("http://proxy.example:8080/p@th")
+	if err != nil {
+		t.Fatalf("path containing '@' should parse: %v", err)
+	}
+	if scheme != "http" || host != "proxy.example" || port != 8080 {
+		t.Fatalf("parsed %s://%s:%d, want http://proxy.example:8080", scheme, host, port)
+	}
+	if _, _, _, err := ParseProxyServer("http://user:pass@proxy.example:8080"); err == nil {
+		t.Fatal("embedded credentials must still be rejected")
+	}
 }

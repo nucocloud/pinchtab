@@ -343,3 +343,55 @@ func TestSetConfigValue_InvalidPaths(t *testing.T) {
 		})
 	}
 }
+
+// L6: editor coverage for the browser-targets feature surfaces.
+func TestSetGetBrowserTargetAndProxyFields(t *testing.T) {
+	fc := &FileConfig{}
+	sets := map[string]string{
+		"browser.defaultTarget":                          "cloak-eu",
+		"browser.fallbackOrder":                          "cloak-eu,chrome-local",
+		"browser.proxy.server":                           "http://proxy.example:8080",
+		"browser.proxy.geo.timezone":                     "Europe/Paris",
+		"browser.targets.cloak-eu.provider":              "cloak",
+		"browser.targets.cloak-eu.binary":                "/opt/cloak/bin",
+		"browser.targets.cloak-eu.cloak.fingerprintSeed": "42069",
+		"browser.targets.cloak-eu.proxy.password":        "secret",
+	}
+	for path, value := range sets {
+		if err := SetConfigValue(fc, path, value); err != nil {
+			t.Fatalf("SetConfigValue(%s): %v", path, err)
+		}
+	}
+	for path, want := range sets {
+		got, err := GetConfigValue(fc, path)
+		if err != nil {
+			t.Fatalf("GetConfigValue(%s): %v", path, err)
+		}
+		if got != want {
+			t.Fatalf("GetConfigValue(%s) = %q, want %q", path, got, want)
+		}
+	}
+
+	if err := SetConfigValue(fc, "browser.targets.cloak-eu.bogus", "x"); err == nil {
+		t.Fatal("unknown target field should error")
+	}
+	if err := SetConfigValue(fc, "browser.targets.Bad-Name.binary", "/x"); err == nil {
+		t.Fatal("invalid target name should error")
+	}
+	if _, err := GetConfigValue(fc, "browser.targets.missing.binary"); err == nil {
+		t.Fatal("missing target should error on get")
+	}
+}
+
+func TestSetBrowsersDefaultRejectsUnknownBrowser(t *testing.T) {
+	fc := &FileConfig{}
+	if err := SetConfigValue(fc, "browsers.default", "cloack"); err == nil {
+		t.Fatal("typo'd browsers.default should be rejected")
+	}
+	if err := SetConfigValue(fc, "browsers.default", "Cloak"); err != nil {
+		t.Fatalf("mixed-case known browser should normalize: %v", err)
+	}
+	if fc.Browsers.Default != "cloak" {
+		t.Fatalf("Default = %q, want normalized cloak", fc.Browsers.Default)
+	}
+}

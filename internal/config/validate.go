@@ -621,16 +621,18 @@ func validateBrowsersBlock(fc FileConfig) []error {
 
 	var errs []error
 
-	// Validate default is a known browser
+	// Validate default is a known browser. The registry is keyed by lowercase
+	// IDs; trim+lowercase like target validation does so "Cloak" validates
+	// the same everywhere.
 	if bc.Default != "" {
-		if _, ok := browsers.Get(bc.Default); !ok {
+		if _, ok := browsers.Get(strings.ToLower(strings.TrimSpace(bc.Default))); !ok {
 			errs = append(errs, fmt.Errorf("browsers.default: unknown browser %q (known: %v)", bc.Default, browsers.IDs()))
 		}
 	}
 
 	// Validate each entry in available
 	for i, name := range bc.Available {
-		if _, ok := browsers.Get(name); !ok {
+		if _, ok := browsers.Get(strings.ToLower(strings.TrimSpace(name))); !ok {
 			errs = append(errs, fmt.Errorf("browsers.available[%d]: unknown browser %q (known: %v)", i, name, browsers.IDs()))
 		}
 	}
@@ -649,11 +651,11 @@ func validateBrowsersBlock(fc FileConfig) []error {
 		}
 	}
 
-	// Validate config keys are known browsers
-	for name := range bc.Config {
-		if _, ok := browsers.Get(name); !ok {
-			errs = append(errs, fmt.Errorf("browsers.config: unknown browser %q (known: %v)", name, browsers.IDs()))
-		}
+	// browsers.config was accepted but never applied anywhere; reject it with
+	// guidance (mirroring the browser.provider retirement) rather than letting
+	// the overrides be silently ignored.
+	if len(bc.Config) > 0 {
+		errs = append(errs, fmt.Errorf("browsers.config is no longer supported; use browser.targets.<name> instead (e.g. \"browser\": {\"targets\": {\"cloak\": {\"binary\": \"/opt/cloak/bin\"}}})"))
 	}
 
 	return errs
