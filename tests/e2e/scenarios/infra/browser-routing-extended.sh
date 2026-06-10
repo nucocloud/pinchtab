@@ -12,18 +12,18 @@ source "${GROUP_DIR}/../../helpers/api.sh"
 
 CHROME_SERVER="$E2E_SERVER"
 
-# These tests compare two providers — they only make sense when the
-# ghost-chrome server is available and the primary provider is NOT chrome
-# (chrome vs ghost-chrome parity is what we're testing; running these when
-# the primary is also ghost-chrome or cloak doesn't add signal).
+# These tests compare the chrome primary against the dedicated ghost-chrome
+# server — chrome vs ghost-chrome parity. They run in the chrome lane (the
+# default, blocking one). In non-chrome lanes the primary is a different
+# provider, so the comparison would not be the parity this scenario tests.
 requires_providers() {
   if [ -z "${E2E_SERVER_GHOSTCHROME:-}" ]; then
     echo "  ⚠️  Skipping browser-routing tests (E2E_SERVER_GHOSTCHROME not set)"
     return 1
   fi
   local primary="${PINCHTAB_E2E_BROWSER:-chrome}"
-  if [ "$primary" = "chrome" ]; then
-    echo "  ⚠️  Skipping browser-routing tests (primary provider is chrome — these tests need a non-chrome primary)"
+  if [ "$primary" != "chrome" ]; then
+    echo "  ⚠️  Skipping browser-routing tests (primary provider is ${primary} — chrome vs ghost-chrome parity needs the chrome lane)"
     return 1
   fi
   return 0

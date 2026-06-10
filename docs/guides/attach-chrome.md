@@ -52,13 +52,15 @@ The attach request body is:
   "name": "shared-chrome",
   "cdpUrl": "ws://127.0.0.1:9222/devtools/browser/...",
   "provider": "chrome",
-  "browserTarget": "chrome-local"
+  "browser": "chrome-local"
 }
 ```
 
-`browserTarget` is optional. When `browser.targets` is configured, an omitted
-value attaches to the configured default target and the target's browser is used.
-If you also pass `provider`, it must match that target. Without browser targets,
+`browser` is optional and accepts a provider name (`chrome`, `cloak`) or a
+configured target name from `browser.targets`. When `browser.targets` is
+configured, an omitted value attaches to the configured default target and the
+target's browser is used. If you also pass `provider`, it must agree with the
+`browser` value. Without browser targets,
 `provider` defaults to `chrome`; use `cloak` for a CloakBrowser endpoint
 (equivalent to `--browser cloak` on the CLI).
 
@@ -145,7 +147,7 @@ curl -X POST http://localhost:9867/instances/attach \
   -d '{
     "name": "shared-chrome",
     "cdpUrl": "ws://127.0.0.1:9222/devtools/browser/abc123",
-    "browserTarget": "chrome-local"
+    "browser": "chrome-local"
   }'
 # Response
 {
@@ -158,8 +160,7 @@ curl -X POST http://localhost:9867/instances/attach \
   "status": "running",
   "attached": true,
   "cdpUrl": "ws://127.0.0.1:9222/devtools/browser/abc123",
-  "browserTarget": "chrome-local",
-  "browserProvider": "chrome"
+  "browser": "chrome"
 }
 ```
 

@@ -42,7 +42,7 @@ COMMANDS=(
   "  cli-extended:🐳:CLI extended tests"
   "  infra-extended:🐳:Infra extended (multi-instance)"
   "  test <name>:🐳:Run a single E2E test by start_test name"
-  "smoke:💨:Docker smoke checks (use --browser=chrome|cloak|ghost-chrome|all or filter names)"
+  "smoke:💨:Docker smoke checks (use --browser=chrome|cloak|all or filter names)"
   "  cloakbrowser:💨:Docker browser parity / CloakBrowser smoke"
   "  cdp-attach:💨:Docker CDP attach smoke"
   "  live-detection:💨:Advisory live detection-site probe (external network)"

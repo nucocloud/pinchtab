@@ -22,6 +22,7 @@
     "guides/memory-monitoring.md",
     "guides/data-storage.md",
     "guides/docker.md",
+    "guides/headed-mode.md",
     "guides/raspberry-pi.md"
   ],
   "architecture": [

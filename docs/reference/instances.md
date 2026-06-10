@@ -195,7 +195,7 @@ curl -X POST http://localhost:9867/instances/attach \
     "name":"shared-chrome",
     "cdpUrl":"ws://127.0.0.1:9222/devtools/browser/...",
     "provider":"chrome",
-    "browserTarget":"chrome-local"
+    "browser":"chrome-local"
   }'
 ```
 
@@ -218,10 +218,11 @@ Accepted `cdpUrl` shapes:
 
 Page-level URLs (`/devtools/page/...`) are rejected.
 
-`browserTarget` is optional. When `browser.targets` is configured, an omitted
-value attaches to the configured default target and the target's browser is used.
-When `browserTarget` is present, it must name a configured target. If `provider`
-is also present, it must match that target's browser. Without `browser.targets`,
+`browser` is optional and accepts a provider name (`chrome`, `cloak`) or a
+configured target name from `browser.targets`. When `browser.targets` is
+configured, an omitted value attaches to the configured default target and the
+target's browser is used. If `provider` is also present, it must agree with
+the `browser` value. Without `browser.targets`,
 `provider` is `chrome` (default) or `cloak`; the cloak browser disables
 PinchTab JS overlays on the assumption that the external browser owns native
 fingerprint behavior.
@@ -246,14 +247,14 @@ curl -X POST http://localhost:9867/instances/attach-bridge \
     "name":"shared-bridge",
     "baseUrl":"http://10.0.12.24:9868",
     "token":"bridge-secret-token",
-    "browserTarget":"chrome-local"
+    "browser":"chrome-local"
   }'
 ```
 
 Notes:
 
 - `baseUrl` must be a bare bridge origin; do not include credentials, query strings, fragments, or a path
-- `browserTarget` is optional; with `browser.targets` configured, an omitted value attaches to the default target
+- `browser` is optional and accepts a provider or target name; with `browser.targets` configured, an omitted value attaches to the default target
 - the orchestrator performs a health check before registering it
 - `security.attach.allowHosts` must allow the bridge host
 - `allowHosts: ["*"]` is a documented, non-default, security-reducing override. It disables host allowlisting entirely and allows any reachable bridge host with an allowed scheme. Use it only on isolated, operator-controlled networks.

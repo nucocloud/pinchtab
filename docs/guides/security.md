@@ -309,6 +309,7 @@ For navigation trust overrides:
 - `security.trustedResolveCIDRs` lets a hostname resolve to a non-public IP during navigation preflight. This is intended for operator-controlled DNS or proxy setups such as internal proxies, lab networks, or benchmark ranges
 - `security.trustedProxyCIDRs` trusts browser-reported remote IPs from known internal proxies during runtime navigation checks
 - keep both lists narrow. Broad ranges such as `10.0.0.0/8` reduce SSRF protections and should only be used when the full network segment is intentionally trusted
+- known limitation: responses served from the browser cache or a service worker report no remote IP, so the runtime remote-IP check passes them through by design; the resolve-time checks remain the primary gate for those navigations
 
 Supported domain patterns are:
 

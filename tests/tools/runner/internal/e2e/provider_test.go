@@ -14,13 +14,14 @@ func TestWriteCloakComposeOverrideMountsExtensionFixtures(t *testing.T) {
 	outPath := filepath.Join(tmp, "docker-compose.cloak.yml")
 
 	configs := map[string]string{
-		"pinchtab.json":                   filepath.Join(tmp, "pinchtab.json"),
-		"pinchtab-secure.json":            filepath.Join(tmp, "pinchtab-secure.json"),
-		"pinchtab-autoclose.json":         filepath.Join(tmp, "pinchtab-autoclose.json"),
-		"pinchtab-medium-permissive.json": filepath.Join(tmp, "pinchtab-medium-permissive.json"),
-		"pinchtab-full-permissive.json":   filepath.Join(tmp, "pinchtab-full-permissive.json"),
-		"pinchtab-ghostchrome.json":       filepath.Join(tmp, "pinchtab-ghostchrome.json"),
-		"pinchtab-bridge.json":            filepath.Join(tmp, "pinchtab-bridge.json"),
+		"pinchtab.json":                       filepath.Join(tmp, "pinchtab.json"),
+		"pinchtab-secure.json":                filepath.Join(tmp, "pinchtab-secure.json"),
+		"pinchtab-autoclose.json":             filepath.Join(tmp, "pinchtab-autoclose.json"),
+		"pinchtab-medium-permissive.json":     filepath.Join(tmp, "pinchtab-medium-permissive.json"),
+		"pinchtab-full-permissive.json":       filepath.Join(tmp, "pinchtab-full-permissive.json"),
+		"pinchtab-network-retain-bodies.json": filepath.Join(tmp, "pinchtab-network-retain-bodies.json"),
+		"pinchtab-ghostchrome.json":           filepath.Join(tmp, "pinchtab-ghostchrome.json"),
+		"pinchtab-bridge.json":                filepath.Join(tmp, "pinchtab-bridge.json"),
 	}
 
 	if err := writeCloakComposeOverride(outPath, configs, fixturesDir, defaultCloakImage); err != nil {
@@ -60,6 +61,7 @@ func TestWriteCloakComposeOverrideMountsExtensionFixtures(t *testing.T) {
 		"pinchtab-autoclose":   "pinchtab-autoclose.json",
 		"pinchtab-medium":      "pinchtab-medium-permissive.json",
 		"pinchtab-full":        "pinchtab-full-permissive.json",
+		"pinchtab-retain":      "pinchtab-network-retain-bodies.json",
 		"pinchtab-ghostchrome": "pinchtab-ghostchrome.json",
 		"pinchtab-bridge":      "pinchtab-bridge.json",
 	} {
@@ -68,11 +70,25 @@ func TestWriteCloakComposeOverrideMountsExtensionFixtures(t *testing.T) {
 		if !strings.Contains(block, want) {
 			t.Fatalf("%s override missing cloak config mount %q:\n%s", svc, want, block)
 		}
-		if !strings.Contains(block, "image: "+defaultCloakImage) {
-			t.Fatalf("%s override missing cloak image:\n%s", svc, block)
-		}
 		if !strings.Contains(block, "pull_policy: never") {
 			t.Fatalf("%s override missing pull_policy: never:\n%s", svc, block)
+		}
+		// The dedicated ghost-chrome comparison server keeps the stock image
+		// in a cloak lane; everything else swaps to the cloak image.
+		wantImage := defaultCloakImage
+		if svc == "pinchtab-ghostchrome" {
+			wantImage = stockPinchtabImage
+		}
+		if !strings.Contains(block, "image: "+wantImage) {
+			t.Fatalf("%s override image mismatch (want %s):\n%s", svc, wantImage, block)
+		}
+		// Bridge services must keep their base-compose subcommand.
+		wantCmd := "pinchtab server"
+		if svc == "pinchtab-ghostchrome" || svc == "pinchtab-bridge" {
+			wantCmd = "pinchtab bridge"
+		}
+		if !strings.Contains(block, wantCmd) {
+			t.Fatalf("%s override must exec %q:\n%s", svc, wantCmd, block)
 		}
 	}
 }

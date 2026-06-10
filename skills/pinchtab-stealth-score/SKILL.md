@@ -147,12 +147,11 @@ using the Go runner:
   "$RESULTS_DIR"/*_${TIMESTAMP}.json
 ```
 
-If the `runner` binary isn't built yet (it's gitignored — built on demand by `./dev`):
-
-```bash
-go build -o "$PROJECT_ROOT/tests/tools/scripts/runner" \
-  ./tests/tools/runner
-```
+`tests/tools/scripts/runner` is a tracked self-building shim: on first use it
+compiles the Go runner into the gitignored `tests/tools/scripts/.runner.bin`
+and rebuilds it automatically after source changes — no manual `go build`
+needed (and never build over the shim path itself; that would overwrite the
+checked-in script with a binary).
 
 The summarizer:
 

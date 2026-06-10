@@ -14,18 +14,87 @@ import (
 const defaultCloakImage = "pinchtab-cloakbrowser:test"
 const defaultCloakDockerfile = "tests/tools/docker/cloakbrowser-smoke.Dockerfile"
 const dryRunCloakComposeOverride = "<generated-cloak-compose-override>"
+const dryRunGhostChromeComposeOverride = "<generated-ghost-chrome-compose-override>"
+const stockPinchtabImage = "e2e-pinchtab:latest"
 
-// pinchtabServices enumerates every pinchtab variant present in the e2e
-// compose files. Anything not listed here is left untouched by the cloak
-// override (notably the runner-* services and fixtures).
-var pinchtabServices = []string{
-	"pinchtab",
-	"pinchtab-secure",
-	"pinchtab-autoclose",
-	"pinchtab-medium",
-	"pinchtab-full",
-	"pinchtab-ghostchrome",
-	"pinchtab-bridge",
+type extensionMount struct {
+	sourceDir string
+	target    string
+}
+
+// pinchtabServiceTable enumerates every pinchtab variant present in the e2e
+// compose files, with the attributes a provider override must preserve from
+// docker-compose-multi.yml: the config it mounts, the subcommand it execs
+// (bridge services must stay bridges), and its extension fixture mounts.
+// Anything not listed here is left untouched by overrides (notably the
+// runner-* services and fixtures).
+var pinchtabServiceTable = []struct {
+	name            string
+	configName      string
+	subcommand      string // "server" or "bridge" — must match docker-compose-multi.yml
+	extensionMounts []extensionMount
+	// keepStockProvider pins the service to the stock image and its own
+	// config flavor in every provider lane: pinchtab-ghostchrome is the
+	// dedicated ghost-chrome comparison server and must not become cloak.
+	keepStockProvider bool
+}{
+	{
+		name:       "pinchtab",
+		configName: "pinchtab.json",
+		subcommand: "server",
+		extensionMounts: []extensionMount{
+			{sourceDir: "test-extension", target: "/extensions/test-extension"},
+			{sourceDir: "test-extension-api", target: "/extensions/test-extension-api"},
+		},
+	},
+	{
+		name:       "pinchtab-secure",
+		configName: "pinchtab-secure.json",
+		subcommand: "server",
+	},
+	{
+		name:       "pinchtab-autoclose",
+		configName: "pinchtab-autoclose.json",
+		subcommand: "server",
+		extensionMounts: []extensionMount{
+			{sourceDir: "test-extension", target: "/extensions/test-extension"},
+		},
+	},
+	{
+		name:       "pinchtab-medium",
+		configName: "pinchtab-medium-permissive.json",
+		subcommand: "server",
+		extensionMounts: []extensionMount{
+			{sourceDir: "test-extension", target: "/extensions/test-extension"},
+		},
+	},
+	{
+		name:       "pinchtab-full",
+		configName: "pinchtab-full-permissive.json",
+		subcommand: "server",
+		extensionMounts: []extensionMount{
+			{sourceDir: "test-extension", target: "/extensions/test-extension"},
+		},
+	},
+	{
+		name:       "pinchtab-retain",
+		configName: "pinchtab-network-retain-bodies.json",
+		subcommand: "server",
+		extensionMounts: []extensionMount{
+			{sourceDir: "test-extension", target: "/extensions/test-extension"},
+		},
+	},
+	{
+		name:              "pinchtab-ghostchrome",
+		configName:        "pinchtab-ghostchrome.json",
+		subcommand:        "bridge",
+		keepStockProvider: true,
+	},
+	{
+		name:       "pinchtab-bridge",
+		configName: "pinchtab-bridge.json",
+		subcommand: "bridge",
+	},
 }
 
 // providerOverrides bundles the override compose file + any generated cloak
@@ -77,7 +146,14 @@ func (r *Runner) prepareCloakOverrides() (*providerOverrides, error) {
 		return nil, fmt.Errorf("create cloak tmp dir: %w", err)
 	}
 
-	configs, err := r.rewriteE2EConfigs(tmp, writeCloakConfig)
+	configs, err := r.rewriteE2EConfigs(tmp, func(src, dst string) error {
+		// The dedicated ghost-chrome comparison server keeps its ghost-chrome
+		// flavor in every provider lane; only the primary services go cloak.
+		if filepath.Base(src) == "pinchtab-ghostchrome.json" {
+			return writeGhostChromeConfig(src, dst)
+		}
+		return writeCloakConfig(src, dst)
+	})
 	if err != nil {
 		_ = os.RemoveAll(tmp)
 		return nil, err
@@ -102,7 +178,7 @@ func (r *Runner) prepareGhostChromeOverrides() (*providerOverrides, error) {
 	if r.args.DryRun {
 		return &providerOverrides{
 			provider:     "ghost-chrome",
-			composeFiles: []string{dryRunCloakComposeOverride},
+			composeFiles: []string{dryRunGhostChromeComposeOverride},
 		}, nil
 	}
 
@@ -307,176 +383,57 @@ func writeGhostChromeConfig(src, dst string) error {
 // Used by ghost-chrome where the same Chrome image is used but the config
 // selects a different browsers.default.
 func writeConfigOnlyComposeOverride(path string, configs map[string]string, fixturesDir string) error {
-	type extensionMount struct {
-		sourceDir string
-		target    string
-	}
-	type serviceOverrideConfig struct {
-		configName      string
-		extensionMounts []extensionMount
-	}
-
-	serviceConfig := map[string]serviceOverrideConfig{
-		"pinchtab": {
-			configName: "pinchtab.json",
-			extensionMounts: []extensionMount{
-				{sourceDir: "test-extension", target: "/extensions/test-extension"},
-				{sourceDir: "test-extension-api", target: "/extensions/test-extension-api"},
-			},
-		},
-		"pinchtab-secure": {
-			configName: "pinchtab-secure.json",
-		},
-		"pinchtab-autoclose": {
-			configName: "pinchtab-autoclose.json",
-			extensionMounts: []extensionMount{
-				{sourceDir: "test-extension", target: "/extensions/test-extension"},
-			},
-		},
-		"pinchtab-medium": {
-			configName: "pinchtab-medium-permissive.json",
-			extensionMounts: []extensionMount{
-				{sourceDir: "test-extension", target: "/extensions/test-extension"},
-			},
-		},
-		"pinchtab-full": {
-			configName: "pinchtab-full-permissive.json",
-			extensionMounts: []extensionMount{
-				{sourceDir: "test-extension", target: "/extensions/test-extension"},
-			},
-		},
-		"pinchtab-ghostchrome": {
-			configName: "pinchtab-ghostchrome.json",
-		},
-		"pinchtab-bridge": {
-			configName: "pinchtab-bridge.json",
-		},
-	}
-
-	var b strings.Builder
-	b.WriteString("# Generated by tests/tools/runner — provider=ghost-chrome override.\n")
-	b.WriteString("# Mounts ghost-chrome-flavoured runtime config in place of the chrome one.\n")
-	b.WriteString("services:\n")
-
-	for _, svc := range pinchtabServices {
-		cfg, ok := serviceConfig[svc]
-		if !ok {
-			continue
-		}
-		baseName := cfg.configName
-		configPath, ok := configs[baseName]
-		if !ok {
-			continue
-		}
-		fmt.Fprintf(&b, "  %s:\n", svc)
-		fmt.Fprintf(&b, "    image: e2e-pinchtab:latest\n")
-		fmt.Fprintf(&b, "    pull_policy: never\n")
-		b.WriteString("    environment:\n")
-		b.WriteString("      PINCHTAB_RATE_LIMIT_MAX: \"3000\"\n")
-		b.WriteString("    volumes:\n")
-		fmt.Fprintf(&b, "      - %s:/fixture-config-ghost/%s:ro\n", configPath, baseName)
-		for _, mount := range cfg.extensionMounts {
-			source := filepath.Join(fixturesDir, mount.sourceDir)
-			fmt.Fprintf(&b, "      - %s:%s:ro\n", source, mount.target)
-		}
-		fmt.Fprintf(&b, "    command: [\"/bin/sh\", \"-lc\", \"mkdir -p /data/e2e-config && cp /fixture-config-ghost/%s /data/e2e-config/%s && exec /usr/local/bin/docker-entrypoint.sh pinchtab server\"]\n",
-			baseName, baseName)
-	}
-
-	return os.WriteFile(path, []byte(b.String()), 0o644) // #nosec G306 -- consumed read-only by docker compose.
+	return writeProviderComposeOverride(path, configs, fixturesDir, "ghost-chrome", "")
 }
 
-// writeCloakComposeOverride writes a compose file that targets each pinchtab
-// service: swaps the image to the cloak provider image, drops the build
-// directive (via image-only + pull_policy:never), remaps the config bind mount
-// onto the cloak-flavoured copy we just generated, and preserves extension
-// fixture mounts needed by extension-parity E2E tests.
-//
-// The override is intentionally written as YAML by hand (no third-party deps)
-// since the structure is small and stable.
+// writeCloakComposeOverride writes a compose file that swaps each pinchtab
+// service onto the cloak provider image (except keepStockProvider services)
+// and remaps the config bind mount onto the cloak-flavoured copy.
 func writeCloakComposeOverride(path string, cloakConfigs map[string]string, fixturesDir, image string) error {
-	type extensionMount struct {
-		sourceDir string
-		target    string
-	}
-	type serviceOverrideConfig struct {
-		configName      string
-		extensionMounts []extensionMount
-	}
+	return writeProviderComposeOverride(path, cloakConfigs, fixturesDir, "cloak", image)
+}
 
-	// Map service name to original config basename and extension bind mounts.
-	// The config bind-mount target inside the container is
-	// /fixture-config/<basename>:ro, which the entrypoint command copies into
-	// /data/e2e-config/<basename>.
-	serviceConfig := map[string]serviceOverrideConfig{
-		"pinchtab": {
-			configName: "pinchtab.json",
-			extensionMounts: []extensionMount{
-				{sourceDir: "test-extension", target: "/extensions/test-extension"},
-				{sourceDir: "test-extension-api", target: "/extensions/test-extension-api"},
-			},
-		},
-		"pinchtab-secure": {
-			configName: "pinchtab-secure.json",
-		},
-		"pinchtab-autoclose": {
-			configName: "pinchtab-autoclose.json",
-			extensionMounts: []extensionMount{
-				{sourceDir: "test-extension", target: "/extensions/test-extension"},
-			},
-		},
-		"pinchtab-medium": {
-			configName: "pinchtab-medium-permissive.json",
-			extensionMounts: []extensionMount{
-				{sourceDir: "test-extension", target: "/extensions/test-extension"},
-			},
-		},
-		"pinchtab-full": {
-			configName: "pinchtab-full-permissive.json",
-			extensionMounts: []extensionMount{
-				{sourceDir: "test-extension", target: "/extensions/test-extension"},
-			},
-		},
-		"pinchtab-ghostchrome": {
-			configName: "pinchtab-ghostchrome.json",
-		},
-		"pinchtab-bridge": {
-			configName: "pinchtab-bridge.json",
-		},
+// writeProviderComposeOverride emits the per-provider compose override. It
+// preserves each service's base-compose subcommand (bridge services stay
+// bridges) and pins keepStockProvider services to the stock image. The
+// override is intentionally written as YAML by hand (no third-party deps)
+// since the structure is small and stable.
+func writeProviderComposeOverride(path string, configs map[string]string, fixturesDir, provider, image string) error {
+	// Mount configs at a provider-distinct path to avoid volume merge
+	// ambiguity with the base compose's /fixture-config mount; the command
+	// copies from this path instead.
+	mountDir := "/fixture-config-ghost"
+	if provider == "cloak" {
+		mountDir = "/fixture-config-cloak"
 	}
 
 	var b strings.Builder
-	b.WriteString("# Generated by tests/tools/runner — provider=cloak override.\n")
-	b.WriteString("# Swaps every pinchtab* service onto the cloak provider image and\n")
-	b.WriteString("# mounts the cloak-flavoured runtime config in place of the chrome one.\n")
+	fmt.Fprintf(&b, "# Generated by tests/tools/runner — provider=%s override.\n", provider)
+	fmt.Fprintf(&b, "# Mounts %s-flavoured runtime config in place of the chrome one.\n", provider)
 	b.WriteString("services:\n")
 
-	for _, svc := range pinchtabServices {
-		cfg, ok := serviceConfig[svc]
-		if !ok {
-			continue
-		}
-		baseName := cfg.configName
-		cloakPath, ok := cloakConfigs[baseName]
+	for _, svc := range pinchtabServiceTable {
+		configPath, ok := configs[svc.configName]
 		if !ok {
 			// No config generated (probably renamed); skip silently — the
 			// service will fail at startup and surface a clear error.
 			continue
 		}
-		fmt.Fprintf(&b, "  %s:\n", svc)
-		fmt.Fprintf(&b, "    image: %s\n", image)
+		svcImage := stockPinchtabImage
+		if provider == "cloak" && !svc.keepStockProvider {
+			svcImage = image
+		}
+		fmt.Fprintf(&b, "  %s:\n", svc.name)
+		fmt.Fprintf(&b, "    image: %s\n", svcImage)
 		fmt.Fprintf(&b, "    pull_policy: never\n")
-		// Mount the cloak config at a distinct path to avoid volume merge
-		// ambiguity with the base compose's /fixture-config mount. Override
-		// the command to copy from this path instead.
 		b.WriteString("    volumes:\n")
-		fmt.Fprintf(&b, "      - %s:/fixture-config-cloak/%s:ro\n", cloakPath, baseName)
-		for _, mount := range cfg.extensionMounts {
+		fmt.Fprintf(&b, "      - %s:%s/%s:ro\n", configPath, mountDir, svc.configName)
+		for _, mount := range svc.extensionMounts {
 			source := filepath.Join(fixturesDir, mount.sourceDir)
 			fmt.Fprintf(&b, "      - %s:%s:ro\n", source, mount.target)
 		}
-		fmt.Fprintf(&b, "    command: [\"/bin/sh\", \"-lc\", \"mkdir -p /data/e2e-config && cp /fixture-config-cloak/%s /data/e2e-config/%s && exec /usr/local/bin/docker-entrypoint.sh pinchtab server\"]\n",
-			baseName, baseName)
+		fmt.Fprintf(&b, "    command: [\"/bin/sh\", \"-lc\", \"mkdir -p /data/e2e-config && cp %s/%s /data/e2e-config/%s && exec /usr/local/bin/docker-entrypoint.sh pinchtab %s\"]\n",
+			mountDir, svc.configName, svc.configName, svc.subcommand)
 	}
 
 	return os.WriteFile(path, []byte(b.String()), 0o644) // #nosec G306 -- consumed read-only by docker compose.

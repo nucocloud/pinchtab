@@ -1,21 +1,24 @@
 # Browser Abstraction
 
-Status: partially implemented (BridgeAPI encapsulation complete; browser registry extraction in progress)
+Status: implemented (BridgeAPI encapsulation and browser registry extraction complete)
 Owner: bridge
 
-## Problem
+## Problem (historical)
 
-Adding a new browser (e.g. lightpanda, brave, firefox) requires editing at least five unrelated files. Provider-specific logic is scattered across `config/`, `bridge/runtime/`, `browserprobe/`, and `doctor/`, coupled by string switches on `NormalizeBrowserProvider()` and predicates like `IsCloakBrowserProvider()`.
+Before the registry extraction, adding a new browser required editing at least
+five unrelated files: provider-specific logic was scattered across `config/`,
+`bridge/runtime/`, `browserprobe/`, and `doctor/`, coupled by string switches
+and per-provider predicates. Those branch points now route through one
+abstraction each:
 
-Current branch points:
-
-| Concern | Location | Mechanism |
+| Concern | Location | Mechanism today |
 |---|---|---|
-| Launch flags | `internal/bridge/runtime/init.go` | `IsCloakBrowserProvider()` gate + `CloakBrowserFlagArgs()` |
-| Geo alignment | `internal/bridge/runtime/geo_align.go` | `switch NormalizeBrowserProvider(...)` |
-| Binary discovery | `internal/browsers/runtimekit/runtimekit.go` | Provider-driven `FindBrowserBinary(...)` discovery |
-| Doctor registry | `internal/doctor/runner.go` | `if IsCloakBrowserProvider()` adds checks |
-| Config validation | `internal/config/browser_targets.go` | Hardcoded `{chrome, cloak}` allowlist |
+| Launch flags | `internal/browsers/<id>/` + `internal/browsers/runtimekit/` | per-provider `BuildLaunchArgs` via `ResolveProviderLaunchPlan` |
+| Geo alignment | `internal/browsers/` config | provider capabilities + `GeoConfig` on the launch plan |
+| Binary discovery | `internal/browsers/<id>/` | per-provider `DiscoverBinary()` |
+| Doctor checks | `internal/doctor/browsers.go` | per-provider `DoctorChecks()` from the registry |
+| Config validation | `internal/config/browser_targets.go` | registry-driven (`browsers.Get`/`browsers.IDs`) |
+| Lifecycle cleanup | `internal/browsers/providerhooks/` | registered `Hooks` (decorate, cleanup, shutdown) |
 
 `Engine` (`chrome` / `lite` / `auto`) — **deprecated**; replaced by the browser provider model (`chrome` / `cloak` / `ghost-chrome`). See [routing-contract.md](routing-contract.md) and [terminology.md](terminology.md) for the canonical provider definitions. `Capabilities` are additional concepts layered on top, partially wired.
 
@@ -297,6 +300,14 @@ The target architecture is implemented through Phase 6. Key components:
 - **Handlers** — use only `BridgeAPI`. Navigate and Snapshot handlers call
   `Bridge.Navigate()` and `Bridge.Snapshot()` respectively. No `StaticBrowser`
   field, no ghost-chrome conditionals, no routing package imports.
+- **Deferred-launch two-phase navigate** — for fresh new-tab navigates the
+  handler probes `StaticFirstNavigate()` and runs phase 1 with
+  `NavigateParams.NoEscalate`: the adapter attempts the static browser only
+  and signals `*bridge.StaticEscalateError` instead of escalating internally,
+  so Chrome is launched only when actually needed. Phase 2 re-runs with
+  `SkipStatic`. The timeout budget is per phase (each phase gets
+  `NavigateTimeout`, default 30s), so a navigate that escalates can take up
+  to twice the configured timeout.
 - **Route metadata** — `usedProvider` is consistently `"ghost-chrome"` for all
   adapter paths. Static vs Chrome routing recorded in `Attempts[]`.
 - **`internal/routing/`** — deleted.

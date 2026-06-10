@@ -26,10 +26,15 @@ RUN go build -ldflags="-s -w" -o pinchtab ./cmd/pinchtab
 
 # Stage 3: Download CloakBrowser through its official Python package.
 FROM python:3.12-slim AS cloakbrowser-binary
+# Pinned so smoke/parity lanes are reproducible and upstream releases can't
+# silently change what they test; bump deliberately. The package's
+# ensure_binary() below still downloads a Chromium build at image build time
+# (local-only image, never published — see header).
+ARG CLOAKBROWSER_VERSION=0.3.31
 ENV CLOAKBROWSER_CACHE_DIR=/cloak-cache \
     CLOAKBROWSER_AUTO_UPDATE=false \
     PYTHONUNBUFFERED=1
-RUN python -m pip install --disable-pip-version-check --root-user-action=ignore --no-cache-dir cloakbrowser && \
+RUN python -m pip install --disable-pip-version-check --root-user-action=ignore --no-cache-dir "cloakbrowser==${CLOAKBROWSER_VERSION}" && \
     python - <<'PY'
 import logging
 from pathlib import Path

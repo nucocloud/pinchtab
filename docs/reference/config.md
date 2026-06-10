@@ -139,6 +139,10 @@ Supported environment variables:
 
 - `PINCHTAB_CONFIG`: choose the config file path
 - `PINCHTAB_TOKEN`: override the API token at runtime
+- `PINCHTAB_RATE_LIMIT_MAX`: per-client request cap per 10-second window
+  (default 3000, sized for agent-driven snapshot/action bursts). Lower it
+  (e.g. to 300) when exposing the port beyond localhost. Child instances
+  inherit it from the orchestrator's environment.
 
 For remote CLI targeting, use the root `--server` flag instead of config.
 
@@ -356,16 +360,31 @@ config file.
 ### Browser Selection
 
 The CLI uses `--browser <name>` to select a browser. In the config file the
-equivalent field is `browser.provider`.
+equivalent field is `browsers.default`:
 
-`browser.provider` selects the local browser backend:
+```json
+{
+  "browsers": { "default": "cloak" }
+}
+```
+
+`browsers.default` selects the local browser backend:
 
 - `chrome` is the default and uses the normal Chrome/Chromium launch path.
+- `ghost-chrome` serves static-friendly reads from a lightweight fetcher and
+  escalates to Chrome when a page needs rendering.
 - `cloak` uses a user-installed CloakBrowser Chromium binary from `browser.binary`.
 
-When `browser.provider` is `cloak`, `browser.binary` must point at the local
-CloakBrowser Chromium executable. PinchTab does not download, bundle, or
-redistribute the CloakBrowser binary.
+`browsers.available` optionally restricts which browsers requests may select.
+For multiple named configurations of the same provider (different binaries,
+proxies, or fingerprints), use `browser.targets` with `browser.defaultTarget`
+and `browser.fallbackOrder` — see [Terminology](../architecture/terminology.md).
+The legacy `browser.provider` field is no longer supported and is rejected at
+validation time.
+
+When the selected browser is `cloak`, `browser.binary` (or the target's
+`binary`) must point at the local CloakBrowser Chromium executable. PinchTab
+does not download, bundle, or redistribute the CloakBrowser binary.
 
 `browser.cloak` maps supported CloakBrowser fingerprint settings to native launch
 flags:

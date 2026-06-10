@@ -284,8 +284,8 @@ This image is local-only:
 ### Run a CloakBrowser-backed container locally
 
 Create a config that points PinchTab at the in-image CloakBrowser binary
-(`"provider": "cloak"` in the config file is equivalent to `--browser cloak`
-on the CLI):
+(`"browsers": {"default": "cloak"}` in the config file is equivalent to
+`--browser cloak` on the CLI):
 
 ```json
 {
@@ -295,8 +295,10 @@ on the CLI):
     "token": "replace-me",
     "stateDir": "/data"
   },
+  "browsers": {
+    "default": "cloak"
+  },
   "browser": {
-    "provider": "cloak",
     "binary": "/opt/cloakbrowser/chrome",
     "cloak": {
       "fingerprintSeed": "42069",

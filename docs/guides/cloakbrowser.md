@@ -341,13 +341,13 @@ curl -X POST http://localhost:9867/instances/attach \
     "name": "cloak-manager-profile",
     "cdpUrl": "ws://127.0.0.1:9222/devtools/browser/abc123",
     "provider": "cloak",
-    "browserTarget": "cloak-1"
+    "browser": "cloak-1"
   }'
 ```
 
 For a remote CloakBrowser attach:
 
-- `browserTarget` should name a CloakBrowser target when `browser.targets` is configured; if omitted, the configured default target is used
+- `browser` should name a CloakBrowser target (or the `cloak` provider) when `browser.targets` is configured; if omitted, the configured default target is used
 - `provider` in the JSON body must be `cloak` when no browser target is configured, or must match the selected target when both fields are present
 - `/stealth/status` reports `provider=cloak`, `launchMode=remote-cdp`,
   `native=true`, and `pinchtabOverlaysDisabled=true` — PinchTab does not inject
