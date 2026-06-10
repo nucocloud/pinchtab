@@ -59,7 +59,17 @@ func (o *Orchestrator) ResolveRequestedBrowser(requested string) (targetName, pr
 		}
 	}
 
-	return "", "", nil
+	// Legacy (no-targets) fallthrough: an explicit unknown browser must fail
+	// here, not silently launch chrome via NormalizeBrowser coercion later.
+	var available []string
+	if o.runtimeCfg != nil {
+		available = o.runtimeCfg.BrowsersAvailable
+	}
+	parsed, err := config.ParseBrowser(requested, available)
+	if err != nil {
+		return "", "", &UnknownBrowserError{Target: requested, Err: err}
+	}
+	return "", parsed, nil
 }
 
 // LaunchWithTargetSelection applies browserTarget/defaultTarget/fallbackOrder
@@ -78,11 +88,16 @@ func (o *Orchestrator) LaunchWithTargetSelection(
 
 	opts.RequestedProvider = requestedTarget
 	opts.Browser = resolvedProvider
+	opts.TargetName = resolvedTarget
 
+	// Fallback policy: request-supplied fallbackTargets are always honored
+	// verbatim. The config-level fallbackOrder applies only to IMPLICIT
+	// launches — an explicit browser/target request must never silently
+	// change provider via operator-configured fallback.
 	var fallbacks []string
 	if len(fallbackTargets) > 0 {
 		fallbacks = fallbackTargets
-	} else if resolvedTarget != "" && o.runtimeCfg != nil {
+	} else if strings.TrimSpace(requestedTarget) == "" && resolvedTarget != "" && o.runtimeCfg != nil {
 		fallbacks = o.runtimeCfg.FallbackOrder
 	}
 

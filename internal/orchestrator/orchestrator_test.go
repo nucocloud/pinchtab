@@ -2,8 +2,11 @@ package orchestrator
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -11,12 +14,14 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	_ "github.com/pinchtab/pinchtab/internal/browsers/all"
 
 	"github.com/pinchtab/pinchtab/internal/bridge"
+	"github.com/pinchtab/pinchtab/internal/browsers/providerhooks"
 	"github.com/pinchtab/pinchtab/internal/config"
 )
 
@@ -1207,5 +1212,158 @@ func TestOrchestrator_RegisterHandlers_LocksSensitiveRoutes(t *testing.T) {
 		if !strings.Contains(w.Body.String(), tt.setting) {
 			t.Fatalf("%s %s expected setting %s in response, got %s", tt.method, tt.path, tt.setting, w.Body.String())
 		}
+	}
+}
+
+// With two targets sharing the chrome provider, an explicit TargetName must
+// promote that exact target's config into the child config — provider-based
+// re-derivation would pick the default target's binary.
+func TestLaunchWithOptions_TargetNamePromotesExactTarget(t *testing.T) {
+	old := processAliveFunc
+	processAliveFunc = func(pid int) bool { return pid > 0 }
+	t.Cleanup(func() { processAliveFunc = old })
+	stubPortAvailability(t, func(int) bool { return true })
+
+	runner := &mockRunner{portAvail: true}
+	o := NewOrchestratorWithRunner(t.TempDir(), runner)
+	o.ApplyRuntimeConfig(&config.RuntimeConfig{
+		InstancePortStart: 9900,
+		InstancePortEnd:   9910,
+		DefaultTarget:     "chrome-local",
+		Targets: config.BrowserTargetsConfig{
+			"chrome-local": {Provider: config.BrowserChrome, Binary: "/usr/bin/chrome-a"},
+			"backup":       {Provider: config.BrowserChrome, Binary: "/usr/bin/chrome-b"},
+		},
+	})
+
+	if _, err := o.LaunchWithOptions("p1", "", true, LaunchOptions{
+		Browser:    config.BrowserChrome,
+		TargetName: "backup",
+	}); err != nil {
+		t.Fatalf("LaunchWithOptions: %v", err)
+	}
+
+	cfgPath := envMap(runner.env)["PINCHTAB_CONFIG"]
+	if cfgPath == "" {
+		t.Fatal("PINCHTAB_CONFIG missing from child env")
+	}
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("ReadFile(%q): %v", cfgPath, err)
+	}
+	var fc config.FileConfig
+	if err := json.Unmarshal(data, &fc); err != nil {
+		t.Fatalf("unmarshal child config: %v", err)
+	}
+	if fc.Browser.BrowserBinary != "/usr/bin/chrome-b" {
+		t.Fatalf("child binary = %q, want backup's /usr/bin/chrome-b", fc.Browser.BrowserBinary)
+	}
+}
+
+// M9 regression: a failed attach spawn must release the name reservation so
+// a retry with the same name succeeds.
+func TestAttach_FailedSpawnReleasesNameReservation(t *testing.T) {
+	stubAttachBridgeHealthy(t)
+	runner := &mockRunner{portAvail: true, runErr: errors.New("spawn failed")}
+	o := NewOrchestratorWithRunner(t.TempDir(), runner)
+	allowAttachForTest(o, []string{"ws"}, []string{"localhost"})
+	o.attachHealthCheckTimeout = 50 * time.Millisecond
+
+	if _, err := o.Attach("ext", "ws://localhost:9222/devtools/browser/a"); err == nil {
+		t.Fatal("expected attach to fail when the runner errors")
+	}
+	if n := len(o.List()); n != 0 {
+		t.Fatalf("failed attach left %d residual instances (stale reservation)", n)
+	}
+
+	o.runner = &mockRunner{portAvail: true}
+	if _, err := o.Attach("ext", "ws://localhost:9222/devtools/browser/a"); err != nil {
+		t.Fatalf("retry after failed attach should succeed: %v", err)
+	}
+}
+
+// slowAttachRunner widens the spawn window so the duplicate-name race is
+// deterministic: the second attach must fail on the reservation, not spawn.
+type slowAttachRunner struct {
+	mockRunner
+	delay time.Duration
+	runs  atomic.Int32
+}
+
+func (r *slowAttachRunner) Run(ctx context.Context, binary string, args []string, env []string, stdout, stderr io.Writer) (Cmd, error) {
+	r.runs.Add(1)
+	time.Sleep(r.delay)
+	return r.mockRunner.Run(ctx, binary, args, env, stdout, stderr)
+}
+
+// M9 regression: concurrent same-name attaches spawn at most one child.
+func TestAttach_ConcurrentDuplicateNameSpawnsOneChild(t *testing.T) {
+	stubAttachBridgeHealthy(t)
+	runner := &slowAttachRunner{mockRunner: mockRunner{portAvail: true}, delay: 50 * time.Millisecond}
+	o := NewOrchestratorWithRunner(t.TempDir(), runner)
+	allowAttachForTest(o, []string{"ws"}, []string{"localhost"})
+	o.attachHealthCheckTimeout = 50 * time.Millisecond
+
+	errs := make(chan error, 2)
+	for i := 0; i < 2; i++ {
+		go func() {
+			_, err := o.Attach("shared", "ws://localhost:9222/devtools/browser/a")
+			errs <- err
+		}()
+	}
+	var failures int
+	for i := 0; i < 2; i++ {
+		if err := <-errs; err != nil {
+			failures++
+			if !strings.Contains(err.Error(), "already exists") {
+				t.Fatalf("unexpected attach error: %v", err)
+			}
+		}
+	}
+	if failures != 1 {
+		t.Fatalf("expected exactly one duplicate-name failure, got %d", failures)
+	}
+	if got := runner.runs.Load(); got != 1 {
+		t.Fatalf("expected exactly one child spawn, got %d", got)
+	}
+}
+
+// M9 regression: orphan cleanup must run even with an empty browser and nil
+// runtime config — it defaults to the chrome sweep instead of no-opping.
+func TestCleanupStoppedProfile_EmptyBrowserStillRunsCleanupHook(t *testing.T) {
+	var swept []string
+	providerhooks.Register("chrome", providerhooks.Hooks{CleanupProfile: func(p string) { swept = append(swept, p) }})
+	t.Cleanup(func() {
+		providerhooks.Register("chrome", providerhooks.Hooks{
+			CleanupProfile: bridge.CleanupOrphanedChromeProcesses,
+			Shutdown:       func() { bridge.KillAllPinchtabChrome() },
+		})
+	})
+
+	o := &Orchestrator{baseDir: t.TempDir()}
+	o.cleanupStoppedProfile("prof-x", "")
+	if len(swept) != 1 {
+		t.Fatalf("cleanup hook not invoked for empty browser + nil runtimeCfg: %v", swept)
+	}
+}
+
+// L7(h): a browser-specific lookup must not fall back to instances of
+// unknown provenance (empty Browser field).
+func TestFirstRunningURLForBrowser_SkipsBrowserlessInstances(t *testing.T) {
+	old := processAliveFunc
+	processAliveFunc = func(pid int) bool { return pid > 0 }
+	t.Cleanup(func() { processAliveFunc = old })
+
+	o := NewOrchestratorWithRunner(t.TempDir(), &mockRunner{portAvail: true})
+	o.instances["legacy"] = &InstanceInternal{
+		Instance: bridge.Instance{ID: "legacy", Status: "running", Port: "9001"},
+		URL:      "http://localhost:9001",
+	}
+
+	if url := o.FirstRunningURLForBrowser("cloak"); url != "" {
+		t.Fatalf("browser-specific lookup matched a browserless instance: %q", url)
+	}
+	if url := o.FirstRunningURLForBrowser(""); url == "" {
+		t.Fatal("non-specific lookup should still reach legacy instances")
 	}
 }

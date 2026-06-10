@@ -40,6 +40,10 @@ type Orchestrator struct {
 	allowEvaluate  bool
 	internalToken  string
 	bindings       *Bindings
+	// detachedStops tracks async failed-attempt teardowns so tests (and
+	// shutdown paths) can wait for them instead of leaking goroutines that
+	// race with stubbed package vars.
+	detachedStops sync.WaitGroup
 
 	// strictCrossInstanceTab toggles the cross-instance explicit-tab rule.
 	// When false (default), a request that targets a tab on a different
@@ -112,6 +116,11 @@ type LaunchOptions struct {
 
 	RequestedProvider string
 	Browser           string
+	// TargetName is the resolved browser target name. When set,
+	// LaunchWithOptions uses this exact target's config instead of
+	// re-deriving a target from Browser — with several targets sharing a
+	// provider, re-derivation picks the wrong one.
+	TargetName string
 }
 
 type AttachOptions struct {

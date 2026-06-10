@@ -330,6 +330,10 @@ func RunDashboard(cfg *config.RuntimeConfig, version string) {
 	doShutdown := func() {
 		shutdownOnce.Do(func() {
 			slog.Info("shutting down dashboard...")
+			// launchd may SIGKILL us shortly after SIGTERM; kill browser
+			// processes first so a mid-teardown SIGKILL can't orphan them.
+			// The hooks are idempotent process sweeps.
+			providerhooks.ShutdownAll()
 			if err := activeStrategy.Stop(); err != nil {
 				slog.Warn("strategy stop failed", "err", err)
 			}
@@ -340,7 +344,6 @@ func RunDashboard(cfg *config.RuntimeConfig, version string) {
 			maintenanceCancel()
 			dash.Shutdown()
 			gracefulShutdownWithCap(orch, bridgeShutdownTotalCap)
-			providerhooks.Shutdown(config.NormalizeBrowser(cfg.DefaultBrowser))
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			if err := srv.Shutdown(ctx); err != nil {
@@ -359,6 +362,9 @@ func RunDashboard(cfg *config.RuntimeConfig, version string) {
 		sig := make(chan os.Signal, 2)
 		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 		<-sig
+		// Synchronous kill before the goroutine hop: the supervisor may not
+		// grant us even the scheduling delay of go doShutdown().
+		providerhooks.ShutdownAll()
 		go doShutdown()
 		<-sig
 		slog.Warn("force shutdown requested")

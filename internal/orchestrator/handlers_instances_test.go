@@ -611,7 +611,7 @@ func TestHandleStartInstance_RequestFallbackTargets_Wins(t *testing.T) {
 	}
 }
 
-func TestHandleStartInstance_ConfigFallbackOrder_UsedWhenRequestEmpty(t *testing.T) {
+func TestHandleStartInstance_ConfigFallbackOrder_UsedWhenRequestImplicit(t *testing.T) {
 	fastPolling(t)
 	o := setupFallbackOrchestrator(t)
 	fl := fakeLauncherForOrch(t, o, []scriptedOutcome{
@@ -619,7 +619,8 @@ func TestHandleStartInstance_ConfigFallbackOrder_UsedWhenRequestEmpty(t *testing
 		{target: "cloak-1", succeed: true},
 	})
 
-	body := `{"browser":"chrome"}`
+	// No browser in the request: operator-configured fallbackOrder applies.
+	body := `{}`
 	req := httptest.NewRequest(http.MethodPost, "/instances/start", strings.NewReader(body))
 	w := httptest.NewRecorder()
 
@@ -633,6 +634,41 @@ func TestHandleStartInstance_ConfigFallbackOrder_UsedWhenRequestEmpty(t *testing
 	}
 	if fl.calls[1].Browser != config.BrowserCloak {
 		t.Fatalf("second call Browser = %q, want cloak (from cfg.FallbackOrder)", fl.calls[1].Browser)
+	}
+}
+
+func TestHandleStartInstance_ExplicitBrowser_NeverCrossProviderFallback(t *testing.T) {
+	fastPolling(t)
+	o := setupFallbackOrchestrator(t)
+	fl := fakeLauncherForOrch(t, o, []scriptedOutcome{
+		{target: "chrome-local", failReason: ReasonBinaryMissing},
+		{target: "cloak-1", succeed: true},
+	})
+
+	// Explicit chrome request: config fallbackOrder (cloak-1) must NOT apply —
+	// the user asked for chrome and must not silently get a cloak instance.
+	// With no fallback chain, the launch takes the direct path: the fallback
+	// planner (and with it any cross-provider attempt) is never engaged.
+	body := `{"browser":"chrome"}`
+	req := httptest.NewRequest(http.MethodPost, "/instances/start", strings.NewReader(body))
+	w := httptest.NewRecorder()
+
+	o.handleStartInstance(w, req)
+
+	if len(fl.calls) != 0 {
+		t.Fatalf("explicit request engaged the fallback planner (%d calls); cfg fallbackOrder must not apply", len(fl.calls))
+	}
+	if w.Code == http.StatusCreated {
+		var inst bridge.Instance
+		if err := json.NewDecoder(w.Body).Decode(&inst); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if inst.Browser != config.BrowserChrome {
+			t.Fatalf("instance Browser = %q, want chrome (never a fallback provider)", inst.Browser)
+		}
+		if inst.FallbackFrom != "" {
+			t.Fatalf("FallbackFrom = %q, want empty for explicit request", inst.FallbackFrom)
+		}
 	}
 }
 
@@ -737,7 +773,10 @@ func TestHandleLaunchByName_Exhaustion_502(t *testing.T) {
 		{target: "cloak-1", failReason: ReasonStartupTimeout},
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/instances/launch", strings.NewReader(`{"browser":"chrome"}`))
+	// Implicit request: the operator-configured fallback chain applies and
+	// exhausting it yields the classified 502. (Explicit requests skip the
+	// config chain entirely — see the NeverCrossProviderFallback test.)
+	req := httptest.NewRequest(http.MethodPost, "/instances/launch", strings.NewReader(`{}`))
 	w := httptest.NewRecorder()
 
 	o.handleLaunchByName(w, req)
@@ -747,5 +786,47 @@ func TestHandleLaunchByName_Exhaustion_502(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), "browser_target_unavailable") {
 		t.Fatalf("body missing browser_target_unavailable code: %s", w.Body.String())
+	}
+}
+
+// M1 regression: an explicit unknown browser on a legacy (no-targets) config
+// must 400 instead of silently launching chrome via NormalizeBrowser coercion.
+func TestHandleStartInstance_UnknownBrowser_LegacyConfig_400(t *testing.T) {
+	old := processAliveFunc
+	processAliveFunc = func(pid int) bool { return pid > 0 }
+	defer func() { processAliveFunc = old }()
+	stubPortAvailability(t, func(int) bool { return true })
+
+	o := NewOrchestratorWithRunner(t.TempDir(), &mockRunner{portAvail: true})
+
+	req := httptest.NewRequest(http.MethodPost, "/instances/start", strings.NewReader(`{"browser":"firefox"}`))
+	w := httptest.NewRecorder()
+
+	o.handleStartInstance(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 body=%s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "firefox") {
+		t.Fatalf("error should name the unknown browser: %s", w.Body.String())
+	}
+}
+
+// Known providers (any case) must still resolve on legacy configs.
+func TestHandleStartInstance_KnownBrowser_LegacyConfig_OK(t *testing.T) {
+	old := processAliveFunc
+	processAliveFunc = func(pid int) bool { return pid > 0 }
+	defer func() { processAliveFunc = old }()
+	stubPortAvailability(t, func(int) bool { return true })
+
+	o := NewOrchestratorWithRunner(t.TempDir(), &mockRunner{portAvail: true})
+
+	req := httptest.NewRequest(http.MethodPost, "/instances/start", strings.NewReader(`{"browser":"chrome"}`))
+	w := httptest.NewRecorder()
+
+	o.handleStartInstance(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201 body=%s", w.Code, w.Body.String())
 	}
 }

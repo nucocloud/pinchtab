@@ -141,6 +141,7 @@ func (p LaunchPlanner) LaunchWithFallback(
 
 		attemptOpts := opts
 		attemptOpts.Browser = resolved.Provider
+		attemptOpts.TargetName = resolved.Name
 
 		inst, launchErr := p.Launcher.Launch(name, port, headless, attemptOpts)
 		if launchErr != nil {
@@ -331,13 +332,29 @@ func (o *Orchestrator) waitForLaunchOutcome(instanceID string, timeout time.Dura
 	}
 }
 
-// tearDownFailedAttempt logs but does not propagate errors so teardown never blocks fallback.
+// failedAttemptExitWait bounds how long fallback waits for a failed attempt's
+// process to exit before launching the next candidate. Var so tests can shrink it.
+var failedAttemptExitWait = 3 * time.Second
+
+// tearDownFailedAttempt logs but does not propagate errors so teardown never
+// blocks fallback indefinitely. It does wait (bounded) for the failed process
+// to exit: the next candidate reuses the same profile name/dir, and a
+// still-dying browser holding Chrome's SingletonLock would poison the retry.
 func (o *Orchestrator) tearDownFailedAttempt(instanceID string) {
 	inst := o.detachFailedAttempt(instanceID)
 	if inst == nil {
 		return
 	}
-	go o.stopDetachedFailedAttempt(instanceID, inst)
+	o.detachedStops.Add(1)
+	go func() {
+		defer o.detachedStops.Done()
+		o.stopDetachedFailedAttempt(instanceID, inst)
+	}()
+	if inst.cmd != nil {
+		if pid := inst.cmd.PID(); pid > 0 && !waitForProcessExit(pid, failedAttemptExitWait) {
+			slog.Warn("failed fallback attempt still running; next candidate may hit a locked profile", "id", instanceID, "pid", pid)
+		}
+	}
 }
 
 func (o *Orchestrator) detachFailedAttempt(instanceID string) *InstanceInternal {
@@ -361,7 +378,7 @@ func (o *Orchestrator) stopDetachedFailedAttempt(instanceID string, inst *Instan
 		return
 	}
 	defer func() {
-		o.cleanupDetachedFailedAttemptProfile(inst.ProfileName)
+		o.cleanupDetachedFailedAttemptProfile(inst.ProfileName, inst.browser)
 	}()
 
 	if inst.cmd == nil {
@@ -410,7 +427,7 @@ func (o *Orchestrator) requestDetachedShutdown(inst *InstanceInternal) {
 	}
 }
 
-func (o *Orchestrator) cleanupDetachedFailedAttemptProfile(profileName string) {
+func (o *Orchestrator) cleanupDetachedFailedAttemptProfile(profileName, browser string) {
 	o.mu.RLock()
 	for _, inst := range o.instances {
 		if inst != nil && inst.ProfileName == profileName && instanceIsActive(inst) {
@@ -419,7 +436,7 @@ func (o *Orchestrator) cleanupDetachedFailedAttemptProfile(profileName string) {
 		}
 	}
 	o.mu.RUnlock()
-	o.cleanupStoppedProfile(profileName, "")
+	o.cleanupStoppedProfile(profileName, browser)
 }
 
 // dedupCandidates trims whitespace, drops empty/duplicate entries, preserves order.

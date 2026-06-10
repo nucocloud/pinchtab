@@ -385,6 +385,9 @@ func TestTearDownFailedAttempt_DetachesBeforeAsyncStop(t *testing.T) {
 	o.instances[activeSameProfile.ID] = activeSameProfile
 
 	o.tearDownFailedAttempt(failed.ID)
+	// Join the async stop before assertions/cleanup: its profile-cleanup scan
+	// reads processAliveFunc, which t.Cleanup restores.
+	o.detachedStops.Wait()
 
 	o.mu.RLock()
 	_, failedPresent := o.instances[failed.ID]
@@ -488,3 +491,26 @@ func equalStrings(a, b []string) bool {
 }
 
 var _ = errors.New
+
+// Same-provider twins (chrome-local, backup) are distinguishable only by
+// target name; the planner must thread it so LaunchWithOptions promotes the
+// right target's config instead of re-deriving one from the provider.
+func TestLaunchWithFallback_ThreadsTargetNameToEachAttempt(t *testing.T) {
+	fl := fakeLauncherFor([]scriptedOutcome{
+		{target: "chrome-local", failReason: ReasonBinaryMissing},
+		{target: "backup", succeed: true},
+	})
+
+	if _, err := launchWithFallbackForTest(fl, []string{"chrome-local", "backup"}); err != nil {
+		t.Fatalf("LaunchWithFallback: %v", err)
+	}
+	if len(fl.calls) != 2 {
+		t.Fatalf("expected 2 launch calls, got %d", len(fl.calls))
+	}
+	if fl.calls[0].TargetName != "chrome-local" || fl.calls[1].TargetName != "backup" {
+		t.Fatalf("TargetName not threaded per attempt: got %q, %q", fl.calls[0].TargetName, fl.calls[1].TargetName)
+	}
+	if fl.calls[1].Browser != config.BrowserChrome {
+		t.Fatalf("fallback Browser = %q, want chrome (twin shares the provider)", fl.calls[1].Browser)
+	}
+}

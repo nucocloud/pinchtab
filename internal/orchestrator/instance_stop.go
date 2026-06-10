@@ -131,6 +131,7 @@ func (o *Orchestrator) markStopped(id string) {
 
 	profileName := inst.ProfileName
 	browser := inst.browser
+	attached := inst.Attached
 	delete(o.instances, id)
 	o.mu.Unlock()
 
@@ -139,6 +140,14 @@ func (o *Orchestrator) markStopped(id string) {
 
 	slog.Info("instance stopped and removed", "id", id, "profile", profileName)
 	o.cleanupStoppedProfile(profileName, browser)
+	if attached {
+		// Attach children write per-instance state under baseDir/attach/<id>;
+		// without this the dirs accumulate across attach/detach cycles.
+		stateDir := filepath.Join(o.baseDir, "attach", id)
+		if err := os.RemoveAll(stateDir); err != nil {
+			slog.Warn("failed to remove attach state dir", "id", id, "dir", stateDir, "err", err)
+		}
+	}
 }
 
 func (o *Orchestrator) releaseInstancePorts(id string, inst *InstanceInternal) {
@@ -167,6 +176,12 @@ func (o *Orchestrator) cleanupStoppedProfile(profileName, browser string) {
 	profilePath := filepath.Join(o.baseDir, profileName)
 	if browser == "" && o.runtimeCfg != nil {
 		browser = config.NormalizeBrowser(o.runtimeCfg.DefaultBrowser)
+	}
+	if browser == "" {
+		// Every provider's cleanup hook is the same chrome-process sweep;
+		// skipping orphan cleanup entirely (no hook registered under "") is
+		// strictly worse than a chrome-targeted one.
+		browser = config.BrowserChrome
 	}
 	providerhooks.CleanupProfile(browser, profilePath)
 

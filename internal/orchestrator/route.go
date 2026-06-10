@@ -72,14 +72,21 @@ func (o *Orchestrator) launchAndWaitForRequestRoute(profileName, requestedTarget
 	if launched.URL == "" {
 		return "", http.StatusServiceUnavailable, fmt.Errorf("auto-launched instance %q has no URL", launched.ID)
 	}
-	url, err := o.waitForRequestRouteReady(launched.URL, routeInstanceReadyWait)
+	o.mu.Lock()
+	inst := o.instances[launched.ID]
+	o.mu.Unlock()
+	if inst == nil {
+		return "", http.StatusServiceUnavailable, fmt.Errorf("auto-launched instance %q disappeared before becoming ready", launched.ID)
+	}
+	url, err := o.waitForRequestRouteReady(inst, routeInstanceReadyWait)
 	if err != nil {
 		return "", http.StatusServiceUnavailable, err
 	}
 	return url, 0, nil
 }
 
-func (o *Orchestrator) waitForRequestRouteReady(url string, timeout time.Duration) (string, error) {
+func (o *Orchestrator) waitForRequestRouteReady(inst *InstanceInternal, timeout time.Duration) (string, error) {
+	url := inst.URL
 	healthURL := strings.TrimRight(url, "/") + "/health"
 	deadline := time.Now().Add(timeout)
 	client := o.client
@@ -89,6 +96,10 @@ func (o *Orchestrator) waitForRequestRouteReady(url string, timeout time.Duratio
 
 	for time.Now().Before(deadline) {
 		req, _ := http.NewRequest(http.MethodGet, healthURL, nil)
+		// Children inherit Server.Token and /health is auth-gated; an
+		// unauthenticated poll loops on 401 until the timeout and
+		// auto-launch can never succeed.
+		o.applyInstanceAuth(req, inst)
 		resp, err := client.Do(req)
 		if err == nil {
 			_ = resp.Body.Close()

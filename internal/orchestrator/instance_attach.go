@@ -120,7 +120,28 @@ func (o *Orchestrator) AttachWithOptions(name, cdpURL string, opts AttachOptions
 			return nil, fmt.Errorf("instance with name %q already exists", name)
 		}
 	}
+	// Reserve the name before releasing the lock: the spawn below is slow and
+	// a concurrent same-name attach would otherwise pass the scan above too
+	// and start a second child process against the same external browser.
+	// instanceIsActive treats cmd-less "starting" records as active.
+	o.instances[instanceID] = &InstanceInternal{
+		Instance: bridge.Instance{
+			ID:          instanceID,
+			ProfileID:   profileID,
+			ProfileName: name,
+			Status:      "starting",
+			Attached:    true,
+		},
+	}
 	o.mu.Unlock()
+	reserved := true
+	defer func() {
+		if reserved {
+			o.mu.Lock()
+			delete(o.instances, instanceID)
+			o.mu.Unlock()
+		}
+	}()
 
 	// RemoteCDPURL/RemoteBrowserName are passed via CLI flags rather than persisted.
 	stateDir := filepath.Join(o.baseDir, "attach", instanceID)
@@ -187,6 +208,7 @@ func (o *Orchestrator) AttachWithOptions(name, cdpURL string, opts AttachOptions
 	o.mu.Lock()
 	o.instances[instanceID] = internal
 	o.mu.Unlock()
+	reserved = false
 	released = true
 
 	go o.monitor(internal)

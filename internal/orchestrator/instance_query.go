@@ -57,15 +57,11 @@ func (o *Orchestrator) FirstRunningURLForBrowser(browser string) string {
 		return o.FirstRunningURL()
 	}
 	normalized := config.NormalizeBrowser(browser)
-	url := o.firstRunningURL(func(inst *InstanceInternal) bool {
-		return inst != nil && inst.Browser == normalized
-	})
-	if url != "" {
-		return url
-	}
-	// Legacy fallback: match instances with empty Browser field.
+	// No legacy empty-Browser fallback here: a request for a SPECIFIC
+	// browser must not be routed to an instance of unknown provenance.
+	// Browserless legacy instances stay reachable via FirstRunningURL.
 	return o.firstRunningURL(func(inst *InstanceInternal) bool {
-		return inst != nil && inst.Browser == ""
+		return inst != nil && inst.Browser == normalized
 	})
 }
 

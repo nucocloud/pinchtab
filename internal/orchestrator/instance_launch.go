@@ -117,7 +117,19 @@ func (o *Orchestrator) LaunchWithOptions(name, port string, headless bool, opts 
 
 	// Browser-aware launch: resolve the browser name to a target for config overrides.
 	effectiveCfg := o.runtimeCfg
-	if browser := strings.TrimSpace(opts.Browser); browser != "" && o.runtimeCfg != nil && len(o.runtimeCfg.Targets) > 0 {
+	targetPromoted := false
+	// A resolved target name is authoritative: re-deriving from the provider
+	// picks the wrong target when several targets share one provider.
+	if targetName := strings.TrimSpace(opts.TargetName); targetName != "" && o.runtimeCfg != nil && len(o.runtimeCfg.Targets) > 0 {
+		resolved, err := config.ResolveExplicitBrowserTarget(o.runtimeCfg, targetName)
+		if err == nil {
+			effectiveCfg = resolved.Config
+			targetPromoted = true
+		} else {
+			slog.Warn("launch: resolved target name no longer resolves; falling back to provider-derived config", "target", targetName, "err", err)
+		}
+	}
+	if browser := strings.TrimSpace(opts.Browser); !targetPromoted && browser != "" && o.runtimeCfg != nil && len(o.runtimeCfg.Targets) > 0 {
 		matches := config.TargetsForBrowser(o.runtimeCfg, browser)
 		if len(matches) == 1 {
 			resolved, err := config.ResolveExplicitBrowserTarget(o.runtimeCfg, matches[0])

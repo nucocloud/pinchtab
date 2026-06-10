@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/pinchtab/pinchtab/internal/activity"
 	"github.com/pinchtab/pinchtab/internal/bridge"
@@ -406,5 +407,47 @@ func TestWrapShorthand_StaleBindingFallsThrough(t *testing.T) {
 	// actually served the request (inst_a), replacing the stale entry.
 	if got, ok := o.bindings.ResolveAgent("agent-1"); !ok || got != "inst_a" {
 		t.Fatalf("agent binding after stale fallthrough = %q, %v; want inst_a, true", got, ok)
+	}
+}
+
+// M8 regression: the auto-launch readiness poll must authenticate — children
+// inherit Server.Token and an unauthenticated poll loops on 401 until the
+// route times out with 503.
+func TestRouteForRequest_AutoLaunchReadinessPollAuthenticates(t *testing.T) {
+	alwaysAlive(t)
+	stubPortAvailability(t, func(int) bool { return true })
+	oldPoll := routeInstanceReadyPollInterval
+	routeInstanceReadyPollInterval = time.Millisecond
+	t.Cleanup(func() { routeInstanceReadyPollInterval = oldPoll })
+
+	runner := &mockRunner{portAvail: true}
+	o := NewOrchestratorWithRunner(t.TempDir(), runner)
+	o.client = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		status := http.StatusUnauthorized
+		if req.Header.Get("Authorization") == "Bearer child-token" {
+			status = http.StatusOK
+		}
+		return &http.Response{
+			StatusCode: status,
+			Body:       io.NopCloser(bytes.NewReader([]byte(`{}`))),
+			Header:     make(http.Header),
+			Request:    req,
+		}, nil
+	})}
+	o.ApplyRuntimeConfig(&config.RuntimeConfig{
+		Token:         "child-token",
+		DefaultTarget: "chrome",
+		Targets: config.BrowserTargetsConfig{
+			"chrome": {Provider: config.BrowserChrome},
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/navigate", nil)
+	target, status, err := o.RouteForRequest(req)
+	if err != nil {
+		t.Fatalf("RouteForRequest status=%d err=%v (poll likely unauthenticated)", status, err)
+	}
+	if target == "" {
+		t.Fatal("target URL is empty")
 	}
 }
