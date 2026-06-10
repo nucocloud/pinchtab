@@ -1,13 +1,9 @@
 package runtime
 
 import (
-	"bytes"
 	"context"
-	"crypto/rand"
 	"fmt"
-	"io"
 	"log/slog"
-	"math/big"
 	"os"
 	"os/exec"
 	goruntime "runtime"
@@ -93,54 +89,17 @@ func InitBrowser(cfg *config.RuntimeConfig, bundle *stealth.Bundle, hooks Hooks)
 		return nil, nil, nil, nil, stealth.LaunchModeUninitialized, fmt.Errorf("failed to start browser: %w", err)
 	}
 
-	if proxyAuthEnabled(cfg.Proxy) {
-		if err := enableProxyAuth(browserCtx, cfg.Proxy); err != nil {
+	if ProxyAuthEnabled(cfg.Proxy) {
+		if err := EnableProxyAuth(browserCtx, cfg.Proxy, nil); err != nil {
 			browserCancel()
 			allocCancel()
 			return nil, nil, nil, nil, stealth.LaunchModeUninitialized, fmt.Errorf("failed to enable proxy auth: %w", err)
 		}
+		slog.Info("proxy authentication enabled via CDP", "proxy", cfg.Proxy.Redacted())
 	}
 
 	slog.Info("browser initialized successfully", "headless", cfg.Headless, "profile", cfg.ProfileDir)
 	return allocCtx, allocCancel, browserCtx, browserCancel, launchMode, nil
-}
-
-// initBrowserFromExistingCDP attaches the bridge to a browser that is already
-// running outside pinchtab (e.g. the user's everyday browser launched with
-// --remote-debugging-port=NNNN). No process is spawned and no profile lock
-// is taken. The allocator is a chromedp remote allocator; the returned
-// cancel funcs release only the chromedp side, never the external browser.
-func initBrowserFromExistingCDP(cfg *config.RuntimeConfig, bundle *stealth.Bundle) (context.Context, context.CancelFunc, context.Context, context.CancelFunc, stealth.LaunchMode, error) {
-	browserID, _ := config.ParseBrowser(cfg.DefaultBrowser, cfg.BrowsersAvailable)
-	if browserID == "" {
-		browserID = config.NormalizeBrowser(cfg.DefaultBrowser)
-	}
-	if b, ok := browsers.Get(browserID); ok && !b.SupportsRemoteCDP() {
-		return nil, nil, nil, nil, stealth.LaunchModeUninitialized,
-			fmt.Errorf("provider %q does not support remote CDP attach", browserID)
-	}
-
-	wsURL := strings.TrimSpace(cfg.CDPAttachURL)
-	slog.Info("attaching to existing browser via CDP", "cdpUrl", wsURL)
-
-	remoteAllocCtx, remoteAllocCancel := chromedp.NewRemoteAllocator(context.Background(), wsURL)
-	browserCtx, browserCancel := chromedp.NewContext(remoteAllocCtx)
-
-	// Touch the browser so we fail fast if the CDP URL is unreachable. We
-	// intentionally do NOT inject the stealth/UA script here — the user's
-	// browser is theirs, and rewriting its launch contract would be both
-	// surprising and likely break extensions, profile features, and
-	// already-open tabs.
-	if err := chromedp.Run(browserCtx, chromedp.ActionFunc(func(ctx context.Context) error {
-		return nil
-	})); err != nil {
-		browserCancel()
-		remoteAllocCancel()
-		return nil, nil, nil, nil, stealth.LaunchModeUninitialized, fmt.Errorf("failed to attach to CDP at %s: %w", wsURL, err)
-	}
-
-	slog.Info("attached to existing browser via CDP", "cdpUrl", wsURL)
-	return remoteAllocCtx, remoteAllocCancel, browserCtx, browserCancel, stealth.LaunchModeAttached, nil
 }
 
 // FindBrowserBinary exposes the launch-time browser discovery used by runtime
@@ -173,26 +132,11 @@ func resolveProviderLaunchPlan(cfg *config.RuntimeConfig, launchCfg browsers.Lau
 	}, nil
 }
 
-func appendExecAllocatorFlag(opts []chromedp.ExecAllocatorOption, flag string) []chromedp.ExecAllocatorOption {
-	name := strings.TrimPrefix(flag, "--")
-	if parts := strings.SplitN(name, "=", 2); len(parts) == 2 {
-		return append(opts, chromedp.Flag(parts[0], parts[1]))
-	}
-	return append(opts, chromedp.Flag(name, true))
-}
-
 func ensureStealthBundle(cfg *config.RuntimeConfig, bundle *stealth.Bundle) *stealth.Bundle {
 	if bundle != nil {
 		return bundle
 	}
 	return stealth.NewBundle(cfg, cryptoRandSeed())
-}
-
-func appendExecAllocatorFlags(opts []chromedp.ExecAllocatorOption, flags []string) []chromedp.ExecAllocatorOption {
-	for _, flag := range flags {
-		opts = appendExecAllocatorFlag(opts, flag)
-	}
-	return opts
 }
 
 func setupAllocator(cfg *config.RuntimeConfig, bundle *stealth.Bundle, hooks Hooks, geoAlignment launchGeoAlignment) (context.Context, context.CancelFunc, []chromedp.ExecAllocatorOption, int, error) {
@@ -210,13 +154,22 @@ func setupAllocator(cfg *config.RuntimeConfig, bundle *stealth.Bundle, hooks Hoo
 	if binary == "" {
 		binary = runtimekit.FindBrowserBinary(config.NormalizeBrowser(cfg.DefaultBrowser))
 	}
-	plan, err := resolveProviderLaunchPlan(cfg, runtimekit.LaunchConfigFromRuntime(cfg, binary, debugPort, launchNeedsNoSandbox()))
+	launchCfg := runtimekit.LaunchConfigFromRuntime(cfg, binary, debugPort, launchNeedsNoSandbox())
+	// setupAllocator appends user extra flags itself (below), where the
+	// DisableInProcessGPU kill switch can strip them; the plan must not
+	// re-inject a second, unstrippable copy.
+	launchCfg.ExtraFlags = nil
+	plan, err := resolveProviderLaunchPlan(cfg, launchCfg)
 	if err != nil {
 		return nil, nil, nil, 0, err
 	}
 	opts = appendExecAllocatorFlags(opts, plan.args)
 	opts = appendExecAllocatorFlags(opts, bundle.Launch.Args)
-	opts = appendExecAllocatorFlags(opts, config.BrowserProxyFlags(cfg.Proxy))
+	proxyFlags, err := config.BrowserProxyFlags(cfg.Proxy)
+	if err != nil {
+		return nil, nil, nil, 0, err
+	}
+	opts = appendExecAllocatorFlags(opts, proxyFlags)
 	opts = appendExecAllocatorFlags(opts, geoAlignment.flags)
 
 	if plan.binary != "" {
@@ -305,79 +258,6 @@ func setupAllocator(cfg *config.RuntimeConfig, bundle *stealth.Bundle, hooks Hoo
 	return ctx, cancel, opts, debugPort, nil
 }
 
-func browserLaunchArgs(headless bool) []string {
-	return runtimekit.BaseFlagArgs("chrome", headless)
-}
-
-func BaseBrowserFlagArgs() []string {
-	return browserLaunchArgs(false)
-}
-
-func appendBrowserCompatibilityFlags(args []string) []string {
-	if launchNeedsNoSandbox() {
-		return append(args, "--no-sandbox")
-	}
-	return args
-}
-
-func launchNeedsNoSandbox() bool {
-	_, err := os.Stat(containerMarkerPath)
-	return runtimekit.ChromeNeedsNoSandbox(runtimeGOOS, osGeteuid(), err == nil)
-}
-
-func BuildBrowserArgs(cfg *config.RuntimeConfig, port int) []string {
-	geoAlignment, err := resolveLaunchGeoAlignment(context.Background(), cfg)
-	if err != nil {
-		args, _, buildErr := buildBrowserArgsWithBundle(cfg, nil, port, launchGeoAlignment{})
-		if buildErr != nil {
-			return nil
-		}
-		return args
-	}
-	args, _, err := buildBrowserArgsWithBundle(cfg, nil, port, geoAlignment)
-	if err != nil {
-		return nil
-	}
-	return args
-}
-
-func existingExtensionPaths(paths []string) []string {
-	if len(paths) == 0 {
-		return nil
-	}
-	validPaths := make([]string, 0, len(paths))
-	for _, path := range paths {
-		if _, err := os.Stat(path); err == nil {
-			validPaths = append(validPaths, path)
-		}
-	}
-	return validPaths
-}
-
-func buildBrowserArgsWithBundle(cfg *config.RuntimeConfig, bundle *stealth.Bundle, port int, geoAlignment launchGeoAlignment) ([]string, []string, error) {
-	bundle = ensureStealthBundle(cfg, bundle)
-	binary := strings.TrimSpace(cfg.BrowserBinary)
-	if binary == "" {
-		binary = runtimekit.FindBrowserBinary(config.NormalizeBrowser(cfg.DefaultBrowser))
-	}
-	plan, err := resolveProviderLaunchPlan(cfg, runtimekit.LaunchConfigFromRuntime(cfg, binary, port, launchNeedsNoSandbox()))
-	if err != nil {
-		return nil, nil, err
-	}
-	args := append([]string(nil), plan.args...)
-
-	args = append(args, bundle.Launch.Args...)
-	args = append(args, config.BrowserProxyFlags(cfg.Proxy)...)
-	args = append(args, geoAlignment.flags...)
-
-	env := append([]string(nil), plan.env...)
-	return args, env, nil
-}
-
-func CloakBrowserFlagArgs(cfg *config.RuntimeConfig) []string {
-	return runtimekit.CloakBrowserFlagArgs(cfg)
-}
-
 func applyStartupStealth(ctx context.Context, cfg *config.RuntimeConfig, bundle *stealth.Bundle, script string) error {
 	if !config.PinchTabStealthDefaultsDisabled(cfg) {
 		ua := ""
@@ -392,18 +272,6 @@ func applyStartupStealth(ctx context.Context, cfg *config.RuntimeConfig, bundle 
 		return nil
 	}
 	return injectedScript(ctx, script)
-}
-
-func stripInProcessGPUFlag(flags []string) []string {
-	out := flags[:0]
-	for _, f := range flags {
-		name := strings.SplitN(f, "=", 2)[0]
-		if strings.EqualFold(name, "--in-process-gpu") {
-			continue
-		}
-		out = append(out, f)
-	}
-	return out
 }
 
 func missingBrowserBinaryError(cfg *config.RuntimeConfig) error {
@@ -421,48 +289,6 @@ func injectedScript(ctx context.Context, script string) error {
 		map[string]interface{}{
 			"source": script,
 		}, nil)
-}
-
-func randomWindowSize() (int, int) {
-	sizes := [][2]int{
-		{1920, 1080}, {1366, 768}, {1536, 864}, {1440, 900},
-		{1280, 720}, {1600, 900}, {2560, 1440}, {1280, 800},
-	}
-	n, err := rand.Int(rand.Reader, big.NewInt(int64(len(sizes))))
-	idx := 0
-	if err == nil {
-		idx = int(n.Int64())
-	}
-	s := sizes[idx]
-	return s[0], s[1]
-}
-
-type prefixedLogWriter struct {
-	dst    io.Writer
-	prefix string
-	buf    []byte
-}
-
-func newPrefixedLogWriter(dst io.Writer, prefix string) *prefixedLogWriter {
-	return &prefixedLogWriter{dst: dst, prefix: prefix, buf: make([]byte, 0, 1024)}
-}
-
-func (w *prefixedLogWriter) Write(p []byte) (int, error) {
-	w.buf = append(w.buf, p...)
-	for {
-		idx := bytes.IndexByte(w.buf, '\n')
-		if idx < 0 {
-			break
-		}
-		line := w.buf[:idx]
-		w.buf = w.buf[idx+1:]
-		if len(line) > 0 {
-			if _, err := fmt.Fprintf(w.dst, "%s: %s\n", w.prefix, string(line)); err != nil {
-				return 0, err
-			}
-		}
-	}
-	return len(p), nil
 }
 
 func geoProviderForConfig(cfg *config.RuntimeConfig) geo.Provider {
@@ -520,12 +346,4 @@ func mergeGeoEnv(base, additions []string) []string {
 	}
 	out = append(out, additions...)
 	return out
-}
-
-func cryptoRandSeed() int64 {
-	n, err := rand.Int(rand.Reader, big.NewInt(1000000000))
-	if err != nil {
-		return 42
-	}
-	return n.Int64()
 }

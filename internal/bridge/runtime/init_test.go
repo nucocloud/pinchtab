@@ -325,3 +325,75 @@ func TestInitRemoteCDP_RejectsUnsupportedProvider(t *testing.T) {
 		t.Fatalf("expected 'does not support remote CDP' in error; got: %v", err)
 	}
 }
+
+// Crash-recovery kill switch (H8 regression): a user-supplied
+// --in-process-gpu must be stripped from the direct-launch args when
+// DisableInProcessGPU is set, and must appear exactly once when it is not —
+// the provider plan must not inject a second, unstrippable copy.
+func TestBuildBrowserArgs_DisableInProcessGPUKillSwitch(t *testing.T) {
+	cfg := &config.RuntimeConfig{
+		DefaultBrowser:    config.BrowserChrome,
+		BrowserExtraFlags: "--in-process-gpu",
+		Headless:          true,
+	}
+
+	count := func(args []string) int {
+		n := 0
+		for _, a := range args {
+			if a == "--in-process-gpu" {
+				n++
+			}
+		}
+		return n
+	}
+
+	if got := count(BuildBrowserArgs(cfg, 9222)); got != 1 {
+		t.Fatalf("expected user --in-process-gpu exactly once without kill switch, got %d", got)
+	}
+
+	cfg.DisableInProcessGPU = true
+	if got := count(BuildBrowserArgs(cfg, 9222)); got != 0 {
+		t.Fatalf("kill switch active but --in-process-gpu still present (%d occurrences)", got)
+	}
+}
+
+// Headless launch args must not contain --disable-gpu on any chrome-family
+// path: under --headless=new it removes the compositor's GPU backend and
+// Page.captureScreenshot/printToPDF hang.
+func TestBuildBrowserArgs_HeadlessOmitsDisableGPU(t *testing.T) {
+	for _, provider := range []string{config.BrowserChrome, config.BrowserGhostChrome} {
+		cfg := &config.RuntimeConfig{DefaultBrowser: provider, Headless: true}
+		for _, a := range BuildBrowserArgs(cfg, 9222) {
+			if a == "--disable-gpu" {
+				t.Fatalf("provider %s: headless args contain --disable-gpu", provider)
+			}
+		}
+	}
+}
+
+// M2 regression: a malformed proxy server must fail the launch-args build —
+// launching without the configured proxy would egress from the real IP.
+func TestBuildBrowserArgs_MalformedProxyFailsClosed(t *testing.T) {
+	cfg := &config.RuntimeConfig{
+		DefaultBrowser: config.BrowserChrome,
+		Proxy:          config.BrowserProxyConfig{Server: "not a proxy url"},
+	}
+	if _, _, err := buildBrowserArgsWithBundle(cfg, nil, 9222, launchGeoAlignment{}); err == nil {
+		t.Fatal("expected launch-args build to fail for malformed proxy server")
+	}
+
+	cfg.Proxy.Server = "http://proxy.example.com:8080"
+	args, _, err := buildBrowserArgsWithBundle(cfg, nil, 9222, launchGeoAlignment{})
+	if err != nil {
+		t.Fatalf("valid proxy should build: %v", err)
+	}
+	count := 0
+	for _, a := range args {
+		if a == "--proxy-server=http://proxy.example.com:8080" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("expected exactly one --proxy-server flag, got %d in %v", count, args)
+	}
+}

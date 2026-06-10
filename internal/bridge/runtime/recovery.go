@@ -78,14 +78,16 @@ func startBrowserWithRecovery(parentCtx context.Context, cfg *config.RuntimeConf
 
 		if silentDrop && !retriedProfileCorruption && hooks.QuarantineCorruptedProfile != nil && strings.TrimSpace(cfg.ProfileDir) != "" {
 			if quarantinePath, qerr := hooks.QuarantineCorruptedProfile(cfg.ProfileDir); qerr == nil {
-				slog.Warn("cloakbrowser silently dropped CDP attach; quarantined profile and retrying with fresh profile",
+				slog.Warn("browser silently dropped CDP attach; quarantined profile and retrying with fresh profile",
+					"provider", browserID,
 					"originalProfile", cfg.ProfileDir,
 					"quarantinedTo", quarantinePath,
 					"elapsedMs", elapsed.Milliseconds())
 				time.Sleep(500 * time.Millisecond)
 				return startBrowserWithRecovery(parentCtx, cfg, bundle, opts, debugPort, hooks, geoAlignment, retriedProfileLock, true)
 			} else {
-				slog.Warn("cloakbrowser silently dropped CDP attach; profile quarantine failed",
+				slog.Warn("browser silently dropped CDP attach; profile quarantine failed",
+					"provider", browserID,
 					"originalProfile", cfg.ProfileDir,
 					"err", qerr.Error())
 			}
@@ -98,7 +100,7 @@ func startBrowserWithRecovery(parentCtx context.Context, cfg *config.RuntimeConf
 		}
 
 		if silentDrop {
-			return nil, nil, stealth.LaunchModeUninitialized, fmt.Errorf("failed to connect to browser: %w (cloakbrowser dropped CDP attach silently after %dms; profile %q may be corrupted — try removing it or use a fresh profile)", err, elapsed.Milliseconds(), cfg.ProfileDir)
+			return nil, nil, stealth.LaunchModeUninitialized, fmt.Errorf("failed to connect to browser: %w (%s dropped CDP attach silently after %dms; profile %q may be corrupted — try removing it or use a fresh profile)", err, browserID, elapsed.Milliseconds(), cfg.ProfileDir)
 		}
 		return nil, nil, stealth.LaunchModeUninitialized, fmt.Errorf("failed to connect to browser: %w", err)
 	}

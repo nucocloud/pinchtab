@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/chromedp/cdproto/fetch"
 	"github.com/pinchtab/pinchtab/internal/config"
 )
 
@@ -34,8 +35,8 @@ func TestProxyAuthEnabled_DisabledWhenNoCredentials(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if proxyAuthEnabled(tc.p) {
-				t.Fatalf("proxyAuthEnabled(%+v) = true, want false", tc.p.Redacted())
+			if ProxyAuthEnabled(tc.p) {
+				t.Fatalf("ProxyAuthEnabled(%+v) = true, want false", tc.p.Redacted())
 			}
 		})
 	}
@@ -47,8 +48,8 @@ func TestProxyAuthEnabled_EnabledWhenCredentialsPresent(t *testing.T) {
 		Username: "user",
 		Password: "pw",
 	}
-	if !proxyAuthEnabled(p) {
-		t.Fatalf("proxyAuthEnabled(%+v) = false, want true", p.Redacted())
+	if !ProxyAuthEnabled(p) {
+		t.Fatalf("ProxyAuthEnabled(%+v) = false, want true", p.Redacted())
 	}
 }
 
@@ -56,11 +57,51 @@ func TestProxyAuthEnabled_EnabledWhenCredentialsPresent(t *testing.T) {
 func TestEnableProxyAuth_NoopWhenDisabled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if err := enableProxyAuth(ctx, config.BrowserProxyConfig{}); err != nil {
-		t.Fatalf("enableProxyAuth on disabled proxy returned %v, want nil", err)
+	if err := EnableProxyAuth(ctx, config.BrowserProxyConfig{}, nil); err != nil {
+		t.Fatalf("EnableProxyAuth on disabled proxy returned %v, want nil", err)
 	}
-	if err := enableProxyAuth(ctx, config.BrowserProxyConfig{Server: "http://p:1"}); err != nil {
-		t.Fatalf("enableProxyAuth on credential-less proxy returned %v, want nil", err)
+	if err := EnableProxyAuth(ctx, config.BrowserProxyConfig{Server: "http://p:1"}, nil); err != nil {
+		t.Fatalf("EnableProxyAuth on credential-less proxy returned %v, want nil", err)
+	}
+}
+
+func TestAuthChallengeResponse_ProvidesCredentialsForProxyChallenge(t *testing.T) {
+	e := &fetch.EventAuthRequired{
+		AuthChallenge: &fetch.AuthChallenge{Source: fetch.AuthChallengeSourceProxy},
+	}
+	resp := AuthChallengeResponse(e, "user", "pw")
+	if resp.Response != fetch.AuthChallengeResponseResponseProvideCredentials {
+		t.Fatalf("Response = %q, want ProvideCredentials", resp.Response)
+	}
+	if resp.Username != "user" || resp.Password != "pw" {
+		t.Fatalf("credentials = %q/%q, want user/pw", resp.Username, resp.Password)
+	}
+}
+
+func TestAuthChallengeResponse_YieldsNonProxyChallenges(t *testing.T) {
+	cases := []struct {
+		name string
+		e    *fetch.EventAuthRequired
+	}{
+		{name: "nil event", e: nil},
+		{name: "nil challenge", e: &fetch.EventAuthRequired{}},
+		{
+			name: "server challenge (WWW-Authenticate)",
+			e: &fetch.EventAuthRequired{
+				AuthChallenge: &fetch.AuthChallenge{Source: fetch.AuthChallengeSourceServer},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resp := AuthChallengeResponse(tc.e, "user", "pw")
+			if resp.Response != fetch.AuthChallengeResponseResponseDefault {
+				t.Fatalf("Response = %q, want Default", resp.Response)
+			}
+			if resp.Username != "" || resp.Password != "" {
+				t.Fatalf("credentials leaked into non-proxy challenge response: %q/%q", resp.Username, resp.Password)
+			}
+		})
 	}
 }
 

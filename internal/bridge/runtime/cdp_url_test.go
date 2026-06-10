@@ -3,12 +3,16 @@ package runtime
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/pinchtab/pinchtab/internal/config"
 )
 
 func TestNormalizeCDPURL_BrowserWebSocket(t *testing.T) {
@@ -260,5 +264,59 @@ func TestNormalizeResolvedDevToolsURL_RejectsAllowlistedDifferentHost(t *testing
 	}
 	if !strings.Contains(err.Error(), "does not match requested CDP endpoint") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func stubCDPResolver(t *testing.T, fn func(ctx context.Context, network, host string) ([]net.IP, error)) {
+	t.Helper()
+	old := cdpResolveHostIPs
+	cdpResolveHostIPs = fn
+	t.Cleanup(func() { cdpResolveHostIPs = old })
+}
+
+// H9 regression: an allowlisted DNS hostname must pass the connectivity
+// probe's allowlist check. Normalization pins the URL host to the resolved
+// IP, and probing that rewritten URL re-validated the bare IP against the
+// hostname allowlist — which can never match. The dial here still fails (no
+// live endpoint), but the failure must be a connectivity error, not the
+// pre-fix "add it to security.attach.allowHosts" rejection.
+func TestInitRemoteCDP_AllowlistedHostnamePassesProbeAllowlist(t *testing.T) {
+	stubCDPResolver(t, func(_ context.Context, _, host string) ([]net.IP, error) {
+		if host == "browsers.corp" {
+			return []net.IP{net.ParseIP("203.0.113.10")}, nil
+		}
+		return nil, fmt.Errorf("unexpected host %q", host)
+	})
+
+	cfg := &config.RuntimeConfig{
+		AttachAllowHosts:   []string{"browsers.corp"},
+		AttachAllowSchemes: []string{"ws"},
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+	defer cancel()
+	_, _, _, _, _, err := InitRemoteCDP(ctx, cfg, "ws://browsers.corp:9222/devtools/browser/abc")
+	if err == nil {
+		t.Fatal("expected connectivity failure against unreachable endpoint")
+	}
+	if strings.Contains(err.Error(), "allowHosts") {
+		t.Fatalf("allowlisted hostname rejected by the probe's allowlist re-check: %v", err)
+	}
+}
+
+func TestInitRemoteCDP_NonAllowlistedHostnameStillRejected(t *testing.T) {
+	stubCDPResolver(t, func(_ context.Context, _, host string) ([]net.IP, error) {
+		return []net.IP{net.ParseIP("203.0.113.11")}, nil
+	})
+
+	cfg := &config.RuntimeConfig{
+		AttachAllowHosts:   []string{"browsers.corp"},
+		AttachAllowSchemes: []string{"ws"},
+	}
+	_, _, _, _, _, err := InitRemoteCDP(context.Background(), cfg, "ws://evil.corp:9222/devtools/browser/abc")
+	if err == nil {
+		t.Fatal("expected non-allowlisted hostname to be rejected")
+	}
+	if !strings.Contains(err.Error(), "allowHosts") {
+		t.Fatalf("expected allowlist rejection from normalization, got: %v", err)
 	}
 }

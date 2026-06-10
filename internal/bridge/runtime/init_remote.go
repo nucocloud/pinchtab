@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/chromedp/chromedp"
@@ -36,7 +37,13 @@ func InitRemoteCDP(ctx context.Context, cfg *config.RuntimeConfig, cdpURL string
 
 	allocCtx, allocCancel := chromedp.NewRemoteAllocator(ctx, normalized)
 	probeCtx, probeCancel := context.WithTimeout(ctx, 10*time.Second)
-	_, err = ProbeCDPVersion(probeCtx, normalized, cfg.AttachAllowHosts)
+	// Probe the ORIGINAL URL, not the normalized one: normalization pins the
+	// host by rewriting it to the resolved IP, and re-validating that bare IP
+	// against a hostname allowlist can never match — every allowlisted DNS
+	// hostname would fail here. The probe validates and pins the original
+	// hostname itself, so the dial stays SSRF-safe; the allocator above still
+	// attaches via the normalized pinned URL.
+	_, err = ProbeCDPVersion(probeCtx, strings.TrimSpace(cdpURL), cfg.AttachAllowHosts)
 	probeCancel()
 	if err != nil {
 		allocCancel()
@@ -44,13 +51,14 @@ func InitRemoteCDP(ctx context.Context, cfg *config.RuntimeConfig, cdpURL string
 	}
 
 	browserCtx, browserCancel := chromedp.NewContext(allocCtx)
-	if proxyAuthEnabled(cfg.Proxy) {
+	if ProxyAuthEnabled(cfg.Proxy) {
 		auditRemoteProxyAuthForward(normalized, cfg)
-		if err := enableProxyAuth(browserCtx, cfg.Proxy); err != nil {
+		if err := EnableProxyAuth(browserCtx, cfg.Proxy, nil); err != nil {
 			browserCancel()
 			allocCancel()
 			return nil, nil, nil, nil, stealth.LaunchModeUninitialized, fmt.Errorf("enable proxy auth on remote CDP: %w", err)
 		}
+		slog.Info("proxy authentication enabled via CDP", "proxy", cfg.Proxy.Redacted())
 	}
 
 	return allocCtx, allocCancel, browserCtx, func() {
@@ -61,7 +69,7 @@ func InitRemoteCDP(ctx context.Context, cfg *config.RuntimeConfig, cdpURL string
 }
 
 func requireRemoteProxyAuthOptIn(browserWSURL string, cfg *config.RuntimeConfig) error {
-	if cfg == nil || !proxyAuthEnabled(cfg.Proxy) {
+	if cfg == nil || !ProxyAuthEnabled(cfg.Proxy) {
 		return nil
 	}
 	targetHost := remoteCDPTargetHost(browserWSURL)
@@ -77,7 +85,7 @@ func requireRemoteProxyAuthOptIn(browserWSURL string, cfg *config.RuntimeConfig)
 }
 
 func auditRemoteProxyAuthForward(browserWSURL string, cfg *config.RuntimeConfig) {
-	if cfg == nil || !proxyAuthEnabled(cfg.Proxy) || !cfg.AttachForwardProxyAuth {
+	if cfg == nil || !ProxyAuthEnabled(cfg.Proxy) || !cfg.AttachForwardProxyAuth {
 		return
 	}
 	slog.Warn("audit",
