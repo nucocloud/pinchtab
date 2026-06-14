@@ -9,10 +9,6 @@ import (
 	_ "github.com/pinchtab/pinchtab/internal/browsers/all"
 )
 
-// ---------------------------------------------------------------------------
-// Stub browsers for contract tests
-// ---------------------------------------------------------------------------
-
 // handleStub always returns DecisionHandle with empty reason.
 type handleStub struct{}
 
@@ -92,10 +88,6 @@ var (
 	registerFailOnce   sync.Once
 )
 
-// ---------------------------------------------------------------------------
-// TestHandleContract_DirectHandle
-// ---------------------------------------------------------------------------
-
 func TestHandleContract_DirectHandle(t *testing.T) {
 	registerHandleOnce.Do(func() { browsers.Register(&handleStub{}) })
 
@@ -120,10 +112,6 @@ func TestHandleContract_DirectHandle(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// TestHandleContract_SkipToNext
-// ---------------------------------------------------------------------------
-
 func TestHandleContract_SkipToNext(t *testing.T) {
 	registerSkipOnce.Do(func() { browsers.Register(&skipStub{}) })
 
@@ -146,10 +134,6 @@ func TestHandleContract_SkipToNext(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// TestHandleContract_HardFailure
-// ---------------------------------------------------------------------------
-
 func TestHandleContract_HardFailure(t *testing.T) {
 	registerFailOnce.Do(func() { browsers.Register(&failStub{}) })
 
@@ -171,10 +155,6 @@ func TestHandleContract_HardFailure(t *testing.T) {
 		}
 	}
 }
-
-// ---------------------------------------------------------------------------
-// TestHandleContract_DeterministicReasons
-// ---------------------------------------------------------------------------
 
 func TestHandleContract_DeterministicReasons(t *testing.T) {
 	b := browsers.MustGet("ghost-chrome")
@@ -203,10 +183,6 @@ func TestHandleContract_DeterministicReasons(t *testing.T) {
 		}
 	})
 }
-
-// ---------------------------------------------------------------------------
-// TestHandleContract_StateChangingSafety
-// ---------------------------------------------------------------------------
 
 func TestHandleContract_StateChangingSafety(t *testing.T) {
 	tests := []struct {

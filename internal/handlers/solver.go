@@ -59,12 +59,10 @@ func (h *Handlers) HandleSolve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// If a solver name is provided in the path, use it.
 	if name := r.PathValue("name"); name != "" {
 		req.Solver = name
 	}
 
-	// Validate solver name early.
 	if req.Solver != "" {
 		if !h.isAvailableAutoSolver(req.Solver) {
 			httpx.ErrorCode(w, 400, "unknown_solver",

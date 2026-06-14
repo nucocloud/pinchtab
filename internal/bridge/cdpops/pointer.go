@@ -274,7 +274,6 @@ func ClickByNodeID(ctx context.Context, nodeID int64) error {
 // href. CDP Input.dispatchMouseEvent doesn't trigger the browser's default
 // link-navigation behavior, so this ensures anchor clicks actually navigate.
 func jsClickIfLink(ctx context.Context, nodeID int64) error {
-	// Resolve backend node to a remote object so we can call functions on it.
 	var resolved json.RawMessage
 	if err := chromedp.FromContext(ctx).Target.Execute(ctx, "DOM.resolveNode", map[string]any{
 		"backendNodeId": nodeID,

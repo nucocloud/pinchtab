@@ -60,7 +60,6 @@ func (h *Handlers) HandleText(w http.ResponseWriter, r *http.Request) {
 		browser = config.BrowserChrome
 	}
 
-	// Resolve the effective config with target-specific overrides merged in.
 	effectiveCfg, err := h.resolveEffectiveConfig(browser)
 	if err != nil {
 		var ambErr *config.AmbiguousBrowserError
@@ -134,7 +133,6 @@ func (h *Handlers) HandleText(w http.ResponseWriter, r *http.Request) {
 	// partial results when text is called before the page finishes loading.
 	h.waitForReadyState(tCtx)
 
-	// Handle element selector - extract text from specific element instead of full page
 	selectorParam := r.URL.Query().Get("selector")
 	refParam := r.URL.Query().Get("ref")
 	if selectorParam != "" || refParam != "" {
@@ -284,7 +282,6 @@ func (h *Handlers) evalTextInFrame(ctx context.Context, script, frameID string) 
 	return text, nil
 }
 
-// extractElementText extracts innerText from a specific element by selector or ref.
 func (h *Handlers) extractElementText(ctx context.Context, tabID, selector, ref string) (string, error) {
 	var text string
 

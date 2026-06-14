@@ -398,10 +398,6 @@ func TestRouteManager_FulfillForgeryPermittedFor_UnparseableURLDenied(t *testing
 	}
 }
 
-// Cross-tab dispatch sanity check: rules on tab1 must not match URLs queried
-// against tab2. (chromedp's per-target listener dispatch already isolates
-// events at the wire level; this asserts the manager-level filter hasn't
-// regressed to a global lookup.)
 // Fulfill rules without an explicit Method should NOT match an OPTIONS
 // preflight — fulfilling it without ACAO/ACAM/ACAH headers breaks the real
 // request, and would also let a future custom-headers feature smuggle CORS
@@ -499,6 +495,10 @@ func TestNormalizeHTTPMethod(t *testing.T) {
 	}
 }
 
+// Cross-tab dispatch sanity check: rules on tab1 must not match URLs queried
+// against tab2. (chromedp's per-target listener dispatch already isolates
+// events at the wire level; this asserts the manager-level filter hasn't
+// regressed to a global lookup.)
 func TestRouteManager_Match_PerTabIsolation(t *testing.T) {
 	rm := NewRouteManager(nil)
 	rm.mu.Lock()

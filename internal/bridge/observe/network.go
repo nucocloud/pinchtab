@@ -630,7 +630,6 @@ func (nm *NetworkMonitor) maybeRetainBody(tabCtx context.Context, buf *NetworkBu
 	})
 }
 
-// GetResponseBody fetches the response body for a specific request via CDP.
 func (nm *NetworkMonitor) IsTabIdle(tabID string) (bool, bool) {
 	nm.mu.RLock()
 	buf, ok := nm.buffers[tabID]
@@ -642,6 +641,7 @@ func (nm *NetworkMonitor) IsTabIdle(tabID string) (bool, bool) {
 	return count == 0, true
 }
 
+// GetResponseBody fetches the response body for a specific request via CDP.
 func (nm *NetworkMonitor) GetResponseBody(tabCtx context.Context, requestID string) (string, bool, error) {
 	var body string
 	var base64Encoded bool

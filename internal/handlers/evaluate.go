@@ -68,7 +68,6 @@ func (h *Handlers) HandleEvaluate(w http.ResponseWriter, r *http.Request) {
 	opts := bridge.EvalOpts{AwaitPromise: req.AwaitPromise}
 	if err := h.evalRuntime(tCtx, req.Expression, &result, opts); err != nil {
 		errMsg := err.Error()
-		// Add helpful hints for common JavaScript errors
 		if strings.Contains(errMsg, "Cannot read properties of null") ||
 			strings.Contains(errMsg, "Cannot read property") ||
 			strings.Contains(errMsg, "null is not an object") {

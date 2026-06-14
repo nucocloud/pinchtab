@@ -285,7 +285,6 @@ func TestHandleFind_ResponseMetrics(t *testing.T) {
 		t.Fatalf("decode: %v", err)
 	}
 
-	// Verify new Phase 2 response fields.
 	if resp.ElementCount != 2 {
 		t.Errorf("expected element_count=2, got %d", resp.ElementCount)
 	}

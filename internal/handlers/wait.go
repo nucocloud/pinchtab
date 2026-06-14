@@ -210,7 +210,6 @@ func (h *Handlers) handleWaitCore(w http.ResponseWriter, r *http.Request, req wa
 		return
 	}
 
-	// All other modes need a browser tab.
 	ctx, resolvedTabID, err := h.tabContext(r, req.TabID)
 	if err != nil {
 		WriteTabContextError(w, err, 404)
@@ -379,7 +378,6 @@ func buildSelectorJS(sel, state string) (string, string) {
 // buildURLMatchJS builds a JS expression that checks if the current URL matches a glob pattern.
 func buildURLMatchJS(pattern string) string {
 	// Convert glob to regex: ** → .*, * → [^/]*, ? → .
-	// For simplicity, we use a JS function that does basic glob matching.
 	return fmt.Sprintf(`(function(){
 		var p = %s;
 		var u = window.location.href;
@@ -393,7 +391,6 @@ func buildURLMatchJS(pattern string) string {
 	})()`, jsonStr(pattern))
 }
 
-// jsonStr returns a JSON-encoded string (with quotes).
 func jsonStr(s string) string {
 	b, _ := json.Marshal(s)
 	return string(b)

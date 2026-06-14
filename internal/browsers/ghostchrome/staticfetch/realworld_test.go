@@ -11,11 +11,9 @@ import (
 	"github.com/pinchtab/pinchtab/internal/browserops"
 )
 
-// ---------------------------------------------------------------------------
-// Realistic page templates simulating common website structures.
-// These tests verify the static browser produces correct accessibility snapshots
-// comparable to what Chrome's CDP accessibility tree would return.
-// ---------------------------------------------------------------------------
+// Realistic page templates simulating common website structures. These tests
+// verify the static browser produces correct accessibility snapshots comparable
+// to what Chrome's CDP accessibility tree would return.
 
 const wikipediaStylePage = `<!DOCTYPE html>
 <html lang="en">
@@ -347,10 +345,6 @@ const emptyAndMinimalPage = `<!DOCTYPE html>
 <body></body>
 </html>`
 
-// ---------------------------------------------------------------------------
-// Test runner
-// ---------------------------------------------------------------------------
-
 type realworldTestCase struct {
 	name   string
 	html   string
@@ -383,10 +377,6 @@ func runRealworldSuite(t *testing.T, tc realworldTestCase) {
 		})
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 func snapshotNodes(t *testing.T, lite *Browser, filter string) []browserops.SnapshotNode {
 	t.Helper()
@@ -446,10 +436,6 @@ func requireTextNotContains(t *testing.T, text string, subs ...string) {
 		}
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Test cases
-// ---------------------------------------------------------------------------
 
 func TestRealworld_WikipediaStyle(t *testing.T) {
 	runRealworldSuite(t, realworldTestCase{

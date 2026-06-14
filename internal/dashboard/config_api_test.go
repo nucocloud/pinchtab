@@ -540,7 +540,6 @@ func decodeConfigEnvelope(t *testing.T, w *httptest.ResponseRecorder) configEnve
 // name) and verifies they are all redacted. This test will fail if a new sensitive
 // field is added to FileConfig without updating redactToken().
 func TestRedactTokenCoversAllSensitiveFields(t *testing.T) {
-	// Populate all known sensitive fields with non-zero values
 	fc := config.DefaultFileConfig()
 	fc.Server.Token = "test-token"
 	encKey := "test-encryption-key"
@@ -582,7 +581,6 @@ func TestRedactTokenCoversAllSensitiveFields(t *testing.T) {
 		t.Errorf("redactToken mutated source target proxy password")
 	}
 
-	// Use reflection to find any sensitive fields that weren't redacted
 	var unredacted []string
 	findSensitiveFields(reflect.ValueOf(redacted), "", &unredacted)
 
@@ -618,7 +616,6 @@ func findSensitiveFields(v reflect.Value, path string, unredacted *[]string) {
 
 		fieldVal := v.Field(i)
 
-		// Check if field name suggests it's sensitive
 		nameLower := strings.ToLower(field.Name)
 		isSensitive := false
 		for _, pattern := range sensitivePatterns {
@@ -632,7 +629,6 @@ func findSensitiveFields(v reflect.Value, path string, unredacted *[]string) {
 			*unredacted = append(*unredacted, fieldPath)
 		}
 
-		// Recurse into nested structs
 		if fieldVal.Kind() == reflect.Struct || (fieldVal.Kind() == reflect.Ptr && fieldVal.Elem().Kind() == reflect.Struct) {
 			findSensitiveFields(fieldVal, fieldPath, unredacted)
 		}

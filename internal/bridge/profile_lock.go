@@ -70,8 +70,6 @@ func clearStaleProfileLocks(profileDir, errMsg string) (bool, error) {
 		if err != nil {
 			slog.Warn("failed to probe browser lock pid; falling back to process listing", "profile", profileDir, "pid", pid, "err", err)
 		} else if running {
-			// If we find the PID from the error message is still running,
-			// check if it's actually managed by another active PinchTab.
 			if owned, ptPid := isProfileOwnedByRunningPinchtabMock(profileDir); owned {
 				slog.Warn("browser profile lock appears active and owned by another pinchtab; leaving singleton files in place", "profile", profileDir, "pid", pid, "pinchtab_pid", ptPid)
 				return false, nil
@@ -98,7 +96,6 @@ func clearStaleProfileLocks(profileDir, errMsg string) (bool, error) {
 			return false, nil
 		}
 
-		// If no other PinchTab owns this profile, we can safely kill the stale browser processes.
 		slog.Warn("browser profile lock appears active but no pinchtab owner found; killing stale processes", "profile", profileDir)
 		if err := killChromeProfileProcesses(processes); err != nil {
 			slog.Error("failed to kill stale browser processes", "profile", profileDir, "err", err)

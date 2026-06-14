@@ -88,7 +88,6 @@ func TestPollingScreencast_FrameDeliveryTiming(t *testing.T) {
 	go func() {
 		defer close(frameCh)
 
-		// Simulate initial frame
 		callCount.Add(1)
 		select {
 		case frameCh <- fakeFrame:
@@ -114,7 +113,6 @@ func TestPollingScreencast_FrameDeliveryTiming(t *testing.T) {
 		}
 	}()
 
-	// Consume frames for 1 second
 	start := time.Now()
 	var received int
 	timeout := time.After(1100 * time.Millisecond)
@@ -243,7 +241,6 @@ func TestPollingScreencast_RealLoop_FirstFrameSuccess(t *testing.T) {
 	}
 	defer stream.Close()
 
-	// Wait for the first frame.
 	select {
 	case frame, ok := <-stream.Frames:
 		if !ok {
@@ -344,7 +341,6 @@ func TestPollingScreencast_RealLoop_MidStreamError(t *testing.T) {
 	}
 	defer stream.Close()
 
-	// Drain until channel closes.
 	var received int
 	for range stream.Frames {
 		received++

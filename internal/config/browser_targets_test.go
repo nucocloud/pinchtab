@@ -740,8 +740,6 @@ func TestResolveRequestedTarget_InvalidNameErrors(t *testing.T) {
 	}
 }
 
-// --- TargetsForBrowser ---
-
 func TestTargetsForBrowser_SingleMatch(t *testing.T) {
 	cfg := &RuntimeConfig{
 		Targets: BrowserTargetsConfig{
@@ -1103,7 +1101,7 @@ func TestApplyTargetOverride_ClonesTargetProxyAndTargetsMap(t *testing.T) {
 	}
 }
 
-// --- Round-trip preservation of user-authored targets (H3 regression) ---
+// Round-trip preservation of user-authored targets (H3 regression).
 
 func TestApplyFileConfig_ExplicitDefaultTargetDrivesDefaultBrowser(t *testing.T) {
 	fc := &FileConfig{

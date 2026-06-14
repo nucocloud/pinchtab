@@ -167,8 +167,6 @@ func TestOrchestrator_StopProfile(t *testing.T) {
 	}
 }
 
-// === Security Validation Tests ===
-
 func TestOrchestrator_Launch_RejectsPathTraversal(t *testing.T) {
 	old := processAliveFunc
 	processAliveFunc = func(pid int) bool { return pid > 0 }
@@ -486,7 +484,6 @@ func TestOrchestrator_Attach(t *testing.T) {
 		t.Errorf("expected ProfileName %q, got %q", "my-external-chrome", inst.ProfileName)
 	}
 
-	// Check it appears in list
 	list := o.List()
 	if len(list) != 1 {
 		t.Fatalf("expected 1 instance in list, got %d", len(list))

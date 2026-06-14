@@ -69,7 +69,6 @@ func (i *Instance) startScreencastEventDriven(ctx context.Context, opts browsers
 		}
 	}()
 
-	// Listen for screencast frames with rate limiting
 	var lastFrame time.Time
 	chromedp.ListenTarget(ctx, func(ev interface{}) {
 		switch e := ev.(type) {

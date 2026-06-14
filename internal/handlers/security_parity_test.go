@@ -45,10 +45,6 @@ func navigateProviders() []providerSetup {
 	}
 }
 
-// =========================================================================
-// Navigation security parity: /navigate endpoint
-// =========================================================================
-
 func TestSecurityParity_Navigate_DisallowedDomainBlocked(t *testing.T) {
 	// Domain check fires before DNS resolution and before any Browser call,
 	// so it works identically across all four providers.

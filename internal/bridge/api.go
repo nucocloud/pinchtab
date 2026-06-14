@@ -22,9 +22,9 @@ type TabTarget struct {
 	Type     string `json:"type"`
 }
 
-// BridgeAPI abstracts browser tab operations for handler testing.
 var ErrBrowserDraining = errors.New("browser restart in progress; retry shortly")
 
+// BridgeAPI abstracts browser tab operations for handler testing.
 type BridgeAPI interface {
 	BrowserContext() context.Context
 	TabContext(tabID string) (ctx *TabHandle, resolvedID string, err error)
@@ -63,15 +63,12 @@ type BridgeAPI interface {
 	RunningBrowser() (string, bool)
 	StealthStatus() *stealth.Status
 
-	// Memory metrics
 	GetMemoryMetrics(tabID string) (*MemoryMetrics, error)
 	GetBrowserMemoryMetrics() (*MemoryMetrics, error)
 	GetAggregatedMemoryMetrics() (*MemoryMetrics, error)
 
-	// Crash monitoring
 	GetCrashLogs() []string
 
-	// Network monitoring
 	NetworkMonitor() *NetworkMonitor
 
 	// Network request interception (Fetch domain).
@@ -79,32 +76,24 @@ type BridgeAPI interface {
 	RemoveRouteRule(tabID, pattern string) (int, error)
 	ListRouteRules(tabID string) ([]RouteRule, error)
 
-	// Dialog management
 	GetDialogManager() *DialogManager
 
-	// Console and error logs
 	GetConsoleLogs(tabID string, limit int) []LogEntry
 	ClearConsoleLogs(tabID string)
 	GetErrorLogs(tabID string, limit int) []ErrorEntry
 	ClearErrorLogs(tabID string)
 
-	// Navigation
 	Navigate(ctx context.Context, url string, params NavigateParams) (*NavigateResult, error)
 
-	// Snapshot
 	Snapshot(ctx context.Context, tabID string, filter string, params ContentParams) (*SnapshotResult, error)
 
-	// Text
 	Text(ctx context.Context, tabID string, params ContentParams) (*TextResult, error)
 
-	// Cache management
 	ClearCache(ctx context.Context) error
 	CanClearCache(ctx context.Context) (bool, error)
 
-	// Cookie management
 	ClearCookies(ctx context.Context) error
 
-	// JavaScript evaluation
 	Evaluate(ctx context.Context, expression string, result any, opts EvalOpts) error
 
 	// CallFunctionOnNode resolves a backend node ID to a Runtime object,
@@ -119,35 +108,27 @@ type BridgeAPI interface {
 	// DescribeNode returns DOM structural info for a backend node ID.
 	DescribeNode(ctx context.Context, backendNodeID int64) (*NodeInfo, error)
 
-	// Screenshot capture
 	CaptureScreenshot(ctx context.Context, format string, quality int, clip *cdptk.ScreenshotClip) ([]byte, error)
 
-	// Screencast streaming
 	StartScreencast(ctx context.Context, opts ScreencastOpts) (*ScreencastStream, error)
 
-	// Emulation
 	SetViewport(ctx context.Context, params ViewportParams) error
 	SetGeolocation(ctx context.Context, lat, lng, accuracy float64) error
 	SetEmulatedMedia(ctx context.Context, feature, value string) error
 
-	// Network state
 	SetNetworkConditions(ctx context.Context, params NetworkConditions) error
 	SetExtraHTTPHeaders(ctx context.Context, headers map[string]string) error
 	GetCookies(ctx context.Context, urls []string) ([]CookieData, error)
 	SetCookie(ctx context.Context, params SetCookieParams) error
 
-	// Navigation info
 	CurrentURL(ctx context.Context) (string, error)
 	CurrentTitle(ctx context.Context) (string, error)
 
-	// PDF generation
 	PrintToPDF(ctx context.Context, params PDFParams) ([]byte, error)
 
-	// DOM file input
 	SetFileInputFiles(ctx context.Context, nodeID int64, paths []string) error
 	ResolveSelectorToNodeID(ctx context.Context, selector string) (int64, error)
 
-	// Download
 	DownloadURL(ctx context.Context, dlURL string, opts DownloadOpts) (*DownloadResult, error)
 
 	// HTTP auth credentials (Fetch domain)
@@ -157,12 +138,10 @@ type BridgeAPI interface {
 	ContinueWithAuth(ctx context.Context, requestID, username, password string) error
 	ContinueRequest(ctx context.Context, requestID string) error
 
-	// Navigation history
 	GoBack(ctx context.Context) (didNavigate bool, err error)
 	GoForward(ctx context.Context) (didNavigate bool, err error)
 	Reload(ctx context.Context) error
 
-	// Navigation wait helpers
 	WaitVisible(ctx context.Context, selector string) error
 
 	// Navigation policy (network guard)
@@ -299,8 +278,6 @@ type OrchestratorService interface {
 	ForceShutdown()
 }
 
-// Common types used across packages (migrated from main)
-
 type ProfileInfo struct {
 	ID                string    `json:"id,omitempty"`
 	Name              string    `json:"name"`
@@ -360,15 +337,15 @@ func normalizeInstanceMode(mode string, headless bool) string {
 }
 
 type Instance struct {
-	ID             string          `json:"id"`                   // Hash-based ID: inst_XXXXXXXX
-	ProfileID      string          `json:"profileId"`            // Hash-based profile ID: prof_XXXXXXXX
-	ProfileName    string          `json:"profileName"`          // Human-readable profile name (for display only)
-	Port           string          `json:"port"`                 // Internal: instance port
-	URL            string          `json:"url,omitempty"`        // Canonical base URL for bridge-backed instances
-	Mode           string          `json:"mode"`                 // API mode: "headless" or "headed"
-	Headless       bool            `json:"headless"`             // Mode: headless vs headed
-	Status         string          `json:"status"`               // Status: starting/running/stopping/stopped/error
-	StartTime      time.Time       `json:"startTime"`            // When instance was created
+	ID             string          `json:"id"`            // Hash-based ID: inst_XXXXXXXX
+	ProfileID      string          `json:"profileId"`     // Hash-based profile ID: prof_XXXXXXXX
+	ProfileName    string          `json:"profileName"`   // Human-readable profile name (for display only)
+	Port           string          `json:"port"`          // Internal: instance port
+	URL            string          `json:"url,omitempty"` // Canonical base URL for bridge-backed instances
+	Mode           string          `json:"mode"`          // API mode: "headless" or "headed"
+	Headless       bool            `json:"headless"`      // Mode: headless vs headed
+	Status         string          `json:"status"`        // Status: starting/running/stopping/stopped/error
+	StartTime      time.Time       `json:"startTime"`
 	Error          string          `json:"error,omitempty"`      // Error message if status=error
 	Attached       bool            `json:"attached"`             // True if attached rather than locally launched
 	AttachType     string          `json:"attachType,omitempty"` // "cdp" or "bridge" for attached instances

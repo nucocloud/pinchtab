@@ -114,9 +114,7 @@ func New(b bridge.BridgeAPI, cfg *config.RuntimeConfig, p bridge.ProfileService,
 		return h.Bridge.Evaluate(ctx, expression, out, opts)
 	}
 
-	// Clean up .tmp export files orphaned by a previous crash.
 	go CleanupStaleTmpExports(cfg.StateDir)
-	// Clean up decoded base64 upload staging dirs left by older runs.
 	go CleanupStaleUploads(cfg.StateDir)
 
 	return h
@@ -377,7 +375,6 @@ func (h *Handlers) RegisterRoutes(mux *http.ServeMux, doShutdown func()) {
 	mux.HandleFunc("POST /cache/clear", h.HandleCacheClear)
 	mux.HandleFunc("GET /cache/status", h.HandleCacheStatus)
 
-	// Storage (current origin only)
 	mux.HandleFunc("GET /storage", h.HandleStorage)
 	mux.HandleFunc("POST /storage", h.HandleStorage)
 	mux.HandleFunc("DELETE /storage", h.HandleStorage)
@@ -385,7 +382,6 @@ func (h *Handlers) RegisterRoutes(mux *http.ServeMux, doShutdown func()) {
 	mux.HandleFunc("POST /tabs/{id}/storage", h.HandleTabStorageSet)
 	mux.HandleFunc("DELETE /tabs/{id}/storage", h.HandleTabStorageDelete)
 
-	// State management
 	mux.HandleFunc("GET /state", h.HandleStateCurrent)
 	mux.HandleFunc("GET /state/list", h.HandleStateList)
 	mux.HandleFunc("GET /state/show", h.HandleStateShow)

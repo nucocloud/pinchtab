@@ -29,7 +29,6 @@ func runSecurityWizard(cfg *config.FileConfig, configPath string, isNew bool) bo
 	return runUpgradeNotice(cfg, configPath)
 }
 
-// runNonInteractiveSetup prints a summary and applies defaults silently.
 func runNonInteractiveSetup(cfg *config.FileConfig, configPath string, isNew bool) bool {
 	if isNew {
 		fmt.Println()
@@ -52,7 +51,6 @@ func runNonInteractiveSetup(cfg *config.FileConfig, configPath string, isNew boo
 	return true
 }
 
-// runFullWizard runs the interactive first-run wizard.
 func runFullWizard(cfg *config.FileConfig, configPath string) bool {
 	fmt.Println()
 	fmt.Println(cli.StyleStdout(cli.HeadingStyle, "🛡️  Know your config"))
@@ -62,7 +60,6 @@ func runFullWizard(cfg *config.FileConfig, configPath string) bool {
 	fmt.Println()
 	printSeparator()
 
-	// Guard Up
 	fmt.Println()
 	fmt.Println(cli.StyleStdout(cli.HeadingStyle, "1. Guard UP (recommended)"))
 	fmt.Println(cli.StyleStdout(cli.MutedStyle, "Only sites running on this machine can be automated."))
@@ -76,7 +73,6 @@ func runFullWizard(cfg *config.FileConfig, configPath string) bool {
 	printSetting("IDPI", cli.StyleStdout(cli.SuccessStyle, "strict"))
 	fmt.Println()
 
-	// Guard Down
 	fmt.Println(cli.StyleStdout(cli.HeadingStyle, "2. Guard DOWN (development)"))
 	fmt.Println(cli.StyleStdout(cli.MutedStyle, "All features enabled, any site can be automated. Use for local dev only."))
 	fmt.Println()
@@ -106,7 +102,6 @@ func runFullWizard(cfg *config.FileConfig, configPath string) bool {
 		applyGuardDown(cfg)
 	}
 
-	// Dashboard access
 	printSeparator()
 	fmt.Println()
 	fmt.Println(cli.StyleStdout(cli.HeadingStyle, "Dashboard"))
@@ -118,7 +113,6 @@ func runFullWizard(cfg *config.FileConfig, configPath string) bool {
 	}
 	fmt.Println()
 
-	// Save
 	cfg.ConfigVersion = config.CurrentConfigVersion
 	if err := config.SaveFileConfig(cfg, configPath); err != nil {
 		fmt.Fprintln(os.Stderr, cli.StyleStderr(cli.ErrorStyle, fmt.Sprintf("failed to save config: %v", err)))
@@ -131,7 +125,6 @@ func runFullWizard(cfg *config.FileConfig, configPath string) bool {
 	return true
 }
 
-// runUpgradeNotice shows a brief notice for config upgrades.
 func runUpgradeNotice(cfg *config.FileConfig, configPath string) bool {
 	fmt.Println()
 	fmt.Println(cli.StyleStdout(cli.HeadingStyle, "🛡️  Config update (v"+config.CurrentConfigVersion+")"))
@@ -151,8 +144,6 @@ func runUpgradeNotice(cfg *config.FileConfig, configPath string) bool {
 	_ = config.SaveFileConfig(cfg, configPath)
 	return true
 }
-
-// ─── Guard Presets ───────────────────────────────────────────────
 
 func applyGuardUp(cfg *config.FileConfig) {
 	f := false
@@ -185,8 +176,6 @@ func applyGuardDown(cfg *config.FileConfig) {
 	cfg.Security.AllowedDomains = nil
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────
-
 func getAllowedDomains(cfg *config.FileConfig) []string {
 	if len(cfg.Security.AllowedDomains) > 0 {
 		return cfg.Security.AllowedDomains
@@ -214,5 +203,3 @@ func orDefault(val, fallback string) string {
 	}
 	return val
 }
-
-// copyToClipboard is defined in cmd_config.go

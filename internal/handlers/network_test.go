@@ -526,7 +526,6 @@ func TestHandleNetworkClear_All(t *testing.T) {
 		t.Errorf("expected cleared=true, all=true, got cleared=%v, all=%v", resp.Cleared, resp.All)
 	}
 
-	// Verify buffers are empty
 	buf1 := nm.GetBuffer("tab1")
 	buf2 := nm.GetBuffer("tab2")
 	if buf1 != nil && buf1.Len() != 0 {

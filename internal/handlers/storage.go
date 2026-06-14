@@ -103,7 +103,6 @@ type storageSetRequest struct {
 	Type  string `json:"type"`
 }
 
-// handleStorageSet sets a single storage item.
 func (h *Handlers) handleStorageSet(w http.ResponseWriter, r *http.Request) {
 	if !h.ensureStateExportEnabled(w) {
 		return
@@ -208,7 +207,6 @@ func (h *Handlers) handleStorageDelete(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Defaults for empty body/missing type
 	if req.Type == "" {
 		req.Type = "all"
 	}
@@ -217,7 +215,6 @@ func (h *Handlers) handleStorageDelete(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, 400, fmt.Errorf("type must be 'local', 'session', or 'all'"))
 		return
 	}
-	// key is not compatible with type=all
 	if req.Type == "all" && req.Key != "" {
 		httpx.Error(w, 400, fmt.Errorf("key cannot be used with type=all; omit key to clear both storages"))
 		return
@@ -316,7 +313,6 @@ func buildStorageGetScript(storageType, key string) string {
 		}
 	}
 
-	// No key specified: return all items
 	getAllScript := func(storageObj string) string {
 		return fmt.Sprintf(`
 			(function() {
@@ -374,7 +370,6 @@ func buildStorageGetScript(storageType, key string) string {
 // or clears the entire storage. Supports type local, session, or all.
 // Returns a JSON string with success/origin fields.
 func buildStorageDeleteScript(storageType, key string) string {
-	// type=all: clear both localStorage and sessionStorage
 	if storageType == "all" {
 		return `
 		(function() {

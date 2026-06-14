@@ -154,7 +154,6 @@ func (h *Handlers) HandleOpenAPI(w http.ResponseWriter, _ *http.Request) {
 					"x-pinchtab-enabled": security["stateExport"].Enabled,
 				},
 			},
-			// CapStateExport-gated endpoints
 			"/state": map[string]any{"get": map[string]any{
 				"summary":            "Read current browser state for a tab",
 				"description":        security["stateExport"].Message,

@@ -217,7 +217,6 @@ func (b *Bridge) actionClick(ctx context.Context, req ActionRequest) (result map
 		clickCtx = ctx
 	}
 
-	// Channel to receive click result
 	type clickResult struct {
 		err error
 	}

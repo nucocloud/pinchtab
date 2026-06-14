@@ -36,9 +36,7 @@ func (b *Browser) DoctorChecks(_ browsers.TargetConfig) []browsers.DoctorCheck {
 			ID:          "handle_decisions",
 			Description: "Verify ghost-chrome handle/skip behavior and state-changing safety",
 			Fn: func(ctx context.Context, cfg interface{}) browsers.DoctorCheckResult {
-				// Static shapes should be handled
 				staticShapes := []string{browsers.ShapeStaticRead, browsers.ShapeStaticSnapshot}
-				// Interactive shapes should be skipped
 				skipShapes := []string{
 					browsers.ShapeRenderedRead, browsers.ShapeVisual,
 					browsers.ShapeInteraction, browsers.ShapeSessionState,
@@ -61,7 +59,6 @@ func (b *Browser) DoctorChecks(_ browsers.TargetConfig) []browsers.DoctorCheck {
 					}
 				}
 
-				// State-changing safety: static-read with StateChanging=true should be skipped
 				d := b.CanHandle(browsers.RequestIntent{Shape: browsers.ShapeStaticRead, StateChanging: true})
 				if d.Decision != browsers.DecisionSkip {
 					issues = append(issues, fmt.Sprintf("state-changing static-read: expected skip, got %s", d.Decision))

@@ -149,15 +149,6 @@ func scaledScreenshotClip(opts ScreenshotOpts, viewportWidth, viewportHeight, do
 	}
 }
 
-// CaptureScreenshot runs Page.captureScreenshot with the supplied options.
-// Quality is applied only for JPEG; clip and beyondViewport are mutually
-// exclusive (clip wins) — the same rule the handler enforces on input.
-//
-// When Scale is non-default (not 0 and not 1), the function ensures a clip is
-// passed to CDP — either by reusing the supplied one with Scale multiplied in,
-// or by synthesizing a viewport-covering clip from ViewportWidth/Height. CDP's
-// top-level capture call has no scale parameter outside of clip, so this is
-// the only way to apply a render-time rescale.
 // captureFromSurface decides the Page.captureScreenshot fromSurface flag.
 //
 // fromSurface=false reads the renderer's current view directly instead of
@@ -176,6 +167,15 @@ func captureFromSurface(beyondViewport bool, clip *page.Viewport) bool {
 	return clip != nil && clip.Scale != 0 && clip.Scale != 1
 }
 
+// CaptureScreenshot runs Page.captureScreenshot with the supplied options.
+// Quality is applied only for JPEG; clip and beyondViewport are mutually
+// exclusive (clip wins) — the same rule the handler enforces on input.
+//
+// When Scale is non-default (not 0 and not 1), the function ensures a clip is
+// passed to CDP — either by reusing the supplied one with Scale multiplied in,
+// or by synthesizing a viewport-covering clip from ViewportWidth/Height. CDP's
+// top-level capture call has no scale parameter outside of clip, so this is
+// the only way to apply a render-time rescale.
 func CaptureScreenshot(ctx context.Context, opts ScreenshotOpts) ([]byte, error) {
 	clip := opts.Clip
 	if opts.Scale > 0 && opts.Scale != 1 {

@@ -40,7 +40,6 @@ func EmitDefaultConfigHint() {
 // Load returns the RuntimeConfig with precedence: env vars > config file > defaults.
 func Load() *RuntimeConfig {
 	cfg := &RuntimeConfig{
-		// Server defaults
 		Bind:              "127.0.0.1",
 		Port:              defaultPort,
 		InstancePortStart: 9868,
@@ -49,7 +48,6 @@ func Load() *RuntimeConfig {
 		StateDir:          userConfigDir(),
 		CookieSecure:      nil,
 
-		// Security defaults
 		AllowEvaluate:             false,
 		AllowMacro:                false,
 		AllowScreencast:           false,
@@ -72,7 +70,6 @@ func Load() *RuntimeConfig {
 		UploadMaxTotalBytes:       DefaultUploadMaxTotalBytes,
 		MaxRedirects:              -1, // Unlimited by default; set to N to limit redirect hops
 
-		// Browser / instance defaults
 		Headless:           true,
 		NoRestore:          false,
 		ProfileDir:         "",
@@ -99,13 +96,11 @@ func Load() *RuntimeConfig {
 		TabCloseDelay:      5 * time.Minute,
 		TabRestore:         false,
 
-		// Timeout defaults
 		ActionTimeout:   30 * time.Second,
 		NavigateTimeout: 60 * time.Second,
 		ShutdownTimeout: 10 * time.Second,
 		WaitNavDelay:    1 * time.Second,
 
-		// Orchestrator defaults
 		Strategy:           "always-on",
 		AllocationPolicy:   "fcfs",
 		RestartMaxRestarts: 20,
@@ -113,12 +108,10 @@ func Load() *RuntimeConfig {
 		RestartMaxBackoff:  60 * time.Second,
 		RestartStableAfter: 5 * time.Minute,
 
-		// Attach defaults
 		AttachEnabled:      false,
 		AttachAllowHosts:   []string{"127.0.0.1", "localhost", "::1"},
 		AttachAllowSchemes: []string{"ws", "wss", "http", "https"},
 
-		// IDPI defaults
 		IDPI: IDPIConfig{
 			Enabled:        true,
 			StrictMode:     true,
@@ -127,7 +120,6 @@ func Load() *RuntimeConfig {
 			ScanTimeoutSec: 5,
 		},
 
-		// Observability defaults
 		Observability: ObservabilityConfig{
 			Activity: ActivityConfig{
 				Enabled:        true,
@@ -137,7 +129,6 @@ func Load() *RuntimeConfig {
 			},
 		},
 
-		// Session defaults
 		Sessions: SessionsRuntimeConfig{
 			Agent: AgentSessionRuntimeConfig{
 				Enabled:     true,
@@ -155,7 +146,6 @@ func Load() *RuntimeConfig {
 			},
 		},
 
-		// AutoSolver defaults (disabled by default)
 		AutoSolver: AutoSolverConfig{
 			Enabled:           false,
 			AutoTrigger:       true,
@@ -171,7 +161,6 @@ func Load() *RuntimeConfig {
 	}
 	finalizeProfileConfig(cfg)
 
-	// Load config file (supports both legacy flat and new nested format)
 	defaultConfigPath := filepath.Join(userConfigDir(), "config.json")
 	configPath := envOr("PINCHTAB_CONFIG", defaultConfigPath)
 
@@ -209,14 +198,12 @@ func Load() *RuntimeConfig {
 		}
 	}
 
-	// Validate file config and log warnings
 	if errs := ValidateFileConfig(fc); len(errs) > 0 {
 		for _, e := range errs {
 			slog.Warn("config validation error", "path", configPath, "error", e)
 		}
 	}
 
-	// Apply file config (only if env var NOT set)
 	applyFileConfig(cfg, fc)
 	finalizeProfileConfig(cfg)
 
@@ -287,7 +274,6 @@ func finalizeProfileConfig(cfg *RuntimeConfig) {
 }
 
 func applyFileConfig(cfg *RuntimeConfig, fc *FileConfig) {
-	// Server
 	if fc.Server.Port != "" {
 		cfg.Port = fc.Server.Port
 	}
@@ -313,7 +299,6 @@ func applyFileConfig(cfg *RuntimeConfig, fc *FileConfig) {
 		cfg.TrustProxyHeaders = *fc.Server.TrustProxyHeaders
 	}
 	cfg.CookieSecure = fc.Server.CookieSecure
-	// Security
 	if fc.Security.AllowEvaluate != nil {
 		cfg.AllowEvaluate = *fc.Security.AllowEvaluate
 	}
@@ -431,7 +416,6 @@ func applyFileConfig(cfg *RuntimeConfig, fc *FileConfig) {
 		cfg.Sessions.Dashboard.RequireElevation = *fc.Sessions.Dashboard.RequireElevation
 	}
 
-	// Agent sessions
 	if fc.Sessions.Agent.Enabled != nil {
 		cfg.Sessions.Agent.Enabled = *fc.Sessions.Agent.Enabled
 	}
@@ -528,7 +512,6 @@ func applyFileConfig(cfg *RuntimeConfig, fc *FileConfig) {
 		cfg.BrowsersAvailable = []string{"chrome"}
 	}
 
-	// Instance defaults — resolve headless bool into mode string.
 	if fc.InstanceDefaults.Headless != nil && fc.InstanceDefaults.Mode == "" {
 		if *fc.InstanceDefaults.Headless {
 			fc.InstanceDefaults.Mode = "headless"
@@ -598,7 +581,6 @@ func applyFileConfig(cfg *RuntimeConfig, fc *FileConfig) {
 		cfg.DialogAutoAccept = *fc.InstanceDefaults.DialogAutoAccept
 	}
 
-	// Profiles
 	if fc.Profiles.BaseDir != "" {
 		cfg.ProfilesBaseDir = fc.Profiles.BaseDir
 	}
@@ -607,7 +589,6 @@ func applyFileConfig(cfg *RuntimeConfig, fc *FileConfig) {
 	}
 	cfg.ProfileDir = ""
 
-	// Multi-instance
 	if fc.MultiInstance.Strategy != "" {
 		cfg.Strategy = fc.MultiInstance.Strategy
 	}
@@ -620,7 +601,6 @@ func applyFileConfig(cfg *RuntimeConfig, fc *FileConfig) {
 	if fc.MultiInstance.InstancePortEnd != nil {
 		cfg.InstancePortEnd = *fc.MultiInstance.InstancePortEnd
 	}
-	// Restart
 	if fc.MultiInstance.Restart.MaxRestarts != nil {
 		cfg.RestartMaxRestarts = *fc.MultiInstance.Restart.MaxRestarts
 	}
@@ -634,7 +614,6 @@ func applyFileConfig(cfg *RuntimeConfig, fc *FileConfig) {
 		cfg.RestartStableAfter = time.Duration(*fc.MultiInstance.Restart.StableAfterSec) * time.Second
 	}
 
-	// Attach
 	if fc.Security.Attach.Enabled != nil {
 		cfg.AttachEnabled = *fc.Security.Attach.Enabled
 	}
@@ -648,7 +627,6 @@ func applyFileConfig(cfg *RuntimeConfig, fc *FileConfig) {
 		cfg.AttachAllowSchemes = append([]string(nil), fc.Security.Attach.AllowSchemes...)
 	}
 
-	// Timeouts
 	if fc.Timeouts.ActionSec > 0 {
 		cfg.ActionTimeout = time.Duration(fc.Timeouts.ActionSec) * time.Second
 	}
@@ -662,7 +640,6 @@ func applyFileConfig(cfg *RuntimeConfig, fc *FileConfig) {
 		cfg.WaitNavDelay = time.Duration(fc.Timeouts.WaitNavMs) * time.Millisecond
 	}
 
-	// Scheduler
 	if fc.Scheduler.Enabled != nil {
 		cfg.Scheduler.Enabled = *fc.Scheduler.Enabled
 	}
@@ -688,7 +665,6 @@ func applyFileConfig(cfg *RuntimeConfig, fc *FileConfig) {
 		cfg.Scheduler.WorkerCount = *fc.Scheduler.WorkerCount
 	}
 
-	// AutoSolver
 	if fc.AutoSolver.Enabled != nil {
 		cfg.AutoSolver.Enabled = *fc.AutoSolver.Enabled
 	}

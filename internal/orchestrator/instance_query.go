@@ -114,7 +114,6 @@ func (o *Orchestrator) FirstRunningURLForRequest(r *http.Request) (string, int, 
 		return o.FirstRunningURL(), 0, nil
 	}
 
-	// Validate the requested browser before normalization.
 	if _, err := config.ParseBrowser(requested, nil); err != nil {
 		return "", http.StatusBadRequest, fmt.Errorf("unknown browser %q", requested)
 	}
@@ -125,7 +124,6 @@ func (o *Orchestrator) FirstRunningURLForRequest(r *http.Request) (string, int, 
 		if len(matches) == 0 {
 			return "", http.StatusBadRequest, fmt.Errorf("no browser target configured for browser %q", requested)
 		}
-		// Valid browser — check if there's a running instance for it.
 		u := o.FirstRunningURLForBrowser(normalized)
 		if u == "" {
 			return "", http.StatusConflict, fmt.Errorf("no running instance for browser %q", requested)

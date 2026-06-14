@@ -20,8 +20,6 @@ import (
 	"github.com/pinchtab/pinchtab/internal/netguard"
 )
 
-// ---------- mock IDPI guard ----------
-
 type mockGuard struct {
 	enabled  bool
 	blocked  bool
@@ -48,8 +46,6 @@ func (g *mockGuard) WrapContent(text, pageURL string) string {
 	}
 	return text
 }
-
-// ---------- helpers ----------
 
 func newRichTestServer() *httptest.Server {
 	// Produce enough content so the quality gate accepts the static result.
@@ -82,8 +78,6 @@ func newIDPITestServer(injectedContent string) *httptest.Server {
 		_, _ = w.Write([]byte(body))
 	}))
 }
-
-// ---------- mock chrome bridge for adapter routing tests ----------
 
 type mockChromeBridge struct {
 	navigateCalled bool
@@ -153,8 +147,6 @@ func newTestAdapter(t *testing.T, lite *staticfetch.Browser, mock *mockChromeBri
 		proxy:     proxy,
 	}
 }
-
-// ---------- routing integration tests ----------
 
 func TestAdapterNavigate_StaticAccepted(t *testing.T) {
 	ts := newRichTestServer()
@@ -809,8 +801,6 @@ func TestStaticSnapshotIDPIWarning(t *testing.T) {
 	}
 }
 
-// ---------- escalation lifecycle tests ----------
-
 // escalatingChromeBridge fails TabContext for unknown IDs, forcing the proxy
 // down the lite-escalation path; CreateTab registers the new Chrome tab.
 type escalatingChromeBridge struct {
@@ -961,7 +951,7 @@ func TestAdapterCloseTab_UnescalatedLiteTab_NoChromeInvolved(t *testing.T) {
 	}
 }
 
-// H1b: NoEscalate returns the typed escalation signal instead of internally
+// NoEscalate returns the typed escalation signal instead of internally
 // falling through to Chrome, and releases the rejected static tab.
 func TestAdapterNavigate_NoEscalateReturnsTypedError(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -995,7 +985,7 @@ func TestAdapterNavigate_NoEscalateReturnsTypedError(t *testing.T) {
 	}
 }
 
-// H1b: SkipStatic bypasses the static fetch entirely (the handler already
+// SkipStatic bypasses the static fetch entirely (the handler already
 // ran it) and goes straight to Chrome.
 func TestAdapterNavigate_SkipStaticGoesStraightToChrome(t *testing.T) {
 	ts := newRichTestServer() // would static-accept if the fetch ran

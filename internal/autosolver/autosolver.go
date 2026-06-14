@@ -56,7 +56,6 @@ func (as *AutoSolver) Solve(ctx context.Context, page Page, executor ActionExecu
 		"max_attempts", as.config.MaxAttempts,
 		"llm_fallback", as.config.LLMFallback)
 
-	// Detect what kind of page we're dealing with.
 	intent, err := as.detectIntent(ctx, page)
 	if err != nil {
 		slog.Warn("autosolver: intent detection failed, proceeding with unknown",
@@ -65,7 +64,6 @@ func (as *AutoSolver) Solve(ctx context.Context, page Page, executor ActionExecu
 	}
 	result.Intent = intent.Type
 
-	// No challenge - nothing to solve.
 	if intent.Type == IntentNormal {
 		result.Solved = true
 		result.TotalDuration = time.Since(start)
@@ -82,11 +80,9 @@ func (as *AutoSolver) Solve(ctx context.Context, page Page, executor ActionExecu
 		"confidence", intent.Confidence,
 		"url", page.URL())
 
-	// Run the fallback chain with retry logic.
 	for attempt := 0; attempt < as.config.MaxAttempts; attempt++ {
 		result.Attempts = attempt + 1
 
-		// Apply backoff between retries (skip first attempt).
 		if attempt > 0 {
 			delay := as.backoffDelay(attempt)
 			slog.Info("autosolver_retry",
@@ -107,7 +103,6 @@ func (as *AutoSolver) Solve(ctx context.Context, page Page, executor ActionExecu
 			}
 		}
 
-		// Try semantic-first action before any rule-based solver.
 		solved, entry := as.trySemantic(ctx, page, executor, intent)
 		if entry != nil {
 			result.History = append(result.History, *entry)
@@ -131,7 +126,6 @@ func (as *AutoSolver) Solve(ctx context.Context, page Page, executor ActionExecu
 			return result, nil
 		}
 
-		// Try registered solvers in priority order.
 		solved, entry = as.trySolvers(ctx, page, executor)
 		if entry != nil {
 			result.History = append(result.History, *entry)
@@ -155,7 +149,6 @@ func (as *AutoSolver) Solve(ctx context.Context, page Page, executor ActionExecu
 			return result, nil
 		}
 
-		// Try LLM fallback if enabled and all solvers failed.
 		if as.config.LLMFallback && as.llm != nil {
 			solved, entry = as.tryLLM(ctx, page, executor, result.History)
 			if entry != nil {
@@ -197,8 +190,6 @@ func (as *AutoSolver) Solve(ctx context.Context, page Page, executor ActionExecu
 	return result, nil
 }
 
-// detectIntent uses the semantic engine if available, otherwise falls
-// back to basic title-based heuristics.
 func (as *AutoSolver) detectIntent(ctx context.Context, page Page) (*Intent, error) {
 	if as.semantic != nil {
 		return as.semantic.DetectIntent(ctx, page)
@@ -206,7 +197,6 @@ func (as *AutoSolver) detectIntent(ctx context.Context, page Page) (*Intent, err
 	return detectIntentByTitle(page.Title()), nil
 }
 
-// trySolvers iterates through matching solvers and returns on first success.
 func (as *AutoSolver) trySolvers(ctx context.Context, page Page, executor ActionExecutor) (bool, *AttemptEntry) {
 	solvers := as.registry.MatchingSolvers(ctx, page)
 	if len(solvers) == 0 {
@@ -719,7 +709,6 @@ func resolveSelectorCenter(ctx context.Context, executor ActionExecutor, selecto
 	return coords.X, coords.Y, nil
 }
 
-// tryLLM builds a trimmed request and asks the LLM for the next action.
 func (as *AutoSolver) tryLLM(ctx context.Context, page Page, executor ActionExecutor, history []AttemptEntry) (bool, *AttemptEntry) {
 	llmStart := time.Now()
 	entry := &AttemptEntry{Solver: "llm"}
@@ -751,7 +740,6 @@ func (as *AutoSolver) tryLLM(ctx context.Context, page Page, executor ActionExec
 		return false, entry
 	}
 
-	// Execute the LLM's suggested action.
 	if err := executeAction(ctx, executor, resp); err != nil {
 		entry.Status = StatusFailed
 		entry.Error = fmt.Sprintf("execute llm action: %v", err)
@@ -764,7 +752,6 @@ func (as *AutoSolver) tryLLM(ctx context.Context, page Page, executor ActionExec
 	return true, entry
 }
 
-// executeAction translates an LLMResponse into an ActionExecutor call.
 func executeAction(ctx context.Context, executor ActionExecutor, resp *LLMResponse) error {
 	if resp == nil {
 		return fmt.Errorf("nil response")
@@ -795,7 +782,6 @@ func executeAction(ctx context.Context, executor ActionExecutor, resp *LLMRespon
 	}
 }
 
-// backoffDelay calculates exponential backoff with jitter.
 func (as *AutoSolver) backoffDelay(attempt int) time.Duration {
 	base := as.config.RetryBaseDelay
 	if base <= 0 {

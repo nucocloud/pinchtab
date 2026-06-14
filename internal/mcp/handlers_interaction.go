@@ -180,7 +180,6 @@ func handleAction(c *Client, kind string) func(context.Context, mcp.CallToolRequ
 			return resultFromBytes(body, code)
 		}
 
-		// If snap=true, append interactive compact snapshot
 		snapSupportedKinds := map[string]bool{"click": true, "fill": true, "select": true}
 		if snapSupportedKinds[kind] {
 			if snap, ok := optBool(r, "snap"); ok && snap {

@@ -7,7 +7,6 @@ const defaultPort = "9867"
 // RuntimeConfig holds all runtime settings used throughout the application.
 // This is the single source of truth for configuration at runtime.
 type RuntimeConfig struct {
-	// Server settings
 	Bind              string
 	Port              string
 	InstancePortStart int // Starting port for instances (default 9868)
@@ -19,7 +18,6 @@ type RuntimeConfig struct {
 	VerboseStartup    bool  // Show full banner and slog output on server start
 	BackgroundMarker  string
 
-	// Security settings
 	AllowEvaluate         bool
 	AllowMacro            bool
 	AllowScreencast       bool
@@ -45,7 +43,6 @@ type RuntimeConfig struct {
 	TrustedResolveCIDRs    []string // CIDRs/IPs allowed when a navigation target resolves to non-public addresses
 	TrustLoopbackProxy     bool     // when true, navigation responses with a loopback RemoteIPAddress (e.g. system HTTP/SOCKS proxy on 127.0.0.1) are not blocked; default false
 
-	// Browser/instance settings
 	Headless            bool
 	HeadlessSet         bool // true when explicitly set via config or flag
 	DisableInProcessGPU bool // runtime-only: kill switch for --in-process-gpu when a user opted in via browser.extraFlags and the browser then crashed
@@ -93,7 +90,6 @@ type RuntimeConfig struct {
 	TabCloseDelay      time.Duration // applies when TabLifecyclePolicy == "close_idle" (default 5m when enabled)
 	TabRestore         bool          // restore previously open tabs from sessions.json on startup (default false)
 
-	// Timeout settings
 	ActionTimeout   time.Duration
 	NavigateTimeout time.Duration
 	ShutdownTimeout time.Duration
@@ -107,7 +103,6 @@ type RuntimeConfig struct {
 	RestartMaxBackoff  time.Duration // Maximum restart backoff cap (0 = strategy default)
 	RestartStableAfter time.Duration // Stable runtime window that resets the restart counter (0 = strategy default)
 
-	// Attach settings
 	AttachEnabled          bool
 	AttachAllowHosts       []string
 	AttachAllowSchemes     []string
@@ -117,13 +112,10 @@ type RuntimeConfig struct {
 	RemoteCDPURL      string
 	RemoteBrowserName string
 
-	// IDPI (Indirect Prompt Injection defense) settings
 	IDPI IDPIConfig
 
-	// Dialog settings
 	DialogAutoAccept bool
 
-	// Network monitoring
 	NetworkBufferSize         int  // Per-tab network buffer size (default 100)
 	RetainNetworkBodies       bool // When true, opportunistically retain response bodies in the per-tab network buffer
 	RetainNetworkBodyMaxBytes int  // Max retained response-body bytes per entry when RetainNetworkBodies is enabled
@@ -131,13 +123,10 @@ type RuntimeConfig struct {
 	// Scheduler settings (dashboard mode only)
 	Scheduler SchedulerConfig
 
-	// Observability settings
 	Observability ObservabilityConfig
 
-	// Session settings
 	Sessions SessionsRuntimeConfig
 
-	// AutoSolver settings
 	AutoSolver AutoSolverConfig
 }
 

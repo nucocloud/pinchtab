@@ -67,7 +67,6 @@ type Scheduler struct {
 	// webhookSem bounds the number of concurrent webhook delivery goroutines.
 	webhookSem chan struct{}
 
-	// cancellation
 	cancels   map[string]context.CancelFunc
 	cancelsMu sync.Mutex
 
@@ -446,7 +445,6 @@ func (s *Scheduler) finishTask(t *Task) {
 	delete(s.live, t.ID)
 	s.liveMu.Unlock()
 
-	// Fire webhook asynchronously if configured.
 	if t.CallbackURL != "" && t.GetState().IsTerminal() {
 		select {
 		case s.webhookSem <- struct{}{}:

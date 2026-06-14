@@ -29,10 +29,6 @@ type LaunchFailure struct {
 	BrowserCanceled bool
 }
 
-// ---------------------------------------------------------------------------
-// Handle-decision types
-// ---------------------------------------------------------------------------
-
 // Routing contract:
 //
 // DecisionHandle — provider accepts the request; proceed with execution.
@@ -76,10 +72,6 @@ const (
 	ShapeNetworkControl = "network-control"
 	ShapeDownloadUpload = "download-upload"
 )
-
-// ---------------------------------------------------------------------------
-// Browser interface
-// ---------------------------------------------------------------------------
 
 // Browser is the extension point for adding new browser providers.
 type Browser interface {
@@ -125,10 +117,6 @@ type Browser interface {
 	// Instance type (chrome, cloak, ghost-chrome).
 	NewRuntimeInstance(browserCtx context.Context, headless bool) RuntimeInstance
 }
-
-// ---------------------------------------------------------------------------
-// Registry
-// ---------------------------------------------------------------------------
 
 var (
 	mu       sync.Mutex
@@ -193,7 +181,6 @@ func sortedKeysLocked() []string {
 	return out
 }
 
-// resetForTesting clears the global registry for this package's tests.
 func resetForTesting() {
 	mu.Lock()
 	defer mu.Unlock()

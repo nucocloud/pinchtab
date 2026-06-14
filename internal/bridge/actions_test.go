@@ -827,8 +827,6 @@ func TestUncheckAction_WithSelector_UsesCSSPath(t *testing.T) {
 	}
 }
 
-// ── Keyboard action tests ──────────────────────────────────────────────
-
 func TestKeyboardTypeAction_Registered(t *testing.T) {
 	b := New(context.TODO(), nil, &config.RuntimeConfig{})
 	if _, ok := b.Actions[ActionKeyboardType]; !ok {
@@ -940,8 +938,6 @@ func TestKeyUpAction_WithCancelledContext(t *testing.T) {
 		t.Fatal("expected error from cancelled context")
 	}
 }
-
-// ── ScrollIntoView action tests ────────────────────────────────────────
 
 func TestScrollIntoViewAction_Registered(t *testing.T) {
 	b := New(context.TODO(), nil, &config.RuntimeConfig{})

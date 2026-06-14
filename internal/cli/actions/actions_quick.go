@@ -16,7 +16,6 @@ func Quick(client *http.Client, base, token string, args []string) {
 
 	fmt.Println(cli.StyleStdout(cli.HeadingStyle, fmt.Sprintf("Navigating to %s...", args[0])))
 
-	// Navigate
 	navBody := map[string]any{"url": args[0]}
 	navResult := apiclient.DoPost(client, base, token, "/navigate", navBody)
 
@@ -26,13 +25,11 @@ func Quick(client *http.Client, base, token string, args []string) {
 	fmt.Println()
 	fmt.Println(cli.StyleStdout(cli.HeadingStyle, "Page structure"))
 
-	// Snapshot with interactive filter
 	snapParams := url.Values{}
 	snapParams.Set("filter", "interactive")
 	snapParams.Set("compact", "true")
 	apiclient.DoGet(client, base, token, "/snapshot", snapParams)
 
-	// Extract info from navigation result
 	if title, ok := navResult["title"].(string); ok {
 		fmt.Println()
 		fmt.Printf("%s %s\n", cli.StyleStdout(cli.MutedStyle, "Title:"), cli.StyleStdout(cli.ValueStyle, title))

@@ -77,7 +77,6 @@ func (p *BridgeProxy) tabEscalationLock(tabID string) *sync.Mutex {
 // TabContext resolves a tab ID to a context. For lite tabs it lazily
 // escalates to Chrome by navigating Chrome to the lite tab's URL.
 func (p *BridgeProxy) TabContext(tabID string) (context.Context, string, error) {
-	// Try the Chrome bridge first.
 	ctx, resolved, err := p.chrome.TabContext(tabID)
 	if err == nil {
 		return ctx, resolved, nil
@@ -97,18 +96,15 @@ func (p *BridgeProxy) TabContext(tabID string) (context.Context, string, error) 
 		if mapErr == nil {
 			return ctx, resolved, nil
 		}
-		// Cached mapping is stale — clear it.
 		p.tabMap.clear(tabID)
 		slog.Debug("cleared stale lite→chrome mapping", "liteTab", tabID, "chromeTab", chromeID)
 	}
 
-	// Look up the URL from the static browser.
 	url, found := p.lite.TabURL(tabID)
 	if !found {
 		return nil, "", err // return original error
 	}
 
-	// Escalate: ensure Chrome is running and create a tab.
 	if p.ensureBrowser != nil {
 		if ensureErr := p.ensureBrowser(); ensureErr != nil {
 			return nil, "", ensureErr
@@ -242,8 +238,6 @@ func (p *BridgeProxy) TabURL(tabID string) (string, bool) {
 	}
 	return p.lite.TabURL(tabID)
 }
-
-// ---------- tab mapping ----------
 
 // tabMapping tracks lite-tabID → Chrome-tabID associations created by
 // lazy Chrome escalation. Thread-safe.

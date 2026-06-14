@@ -248,7 +248,6 @@ func TestConfigFileWithNestedValues(t *testing.T) {
 
 	cfg := Load()
 
-	// Config file values should be used
 	if cfg.Port != "8888" {
 		t.Errorf("config file Port = %v, want 8888", cfg.Port)
 	}
@@ -873,12 +872,10 @@ func TestFileConfigFromRuntime_UsesDefaultBrowser(t *testing.T) {
 
 	fc := FileConfigFromRuntime(cfg)
 
-	// Provider should not be set on the output FileConfig
 	if fc.Browser.Provider != "" {
 		t.Errorf("FileConfigFromRuntime should not set browser.provider, got %q", fc.Browser.Provider)
 	}
 
-	// browsers.default should be set
 	if fc.Browsers.Default != "chrome" {
 		t.Errorf("FileConfigFromRuntime Browsers.Default = %q, want chrome", fc.Browsers.Default)
 	}

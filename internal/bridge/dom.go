@@ -13,7 +13,6 @@ import (
 // is unmarshaled from the CDP returnByValue response.
 func (b *Bridge) CallFunctionOnNode(ctx context.Context, backendNodeID int64, functionDecl string, args []map[string]any, result any) error {
 	return chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
-		// Step 1: Resolve backend node ID to a remote object.
 		var resolveResult json.RawMessage
 		if err := chromedp.FromContext(ctx).Target.Execute(ctx, "DOM.resolveNode", map[string]any{
 			"backendNodeId": backendNodeID,
@@ -33,7 +32,6 @@ func (b *Bridge) CallFunctionOnNode(ctx context.Context, backendNodeID int64, fu
 			return fmt.Errorf("element not found in DOM (backendNodeId=%d)", backendNodeID)
 		}
 
-		// Step 2: Call the function on the resolved object.
 		params := map[string]any{
 			"functionDeclaration": functionDecl,
 			"objectId":            resolved.Object.ObjectID,
@@ -48,7 +46,6 @@ func (b *Bridge) CallFunctionOnNode(ctx context.Context, backendNodeID int64, fu
 			return fmt.Errorf("call function on node: %w", err)
 		}
 
-		// Step 3: Parse the result.
 		var callParsed struct {
 			Result struct {
 				Type  string          `json:"type"`

@@ -12,8 +12,6 @@ import (
 	"github.com/pinchtab/pinchtab/internal/browsers/ghostchrome/staticfetch"
 )
 
-// ---------- mock chrome bridge ----------
-
 type mockChromeBridge struct {
 	mu               sync.Mutex
 	tabs             map[string]bool // known Chrome tab IDs
@@ -71,8 +69,6 @@ func (m *mockChromeBridge) AvailableActions() []string {
 	return []string{ActionClick, ActionType, ActionPress}
 }
 
-// ---------- ensure browser helper ----------
-
 type ensureBrowserTracker struct {
 	calls int
 	err   error
@@ -84,8 +80,6 @@ func (t *ensureBrowserTracker) fn() func() error {
 		return t.err
 	}
 }
-
-// ---------- tests ----------
 
 func TestBridgeProxy_TabContext_ChromeTabPassthrough(t *testing.T) {
 	mb := newMockChromeBridge()
@@ -102,7 +96,6 @@ func TestBridgeProxy_TabContext_ChromeTabPassthrough(t *testing.T) {
 	if resolved != "chrome-tab-1" {
 		t.Fatalf("expected resolved = %q, got %q", "chrome-tab-1", resolved)
 	}
-	// Should not have called EnsureBrowser or CreateTab.
 	if ec.calls != 0 {
 		t.Fatalf("expected 0 EnsureBrowser calls, got %d", ec.calls)
 	}
@@ -134,7 +127,6 @@ func TestBridgeProxy_TabContext_LiteTabEscalates(t *testing.T) {
 	if ctx == nil {
 		t.Fatal("expected non-nil context")
 	}
-	// Should have escalated: EnsureBrowser + CreateTab.
 	if ec.calls != 1 {
 		t.Fatalf("expected 1 EnsureBrowser call, got %d", ec.calls)
 	}
@@ -144,7 +136,6 @@ func TestBridgeProxy_TabContext_LiteTabEscalates(t *testing.T) {
 	if mb.createTabURLs[0] != ts.URL {
 		t.Fatalf("CreateTab URL = %q, want %q", mb.createTabURLs[0], ts.URL)
 	}
-	// The resolved ID should be the Chrome tab.
 	if resolved != mb.lastCreatedTabID {
 		t.Fatalf("resolved = %q, want %q", resolved, mb.lastCreatedTabID)
 	}
@@ -180,7 +171,6 @@ func TestBridgeProxy_TabContext_CachedEscalation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second call: %v", err)
 	}
-	// Should NOT have called EnsureBrowser again.
 	if ec.calls != 1 {
 		t.Fatalf("expected still 1 EnsureBrowser call, got %d", ec.calls)
 	}
@@ -280,7 +270,6 @@ func TestBridgeProxy_TabContext_ConcurrentEscalation(t *testing.T) {
 		}
 	}
 
-	// CreateTab should have been called exactly once.
 	if len(mb.createTabURLs) != 1 {
 		t.Fatalf("expected 1 CreateTab call, got %d", len(mb.createTabURLs))
 	}
@@ -305,7 +294,6 @@ func TestBridgeProxy_ExecuteAction_ClickWithRef(t *testing.T) {
 
 	proxy := NewBridgeProxy(mb, lite, nil)
 
-	// Find a button ref from the snapshot.
 	snap, _ := lite.Snapshot(context.Background(), navResult.TabID, "interactive")
 	if len(snap.Nodes) == 0 {
 		t.Skip("no interactive nodes in test page")
@@ -322,7 +310,6 @@ func TestBridgeProxy_ExecuteAction_ClickWithRef(t *testing.T) {
 	if result["clicked"] != true {
 		t.Fatalf("expected clicked=true, got %v", result)
 	}
-	// Should NOT have gone to Chrome bridge.
 	if _, has := result["chrome"]; has {
 		t.Fatal("expected static browser to handle click, but went to Chrome")
 	}
@@ -433,8 +420,6 @@ func TestBridgeProxy_AvailableActions_MergesStaticAndChrome(t *testing.T) {
 		}
 	}
 }
-
-// ---------- test HTTP server ----------
 
 func startTestHTTPServer(t *testing.T) *httptest.Server {
 	t.Helper()

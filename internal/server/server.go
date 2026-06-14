@@ -83,7 +83,6 @@ func RunDashboard(cfg *config.RuntimeConfig, version string) {
 		sessionAPI = dashboard.NewSessionAPI(sessionStore, cfg.BrowsersAvailable)
 	}
 
-	// Wire up instance events to SSE broadcast
 	orch.OnEvent(func(evt orchestrator.InstanceEvent) {
 		dash.BroadcastSystemEvent(dashboard.SystemEvent{
 			Type:     evt.Type,

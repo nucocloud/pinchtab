@@ -2,10 +2,6 @@ package browsers
 
 import "context"
 
-// ---------------------------------------------------------------------------
-// Provider-neutral config types used by the Browser interface.
-// ---------------------------------------------------------------------------
-
 // LaunchMode selects how a browser session is launched.
 type LaunchMode string
 

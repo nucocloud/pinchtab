@@ -443,8 +443,6 @@ func (rm *RouteManager) Remove(ctx context.Context, tabID string, pattern string
 	state := rm.perTab[tabID]
 	if state == nil {
 		rm.mu.Unlock()
-		// Tab has no rule state at all — distinct from "rules exist but the
-		// pattern matched nothing." The handler maps ErrTabNotRouted to 404.
 		return 0, ErrTabNotRouted
 	}
 

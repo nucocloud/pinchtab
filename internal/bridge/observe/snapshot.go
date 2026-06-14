@@ -333,7 +333,6 @@ func BuildSnapshot(nodes []RawAXNode, filter string, maxDepth int) ([]A11yNode, 
 			hiddenNodes[n.NodeID] = true
 		}
 	}
-	// Propagate: if a parent is hidden, all descendants inherit hidden status.
 	isHidden := func(nodeID string) bool {
 		cur := nodeID
 		for range maxAncestorWalk {

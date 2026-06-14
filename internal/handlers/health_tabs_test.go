@@ -47,7 +47,6 @@ func TestHandleHealth_NilBridge(t *testing.T) {
 
 // TestHandleHealth_BridgeListTargetsError verifies health returns 503 when ListTargets fails
 func TestHandleHealth_BridgeListTargetsError(t *testing.T) {
-	// Create a mock bridge that returns an error
 	mockBridge := &MockBridge{
 		targets:        nil,
 		listTargetsErr: "no CDP connection",
@@ -83,7 +82,6 @@ func TestHandleHealth_BridgeListTargetsError(t *testing.T) {
 
 // TestHandleHealth_Success verifies health returns 200 when everything works
 func TestHandleHealth_Success(t *testing.T) {
-	// Create a mock bridge that returns targets
 	mockBridge := &MockBridge{
 		targets: []bridge.TabTarget{
 			{TargetID: "target1", URL: "https://pinchtab.com", Title: "Example"},
@@ -246,12 +244,10 @@ func TestHandleHealth_EnsureBrowserFailure(t *testing.T) {
 		t.Errorf("expected status=error, got %v", status)
 	}
 
-	// Verify ensureBrowser was actually called
 	if !mockBridge.ensureBrowserCalled {
 		t.Error("expected ensureBrowser to be called before ListTargets")
 	}
 
-	// Verify error message mentions browser initialization
 	reason, ok := resp["reason"].(string)
 	if !ok || !contains(reason, "browser") {
 		t.Errorf("expected error reason mentioning browser, got %v", reason)
@@ -265,7 +261,7 @@ func TestHandleHealth_EnsureBrowserSuccess(t *testing.T) {
 			{TargetID: "target1", URL: "https://pinchtab.com", Title: "Example"},
 		},
 		ensureBrowserCalled: false,
-		ensureBrowserErr:    "", // No error
+		ensureBrowserErr:    "",
 	}
 
 	h := &Handlers{
@@ -282,7 +278,6 @@ func TestHandleHealth_EnsureBrowserSuccess(t *testing.T) {
 		t.Errorf("expected 200, got %d", w.Code)
 	}
 
-	// Verify ensureBrowser was called
 	if !mockBridge.ensureBrowserCalled {
 		t.Error("expected ensureBrowser to be called before ListTargets")
 	}
@@ -297,7 +292,6 @@ func TestHandleHealth_EnsureBrowserSuccess(t *testing.T) {
 	}
 }
 
-// contains is a simple helper to check if a string contains a substring
 func contains(s, substr string) bool {
 	for i := 0; i <= len(s)-len(substr); i++ {
 		if s[i:i+len(substr)] == substr {

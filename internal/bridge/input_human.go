@@ -47,7 +47,6 @@ type Config struct {
 	Rand *rand.Rand
 }
 
-// getRand returns the configured random source or the global default
 func (c *Config) getRand() *rand.Rand {
 	if c != nil && c.Rand != nil {
 		return c.Rand

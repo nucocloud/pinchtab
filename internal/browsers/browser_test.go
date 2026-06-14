@@ -35,10 +35,6 @@ func stub(id string) Browser {
 	return &stubBrowser{id: id, displayName: id}
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
 func TestDuplicateRegistrationPanics(t *testing.T) {
 	resetForTesting()
 

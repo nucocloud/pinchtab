@@ -21,7 +21,7 @@ func (a *BridgeAdapter) StaticFirstNavigate() bool {
 	return a.StaticBrowser() != nil
 }
 
-// escalateError builds the typed signal for NoEscalate mode, carrying the
+// staticEscalateError builds the typed signal for NoEscalate mode, carrying the
 // static attempt's route metadata for the caller to merge.
 func staticEscalateError(quality int, reason string) *bridge.StaticEscalateError {
 	return &bridge.StaticEscalateError{
@@ -78,7 +78,6 @@ func (a *BridgeAdapter) Navigate(ctx context.Context, url string, params bridge.
 		ctx = staticfetch.WithNavigateNetworkPolicy(ctx, navigateParamsToPolicy(&params))
 		navResult, err := staticBrowser.Navigate(ctx, url)
 		if err == nil {
-			// Assess content quality by extracting text from the static page.
 			textResult, textErr := staticBrowser.Text(ctx, navResult.TabID)
 			if textErr == nil {
 				gr := ghostchrome.AssessContent(textResult.Text)
@@ -127,7 +126,6 @@ func (a *BridgeAdapter) Navigate(ctx context.Context, url string, params bridge.
 		return nil, staticEscalateError(0, "static browser unavailable")
 	}
 
-	// Static browser unavailable or failed — go straight to Chrome.
 	chromeResult, chromeErr := a.BridgeAPI.Navigate(ctx, url, params)
 	if chromeErr != nil {
 		return nil, chromeErr
@@ -146,13 +144,11 @@ func (a *BridgeAdapter) Snapshot(ctx context.Context, tabID string, filter strin
 	if staticBrowser != nil {
 		snapResult, err := staticBrowser.Snapshot(ctx, tabID, filter)
 		if err == nil && len(snapResult.Nodes) > 0 {
-			// Convert to ghostchrome.SnapshotNode for quality assessment.
 			assessNodes := make([]ghostchrome.SnapshotNode, len(snapResult.Nodes))
 			for i, n := range snapResult.Nodes {
 				assessNodes[i] = ghostchrome.SnapshotNode{Role: n.Role, Name: n.Name}
 			}
 			if ghostchrome.AssessSnapshot(assessNodes) {
-				// Convert browserops.SnapshotNode → bridge.A11yNode.
 				flat := make([]bridge.A11yNode, len(snapResult.Nodes))
 				refs := make(map[string]int64, len(snapResult.Nodes))
 				targets := make(map[string]bridge.RefTarget, len(snapResult.Nodes))
@@ -171,7 +167,6 @@ func (a *BridgeAdapter) Snapshot(ctx context.Context, tabID string, filter strin
 					}
 				}
 
-				// IDPI: scan snapshot node names/values when ContentGuard is set.
 				var idpiWarning string
 				if params.ContentGuard != nil {
 					var sb strings.Builder
@@ -204,12 +199,10 @@ func (a *BridgeAdapter) Snapshot(ctx context.Context, tabID string, filter strin
 					Route:       staticAcceptedRoute(0, "", true),
 				}, nil
 			}
-			// Quality too low — fall through to Chrome.
 			slog.Debug("ghost-chrome snapshot: quality too low, escalating", "tabID", tabID)
 		}
 	}
 
-	// Escalate to Chrome. Resolve the tab ID for escalated tabs.
 	resolvedTabID := tabID
 	if chromeID, ok := a.proxy.ChromeTabID(tabID); ok {
 		resolvedTabID = chromeID
@@ -233,7 +226,6 @@ func (a *BridgeAdapter) Text(ctx context.Context, tabID string, params bridge.Co
 		if err == nil && textResult.Text != "" {
 			gr := ghostchrome.AssessContent(textResult.Text)
 			if gr.ShouldAccept() {
-				// IDPI: scan extracted text when ContentGuard is set.
 				text := textResult.Text
 				var idpiWarning string
 				if params.ContentGuard != nil {
@@ -257,13 +249,11 @@ func (a *BridgeAdapter) Text(ctx context.Context, tabID string, params bridge.Co
 					Route:       staticAcceptedRoute(gr.Quality, gr.FormatReason(), true),
 				}, nil
 			}
-			// Quality too low — fall through to Chrome.
 			slog.Debug("ghost-chrome text: quality too low, escalating",
 				"tabID", tabID, "quality", gr.Quality, "reason", gr.FormatReason())
 		}
 	}
 
-	// Escalate to Chrome. Resolve the tab ID for escalated tabs.
 	resolvedTabID := tabID
 	if chromeID, ok := a.proxy.ChromeTabID(tabID); ok {
 		resolvedTabID = chromeID
@@ -289,7 +279,6 @@ func navigateParamsToPolicy(p *bridge.NavigateParams) *staticfetch.NavigateNetwo
 		MaxRedirects:  p.MaxRedirects,
 	}
 
-	// []net.IPNet → []*net.IPNet
 	if len(p.TrustedProxyCIDRs) > 0 {
 		policy.TrustedProxyCIDRs = make([]*net.IPNet, len(p.TrustedProxyCIDRs))
 		for i := range p.TrustedProxyCIDRs {
@@ -297,7 +286,6 @@ func navigateParamsToPolicy(p *bridge.NavigateParams) *staticfetch.NavigateNetwo
 		}
 	}
 
-	// []net.IP → []netip.Addr
 	if len(p.TrustedResolvedIPs) > 0 {
 		addrs := make([]netip.Addr, 0, len(p.TrustedResolvedIPs))
 		for _, ip := range p.TrustedResolvedIPs {

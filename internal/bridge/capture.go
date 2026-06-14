@@ -101,7 +101,6 @@ func PairedCapture(ctx context.Context, opts CaptureOpts) (*PairedResult, error)
 		_, _ = WaitForReadyState(ctx, 2*time.Second)
 	}
 
-	// Pre-capture frame info — root frame id + loader id.
 	pre, err := FetchFrameTree(ctx)
 	if err != nil {
 		return nil, err
@@ -142,7 +141,6 @@ func PairedCapture(ctx context.Context, opts CaptureOpts) (*PairedResult, error)
 	res.Nodes = flat
 	res.Refs = refs
 
-	// URL + title for response metadata.
 	_ = chromedp.Run(ctx,
 		chromedp.Location(&res.URL),
 		chromedp.Title(&res.Title),

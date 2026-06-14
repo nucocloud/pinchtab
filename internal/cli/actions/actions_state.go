@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// StateList lists all saved state files.
+// StateCurrent prints the current browser state.
 func StateCurrent(client *http.Client, base, token string, cmd *cobra.Command) {
 	tabID, _ := cmd.Flags().GetString("tab")
 	params := url.Values{}

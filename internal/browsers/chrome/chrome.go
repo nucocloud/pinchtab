@@ -117,7 +117,6 @@ func (Browser) BuildLaunchArgs(cfg browsers.LaunchConfig) ([]string, []string, e
 	}
 	var args []string
 
-	// Debug port (first, before base flags)
 	if cfg.DebugPort > 0 {
 		args = append(args, fmt.Sprintf("--remote-debugging-port=%d", cfg.DebugPort))
 	}

@@ -81,8 +81,6 @@ func EnsureSessionsDir(stateDir string) (string, error) {
 	return dir, nil
 }
 
-// fileExtension returns the appropriate file extension based on whether the file
-// is encrypted. Encrypted files use .json.enc; plaintext files use .json.
 func fileExtension(encrypted bool) string {
 	if encrypted {
 		return ".json.enc"
@@ -156,13 +154,10 @@ func Load(path, encryptionKey string) (*StateFile, error) {
 	return &sf, nil
 }
 
-// isStateFile reports whether a directory entry is a recognised state file
-// (either .json or .json.enc).
 func isStateFile(name string) bool {
 	return strings.HasSuffix(name, ".json") || strings.HasSuffix(name, ".json.enc")
 }
 
-// trimStateExt removes the state file extension (.json or .json.enc) from a filename.
 func trimStateExt(name string) string {
 	if strings.HasSuffix(name, ".json.enc") {
 		return strings.TrimSuffix(name, ".json.enc")
@@ -248,7 +243,6 @@ func Delete(stateDir, name string) error {
 	dir := SessionsDir(stateDir)
 	base := sanitizeFilename(name)
 	cleanDir := filepath.Clean(dir) + string(os.PathSeparator)
-	// Try encrypted extension first.
 	for _, ext := range []string{".json.enc", ".json"} {
 		path := filepath.Clean(filepath.Join(dir, base+ext))
 		if !strings.HasPrefix(path, cleanDir) {
@@ -344,7 +338,6 @@ func Decrypt(ciphertext []byte, passphrase string) ([]byte, error) {
 		return nil, fmt.Errorf("encryption key required")
 	}
 
-	// Try PBKDF2-based decryption (new format: salt || nonce || ciphertext).
 	if len(ciphertext) > pbkdf2SaltSize {
 		salt := ciphertext[:pbkdf2SaltSize]
 		rest := ciphertext[pbkdf2SaltSize:]
@@ -356,7 +349,6 @@ func Decrypt(ciphertext []byte, passphrase string) ([]byte, error) {
 		}
 	}
 
-	// Fall back to legacy SHA-256 key derivation.
 	legacyHash := sha256.Sum256([]byte(passphrase))
 	return decryptWithKey(ciphertext, legacyHash[:])
 }
@@ -404,16 +396,13 @@ func sanitizeFilename(name string) string {
 	// Normalize Windows path separators so filepath.Base works on all OSes.
 	name = strings.ReplaceAll(name, "\\", "/")
 
-	// Drop any directory components.
 	name = filepath.Base(name)
 
-	// Remove leading dot-segments.
 	for strings.HasPrefix(name, "../") {
 		name = strings.TrimPrefix(name, "../")
 	}
 	name = strings.TrimPrefix(name, "./")
 
-	// Replace disallowed characters.
 	name = strings.Map(func(r rune) rune {
 		switch r {
 		case '/', '\\', ':', '*', '?', '"', '<', '>', '|':
@@ -423,7 +412,6 @@ func sanitizeFilename(name string) string {
 		}
 	}, name)
 
-	// Final safety.
 	name = strings.TrimLeft(name, ".")
 	if name == "" || name == "." || name == ".." {
 		return "state"
@@ -437,7 +425,6 @@ func sanitizeFilename(name string) string {
 func ResolvePath(stateDir, name string) string {
 	dir := SessionsDir(stateDir)
 	base := sanitizeFilename(name)
-	// Try encrypted extension first, then plaintext.
 	for _, ext := range []string{".json.enc", ".json"} {
 		resolved := filepath.Clean(filepath.Join(dir, base+ext))
 		cleanDir := filepath.Clean(dir) + string(os.PathSeparator)

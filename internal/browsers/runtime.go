@@ -6,14 +6,10 @@ import (
 	"github.com/pinchtab/pinchtab/internal/cdptk"
 )
 
-// ---------------------------------------------------------------------------
-// Runtime parameter / result types
-//
-// These mirror the identically-named types in internal/bridge so that the
-// RuntimeInstance interface can be defined without creating an import cycle
-// (config → browsers → bridge → config). Bridge implementations convert
+// The types below mirror the identically-named types in internal/bridge so
+// that the RuntimeInstance interface can be defined without creating an import
+// cycle (config → browsers → bridge → config). Bridge implementations convert
 // between the two sets at the delegation boundary.
-// ---------------------------------------------------------------------------
 
 // EvalOpts configures JavaScript evaluation behavior.
 type EvalOpts struct {
@@ -156,40 +152,31 @@ type PDFParams struct {
 // sub-packages (chrome.Instance, cloak.Instance, ghostchrome.Instance);
 // compile-time assertions can't live here without inverting the imports.
 type RuntimeInstance interface {
-	// Visual capture
 	CaptureScreenshot(ctx context.Context, format string, quality int, clip *cdptk.ScreenshotClip) ([]byte, error)
 	StartScreencast(ctx context.Context, opts ScreencastOpts) (*ScreencastStream, error)
 
-	// JavaScript evaluation
 	Evaluate(ctx context.Context, expression string, result any, opts EvalOpts) error
 	EvaluateInFrame(ctx context.Context, frameID string, expression string, result any, opts EvalOpts) error
 	CallFunctionOnNode(ctx context.Context, backendNodeID int64, functionDecl string, args []map[string]any, result any) error
 
-	// DOM
 	DescribeNode(ctx context.Context, backendNodeID int64) (*NodeInfo, error)
 	ResolveSelectorToNodeID(ctx context.Context, selector string) (int64, error)
 	SetFileInputFiles(ctx context.Context, nodeID int64, paths []string) error
 
-	// Cookies
 	GetCookies(ctx context.Context, urls []string) ([]CookieData, error)
 	SetCookie(ctx context.Context, params SetCookieParams) error
 
-	// Emulation
 	SetViewport(ctx context.Context, params ViewportParams) error
 	SetGeolocation(ctx context.Context, lat, lng, accuracy float64) error
 	SetEmulatedMedia(ctx context.Context, feature, value string) error
 
-	// Network state
 	SetNetworkConditions(ctx context.Context, params NetworkConditions) error
 	SetExtraHTTPHeaders(ctx context.Context, headers map[string]string) error
 
-	// Navigation info
 	CurrentURL(ctx context.Context) (string, error)
 	CurrentTitle(ctx context.Context) (string, error)
 
-	// Download
 	DownloadURL(ctx context.Context, dlURL string, opts DownloadOpts) (*DownloadResult, error)
 
-	// PDF
 	PrintToPDF(ctx context.Context, params PDFParams) ([]byte, error)
 }

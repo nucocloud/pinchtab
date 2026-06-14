@@ -26,7 +26,6 @@ func (h *Handlers) cacheActionIntent(tabID string, req bridge.ActionRequest) {
 		return
 	}
 	desc := semantic.ElementDescriptor{Ref: req.Ref}
-	// Try to enrich from the current snapshot cache.
 	if cache := h.Bridge.GetRefCache(tabID); cache != nil {
 		for _, enriched := range semanticDescriptorsFromNodes(cache.Nodes) {
 			if enriched.Ref == req.Ref {

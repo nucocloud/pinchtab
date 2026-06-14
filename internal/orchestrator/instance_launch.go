@@ -164,7 +164,6 @@ func (o *Orchestrator) LaunchWithOptions(name, port string, headless bool, opts 
 	}
 	env := mergeEnvWithOverrides(filterEnvWithPrefixes(os.Environ(), "PINCHTAB_"), envOverrides)
 
-	// Validate the per-instance browser override, if provided.
 	if opts.Browser != "" {
 		var configured []string
 		if o.runtimeCfg != nil {

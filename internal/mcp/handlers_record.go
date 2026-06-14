@@ -96,7 +96,6 @@ func handleRecordStop(c *Client) func(context.Context, mcp.CallToolRequest) (*mc
 			return resultFromBytes(body, code)
 		}
 
-		// Poll until encoding finishes, then move the file.
 		serverPath := stopResp.Path
 		if err := pollRecordingFinished(ctx, c); err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf(
@@ -153,7 +152,6 @@ func moveFile(src, dst string) error {
 	if err := os.Rename(src, dst); err == nil {
 		return nil
 	}
-	// Cross-filesystem: copy with exclusive creation.
 	in, err := os.Open(src)
 	if err != nil {
 		return err

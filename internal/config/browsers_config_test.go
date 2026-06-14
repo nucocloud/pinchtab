@@ -12,8 +12,6 @@ import (
 	_ "github.com/pinchtab/pinchtab/internal/browsers/ghostchrome"
 )
 
-// --- Validation tests ---
-
 func TestValidateBrowsersBlock_EmptyBlock(t *testing.T) {
 	fc := &FileConfig{}
 	errs := ValidateFileConfig(fc)
@@ -174,8 +172,6 @@ func TestValidateBrowsersBlock_EmptyConfigMap(t *testing.T) {
 		}
 	}
 }
-
-// --- Config loading tests ---
 
 func TestBrowsersBlock_DefaultsWhenAbsent(t *testing.T) {
 	clearConfigEnvVars(t)

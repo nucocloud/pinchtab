@@ -44,15 +44,12 @@ func (e Endpoint) TabRoute() string {
 	return e.Method + " /tabs/{id}" + e.Path
 }
 
-// coreEndpoints is the canonical list of API endpoints.
 var coreEndpoints = []Endpoint{
-	// Navigation
 	{"POST", "/navigate", "Navigate URL or create tab", CapNone, true},
 	{"POST", "/back", "Go back", CapNone, true},
 	{"POST", "/forward", "Go forward", CapNone, true},
 	{"POST", "/reload", "Reload page", CapNone, true},
 
-	// Content extraction
 	{"GET", "/snapshot", "Accessibility snapshot", CapNone, true},
 	{"GET", "/frame", "Get current frame scope", CapNone, true},
 	{"POST", "/frame", "Set current frame scope", CapNone, true},
@@ -73,33 +70,27 @@ var coreEndpoints = []Endpoint{
 	{"GET", "/pdf", "Export as PDF (GET)", CapNone, true},
 	{"POST", "/pdf", "Export as PDF (POST)", CapNone, true},
 
-	// Actions
 	{"POST", "/action", "Single action", CapNone, true},
 	{"POST", "/actions", "Batch actions", CapNone, true},
 	{"POST", "/dialog", "Handle dialog", CapNone, true},
 	{"POST", "/wait", "Wait for condition", CapNone, true},
 	{"POST", "/find", "Find elements", CapNone, true},
 
-	// Tab management
 	{"POST", "/tab", "Create or focus tab", CapNone, false},
 	{"POST", "/close", "Close tab", CapNone, true},
 	{"POST", "/lock", "Lock tab", CapNone, true},
 	{"POST", "/unlock", "Unlock tab", CapNone, true},
 
-	// Human handoff
 	{"POST", "/handoff", "Pause tab for human handoff", CapNone, true},
 	{"POST", "/resume", "Resume paused tab", CapNone, true},
 	{"GET", "/handoff", "Get handoff status", CapNone, true},
 
-	// Cookies
 	{"GET", "/cookies", "Get cookies", CapCookies, true},
 	{"POST", "/cookies", "Set cookies", CapCookies, true},
 	{"DELETE", "/cookies", "Clear all cookies", CapCookies, true},
 
-	// Metrics
 	{"GET", "/metrics", "Runtime metrics", CapNone, true},
 
-	// Network
 	{"GET", "/network", "Network log", CapNone, true},
 	{"GET", "/network/stream", "Network SSE stream", CapNone, true},
 	{"GET", "/network/export", "Export HAR", CapNone, true},
@@ -110,29 +101,24 @@ var coreEndpoints = []Endpoint{
 	{"POST", "/network/route", "Install an interception rule", CapNetworkIntercept, true},
 	{"DELETE", "/network/route", "Remove interception rule(s)", CapNetworkIntercept, true},
 
-	// Console & errors
 	{"GET", "/console", "Console logs", CapNone, false},
 	{"POST", "/console/clear", "Clear console logs", CapNone, false},
 	{"GET", "/errors", "Error logs", CapNone, false},
 	{"POST", "/errors/clear", "Clear error logs", CapNone, false},
 
-	// Clipboard
 	{"GET", "/clipboard/read", "Read clipboard", CapNone, false},
 	{"POST", "/clipboard/write", "Write clipboard", CapNone, false},
 	{"POST", "/clipboard/copy", "Copy to clipboard", CapNone, false},
 	{"GET", "/clipboard/paste", "Paste from clipboard", CapNone, false},
 
-	// Stealth & fingerprint
 	{"GET", "/stealth/status", "Stealth configuration status", CapNone, false},
 	{"POST", "/fingerprint/rotate", "Rotate browser fingerprint", CapNone, false},
 
-	// Solvers
 	{"GET", "/solvers", "List available solvers", CapNone, false},
 	{"GET", "/config/autosolver", "Get autosolver runtime config", CapNone, false},
 	{"POST", "/solve", "Run default solver", CapNone, true},
 	{"POST", "/solve/{name}", "Run named solver", CapNone, true},
 
-	// Emulation
 	{"POST", "/emulation/viewport", "Set browser viewport dimensions", CapNone, true},
 	{"POST", "/emulation/geolocation", "Set geolocation", CapNone, true},
 	{"POST", "/emulation/offline", "Enable/disable offline mode", CapNone, true},
@@ -140,7 +126,6 @@ var coreEndpoints = []Endpoint{
 	{"POST", "/emulation/credentials", "Set HTTP auth credentials", CapNone, true},
 	{"POST", "/emulation/media", "Emulate CSS media features", CapNone, true},
 
-	// Cache
 	{"POST", "/cache/clear", "Clear browser cache", CapNone, false},
 	{"GET", "/cache/status", "Cache status", CapNone, false},
 
@@ -148,11 +133,9 @@ var coreEndpoints = []Endpoint{
 	{"POST", "/storage", "Set storage item", CapStateExport, true},
 	{"DELETE", "/storage", "Delete storage items", CapStateExport, true},
 
-	// State management
 	{"GET", "/state", "Read current browser state", CapStateExport, false},
 	{"GET", "/state/list", "List saved states", CapStateExport, false},
 
-	// Capability-gated
 	{"POST", "/evaluate", "Run JavaScript in page", CapEvaluate, true},
 	{"POST", "/macro", "Macro action pipeline", CapMacro, false},
 	{"GET", "/download", "Download URL via browser session", CapDownload, true},

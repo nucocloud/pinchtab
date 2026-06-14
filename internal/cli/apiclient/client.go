@@ -263,7 +263,6 @@ func setClientHeaders(req *http.Request, token string) {
 	}
 }
 
-// handleAPIError parses and displays API error responses with hints
 func handleAPIError(statusCode int, body []byte) {
 	var errResp struct {
 		Error   string         `json:"error"`
@@ -272,19 +271,16 @@ func handleAPIError(statusCode int, body []byte) {
 	}
 
 	if err := json.Unmarshal(body, &errResp); err != nil {
-		// Fallback to raw output if not valid JSON
 		fmt.Fprintf(os.Stderr, "Error %d: %s\n", statusCode, string(body))
 		return
 	}
 
-	// Print main error
 	if errResp.Error != "" {
 		fmt.Fprintf(os.Stderr, "Error %d: %s\n", statusCode, errResp.Error)
 	} else {
 		fmt.Fprintf(os.Stderr, "Error %d: %s\n", statusCode, string(body))
 	}
 
-	// Print hint and remedy if present
 	if errResp.Details != nil {
 		if hint, ok := errResp.Details["hint"].(string); ok && hint != "" {
 			fmt.Fprintf(os.Stderr, "\n💡 %s\n", hint)

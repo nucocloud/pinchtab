@@ -19,8 +19,6 @@ func stubHostResolution(t *testing.T, fn func(context.Context, string, string) (
 	})
 }
 
-// --- URL Validation Tests ---
-
 func TestValidateURL_RejectsUnsupportedSchemes(t *testing.T) {
 	for _, rawURL := range []string{
 		"javascript:alert(1)",
@@ -59,8 +57,6 @@ func TestValidateURL_RejectsEmpty(t *testing.T) {
 		t.Fatal("ValidateURL should reject empty URL")
 	}
 }
-
-// --- Target Validation Tests ---
 
 func TestValidateTarget_AllowsLocalHosts(t *testing.T) {
 	v := &Validator{}
@@ -191,8 +187,6 @@ func TestValidateTarget_RejectsMixedUntrustedWithTrustedResolveCIDR(t *testing.T
 	}
 }
 
-// --- Remote IP Validation Tests ---
-
 func TestValidateRemoteIP_AllowsExactTrustedResolvedIP(t *testing.T) {
 	if err := ValidateRemoteIP("10.1.2.3", nil, []netip.Addr{netip.MustParseAddr("10.1.2.3")}); err != nil {
 		t.Fatalf("expected exact trusted resolved IP to be allowed, got %v", err)
@@ -228,8 +222,6 @@ func TestValidateRemoteIP_LoopbackProxyBlockedByDefault(t *testing.T) {
 		}
 	}
 }
-
-// --- CIDR Helper Tests ---
 
 func TestBuildTrustedProxyCIDRs_FlagOff(t *testing.T) {
 	got := BuildTrustedProxyCIDRs(false, []string{"10.0.0.0/8"})
@@ -279,8 +271,6 @@ func TestParseCIDRs_TreatsBareIPsAsSingleHosts(t *testing.T) {
 		t.Fatalf("IPv6 bare IP parsed as %q, want fd00::1234/128", got)
 	}
 }
-
-// --- Domain-allowed + RemoteIP Scenario Tests ---
 
 func TestValidateTarget_DomainAllowedCallbackPermitsPrivateIP(t *testing.T) {
 	// Callers compute allowExplicitInternal from the IDPI domain allowlist
@@ -337,8 +327,6 @@ func TestValidateRemoteIP_PrivateIPBlockedWithNoCIDRs(t *testing.T) {
 		t.Fatalf("expected 'blocked remote IP' error message, got %v", err)
 	}
 }
-
-// --- Test Helpers ---
 
 func cidrsContainIP(cidrs []*net.IPNet, ip net.IP) bool {
 	for _, c := range cidrs {

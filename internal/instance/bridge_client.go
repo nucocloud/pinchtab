@@ -76,7 +76,6 @@ func (bc *BridgeClient) CreateTab(ctx context.Context, port, url string) (string
 		return "", fmt.Errorf("decode create tab response: %w", err)
 	}
 
-	// If URL provided and not about:blank, navigate to it
 	if url != "" && url != "about:blank" {
 		if err := bc.NavigateTab(ctx, port, result.TabID, url); err != nil {
 			return "", fmt.Errorf("navigate after create: %w", err)
@@ -149,7 +148,6 @@ func (bc *BridgeClient) SnapshotTab(ctx context.Context, port, tabID string) {
 // injecting the tabId into the JSON request body so the bridge knows which tab
 // to operate on. Used for endpoints that don't support /tabs/{id}/... paths.
 func (bc *BridgeClient) ProxyWithTabID(w http.ResponseWriter, r *http.Request, port, tabID, path string) {
-	// Read original body and inject tabId.
 	var body map[string]any
 	if r.Body != nil {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {

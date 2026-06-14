@@ -406,7 +406,6 @@ func configureBrowserFlags() {
 		cmd.Flags().String("status", "", "Optional resume status note (e.g. completed, failed)")
 	}
 
-	// Add --json flag to action commands (default is terse output)
 	addJSONFlag(
 		clickCmd,
 		dblclickCmd,
@@ -520,17 +519,6 @@ func addRootCommands(cmds ...*cobra.Command) {
 	rootCmd.AddCommand(cmds...)
 }
 
-// addTabFlag wires a --tab flag onto the given commands. Anonymous CLI calls
-// default its value from the state file written by `nav`, which lets local
-// single-agent workflows avoid threading `--tab "$TAB"` through every command:
-//
-//	pinchtab nav http://example.com   # writes tab ID to state file
-//	pinchtab snap -i -c               # auto-reads from state file
-//
-// Explicit --tab still wins (cobra flag precedence). Identified callers
-// (PINCHTAB_SESSION, --agent-id, or PINCHTAB_AGENT_ID) leave --tab unset so the
-// server-side scoped current-tab store is authoritative. If no state file is
-// set, the server picks the active tab as before.
 // resolveTabArg returns the tab ID from args[0] when present, otherwise it
 // falls back to the persisted state file written by `nav`.
 func resolveTabArg(args []string) string {
@@ -543,6 +531,17 @@ func resolveTabArg(args []string) string {
 	return readTabStateFile()
 }
 
+// addTabFlag wires a --tab flag onto the given commands. Anonymous CLI calls
+// default its value from the state file written by `nav`, which lets local
+// single-agent workflows avoid threading `--tab "$TAB"` through every command:
+//
+//	pinchtab nav http://example.com   # writes tab ID to state file
+//	pinchtab snap -i -c               # auto-reads from state file
+//
+// Explicit --tab still wins (cobra flag precedence). Identified callers
+// (PINCHTAB_SESSION, --agent-id, or PINCHTAB_AGENT_ID) leave --tab unset so the
+// server-side scoped current-tab store is authoritative. If no state file is
+// set, the server picks the active tab as before.
 func addTabFlag(cmds ...*cobra.Command) {
 	for _, cmd := range cmds {
 		cmd.Flags().String("tab", "", "Tab ID")
@@ -583,7 +582,6 @@ func useLocalTabStateFile() bool {
 	return resolveCLIAgentID() == ""
 }
 
-// tabStateFile returns the path to the tab state file.
 func tabStateFile() string {
 	if dir := os.Getenv("XDG_STATE_HOME"); dir != "" {
 		return dir + "/pinchtab/current-tab"
@@ -594,7 +592,6 @@ func tabStateFile() string {
 	return "/tmp/pinchtab-current-tab"
 }
 
-// readTabStateFile reads the persisted tab ID from the state file.
 func readTabStateFile() string {
 	data, err := os.ReadFile(tabStateFile())
 	if err != nil {
@@ -657,7 +654,6 @@ func probeTabExists(tabID string) bool {
 	return resp.StatusCode != http.StatusNotFound
 }
 
-// portIsListening does a fast TCP dial to check if anything is listening.
 func portIsListening(baseURL string) bool {
 	host := strings.TrimPrefix(baseURL, "http://")
 	host = strings.TrimPrefix(host, "https://")

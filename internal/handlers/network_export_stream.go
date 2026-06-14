@@ -96,7 +96,6 @@ func (h *Handlers) HandleNetworkExportStream(w http.ResponseWriter, r *http.Requ
 	redactHeaders := r.URL.Query().Get("redact") != "false"
 	filter := parseNetworkFilter(r)
 
-	// Path safety (#1)
 	exportDir := filepath.Join(h.Config.StateDir, "exports")
 	if err := os.MkdirAll(exportDir, 0750); err != nil {
 		httpx.Error(w, 500, fmt.Errorf("create dir: %w", err))
@@ -116,7 +115,6 @@ func (h *Handlers) HandleNetworkExportStream(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Write to temp file, rename on finish (#8)
 	tmpPath := absPath + ".tmp"
 	f, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
@@ -132,7 +130,6 @@ func (h *Handlers) HandleNetworkExportStream(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Semaphore to throttle concurrent body fetches in streaming mode.
 	streamBodySem := make(chan struct{}, bodyFetchConcurrency)
 
 	subID, ch := buf.Subscribe()
@@ -168,7 +165,6 @@ func (h *Handlers) HandleNetworkExportStream(w http.ResponseWriter, r *http.Requ
 		finalizeOnce.Do(func() {
 			_ = enc.Finish()
 			if err := f.Close(); err == nil {
-				// Atomic rename on success (#8)
 				if count > 0 {
 					_ = os.Rename(tmpPath, absPath)
 				} else {

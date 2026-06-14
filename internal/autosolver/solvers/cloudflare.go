@@ -36,7 +36,6 @@ func (s *Cloudflare) Solve(ctx context.Context, page autosolver.Page, executor a
 		return result, nil
 	}
 
-	// Detect challenge type.
 	challengeType, err := detectCFChallengeType(ctx, executor)
 	if err != nil {
 		return result, fmt.Errorf("detect challenge type: %w", err)
@@ -47,14 +46,11 @@ func (s *Cloudflare) Solve(ctx context.Context, page autosolver.Page, executor a
 		return waitForCFResolve(ctx, page, result, 15*time.Second)
 	}
 
-	// Interactive challenge: find and click the Turnstile checkbox.
 	for attempt := 0; attempt < 3; attempt++ {
 		result.Attempts = attempt + 1
 
-		// Wait for spinner to complete.
 		waitForSpinner(ctx, executor, 10*time.Second)
 
-		// Find the Turnstile iframe bounding box.
 		box, err := findTurnstileBox(ctx, executor)
 		if err != nil {
 			// Challenge may have resolved while we were looking.
@@ -75,7 +71,6 @@ func (s *Cloudflare) Solve(ctx context.Context, page autosolver.Page, executor a
 			return result, fmt.Errorf("click turnstile: %w", err)
 		}
 
-		// Poll for resolution.
 		resolved := pollResolution(ctx, page, 15*time.Second)
 		if resolved {
 			result.Solved = true
@@ -84,13 +79,10 @@ func (s *Cloudflare) Solve(ctx context.Context, page autosolver.Page, executor a
 		}
 	}
 
-	// Final check after all attempts.
 	result.FinalTitle = page.Title()
 	result.Solved = !isCFChallenge(page.Title())
 	return result, nil
 }
-
-// --- Internal helpers ---
 
 type boundingBox struct {
 	x, y, width, height float64

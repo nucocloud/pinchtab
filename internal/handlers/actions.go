@@ -171,7 +171,6 @@ func (h *Handlers) HandleAction(w http.ResponseWriter, r *http.Request) {
 		resolvedBrowser = config.BrowserChrome
 	}
 
-	// Resolve the effective config with target-specific overrides merged in.
 	effectiveCfg, err := h.resolveEffectiveConfig(resolvedBrowser)
 	if err != nil {
 		var ambErr *config.AmbiguousBrowserError
@@ -241,7 +240,6 @@ func (h *Handlers) HandleAction(w http.ResponseWriter, r *http.Request) {
 	h.recordResolvedTab(r, resolvedTabID)
 	w.Header().Set(activity.HeaderPTTabID, resolvedTabID)
 
-	// Allow custom timeout via query param (1-60 seconds)
 	actionTimeout := effectiveCfg.ActionTimeout
 	if r.Method == http.MethodGet {
 		if v := r.URL.Query().Get("timeout"); v != "" {
@@ -497,9 +495,7 @@ func (h *Handlers) HandleTabActions(w http.ResponseWriter, r *http.Request) {
 	h.HandleActions(w, wrapped)
 }
 
-// handleActionsBatch processes a batch of actions (used by both single and batch endpoints)
 func (h *Handlers) handleActionsBatch(w http.ResponseWriter, r *http.Request, req actionsRequest) {
-
 	// Browser resolution: use the first action's browser field as the request
 	// browser, then fall through session > instance > global default > chrome.
 	var requestBrowser string
@@ -546,7 +542,6 @@ func (h *Handlers) handleActionsBatch(w http.ResponseWriter, r *http.Request, re
 		resolvedBrowser = config.BrowserChrome
 	}
 
-	// Resolve the effective config with target-specific overrides merged in.
 	effectiveCfg, err := h.resolveEffectiveConfig(resolvedBrowser)
 	if err != nil {
 		var ambErr *config.AmbiguousBrowserError
@@ -848,7 +843,6 @@ func (h *Handlers) HandleMacro(w http.ResponseWriter, r *http.Request) {
 		macroResolvedBrowser = config.BrowserChrome
 	}
 
-	// Resolve the effective config with target-specific overrides merged in.
 	macroEffectiveCfg, err := h.resolveEffectiveConfig(macroResolvedBrowser)
 	if err != nil {
 		var ambErr *config.AmbiguousBrowserError

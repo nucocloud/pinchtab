@@ -302,7 +302,6 @@ func decodeFileData(input string) ([]byte, string, error) {
 			return nil, "", fmt.Errorf("invalid data URL")
 		}
 		b64 = parts[1]
-		// Extract mime for extension.
 		meta := strings.TrimPrefix(parts[0], "data:")
 		mime := strings.SplitN(meta, ";", 2)[0]
 		ext = mimeToExt(mime)
@@ -312,7 +311,6 @@ func decodeFileData(input string) ([]byte, string, error) {
 
 	data, err := base64.StdEncoding.DecodeString(b64)
 	if err != nil {
-		// Try URL-safe encoding.
 		data, err = base64.URLEncoding.DecodeString(b64)
 		if err != nil {
 			return nil, "", fmt.Errorf("base64 decode: %w", err)

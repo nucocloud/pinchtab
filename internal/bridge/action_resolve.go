@@ -226,7 +226,6 @@ func ResolveXPathToNodeID(ctx context.Context, xpath string) (int64, error) {
 			return fmt.Errorf("get document: %w", err)
 		}
 
-		// Perform XPath search.
 		var searchResult json.RawMessage
 		if err := chromedp.FromContext(ctx).Target.Execute(ctx, "DOM.performSearch", map[string]any{
 			"query": xpath,
@@ -245,7 +244,6 @@ func ResolveXPathToNodeID(ctx context.Context, xpath string) (int64, error) {
 			return fmt.Errorf("xpath %q: no elements found", xpath)
 		}
 
-		// Get the first result.
 		var getResult json.RawMessage
 		if err := chromedp.FromContext(ctx).Target.Execute(ctx, "DOM.getSearchResults", map[string]any{
 			"searchId":  sr.SearchID,
@@ -283,7 +281,6 @@ func ResolveXPathToNodeID(ctx context.Context, xpath string) (int64, error) {
 		}
 		backendNodeID = desc.Node.BackendNodeID
 
-		// Clean up the search.
 		_ = chromedp.FromContext(ctx).Target.Execute(ctx, "DOM.discardSearchResults", map[string]any{
 			"searchId": sr.SearchID,
 		}, nil)

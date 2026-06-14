@@ -5,7 +5,6 @@ import "github.com/mark3labs/mcp-go/mcp"
 // allTools returns every MCP tool exposed by the PinchTab MCP server.
 func allTools() []mcp.Tool {
 	return []mcp.Tool{
-		// ── Navigation ──────────────────────────────────────────────
 		mcp.NewTool("pinchtab_navigate",
 			mcp.WithDescription("Navigate to a URL in the browser"),
 			mcp.WithString("url", mcp.Required(), mcp.Description("The URL to navigate to")),
@@ -74,7 +73,6 @@ func allTools() []mcp.Tool {
 				mcp.Description("Browser to use for this request (e.g. chrome, cloak, ghost-chrome).")),
 		),
 
-		// ── Interaction ─────────────────────────────────────────────
 		mcp.NewTool("pinchtab_click",
 			mcp.WithDescription("Click an element. Prefer selector from pinchtab_find.best_ref (e.g. 'e5') to avoid extra snapshots."),
 			mcp.WithString("selector", mcp.Description("Unified selector: ref (e.g. 'e5'), CSS, XPath, text, find, role, label, placeholder, alt, title, testid, or first/last/nth. Non-ref selectors resolve in the current frame scope.")),
@@ -179,7 +177,6 @@ func allTools() []mcp.Tool {
 				mcp.Description("Browser to use for this request (e.g. chrome, cloak, ghost-chrome).")),
 		),
 
-		// ── Keyboard (no selector — targets focused element) ────────
 		mcp.NewTool("pinchtab_keyboard_type",
 			mcp.WithDescription("Type text at the currently focused element via keystroke events (keyDown + keyUp per character)"),
 			mcp.WithString("text", mcp.Required(), mcp.Description("Text to type")),
@@ -209,7 +206,6 @@ func allTools() []mcp.Tool {
 				mcp.Description("Browser to use for this request (e.g. chrome, cloak, ghost-chrome).")),
 		),
 
-		// ── Content ─────────────────────────────────────────────────
 		mcp.NewTool("pinchtab_eval",
 			mcp.WithDescription("Execute JavaScript in the browser and return the result. This is not frame-scoped; current pinchtab_frame state does not change evaluation context."),
 			mcp.WithString("expression", mcp.Required(), mcp.Description("JavaScript expression to evaluate")),
@@ -228,7 +224,6 @@ func allTools() []mcp.Tool {
 			mcp.WithString("tabId", mcp.Description("Target tab ID")),
 		),
 
-		// ── Tab Management ──────────────────────────────────────────
 		mcp.NewTool("pinchtab_list_tabs",
 			mcp.WithDescription("List all open browser tabs"),
 		),
@@ -248,7 +243,6 @@ func allTools() []mcp.Tool {
 			mcp.WithString("profile", mcp.Required(), mcp.Description("Profile name or profile ID")),
 		),
 
-		// ── Utility ─────────────────────────────────────────────────
 		mcp.NewTool("pinchtab_wait",
 			mcp.WithDescription("Wait for a specified number of milliseconds"),
 			mcp.WithNumber("ms", mcp.Required(), mcp.Description("Milliseconds to wait (max 30000)")),
@@ -291,7 +285,6 @@ func allTools() []mcp.Tool {
 				mcp.Description("Browser to use for this request (e.g. chrome, cloak, ghost-chrome).")),
 		),
 
-		// ── Network Monitoring ──────────────────────────────────────
 		mcp.NewTool("pinchtab_network",
 			mcp.WithDescription("List recent network requests captured from the browser. Returns method, status, URL, type, size, and timing for each request."),
 			mcp.WithString("tabId", mcp.Description("Target tab ID (optional, uses current tab if empty)")),
@@ -329,7 +322,6 @@ func allTools() []mcp.Tool {
 			mcp.WithString("pattern", mcp.Description("Pattern to remove (omit to clear all rules)")),
 		),
 
-		// ── Recording ───────────────────────────────────────────────
 		mcp.NewTool("pinchtab_record_start",
 			mcp.WithDescription("Start recording browser activity. Requires security.allowScreencast. GIF works without ffmpeg; WebM/MP4 need ffmpeg."),
 			mcp.WithString("file", mcp.Required(), mcp.Description("Output file path (.gif, .webm, or .mp4)")),
@@ -346,7 +338,6 @@ func allTools() []mcp.Tool {
 			mcp.WithDescription("Check active recording status (format, fps, duration, frame count)"),
 		),
 
-		// ── Dialog ──────────────────────────────────────────────────
 		mcp.NewTool("pinchtab_dialog",
 			mcp.WithDescription("Handle a JavaScript dialog (alert, confirm, prompt). Accept or dismiss the currently open dialog."),
 			mcp.WithString("action", mcp.Required(), mcp.Description("Action to take: 'accept' or 'dismiss'")),

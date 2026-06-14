@@ -55,7 +55,6 @@ func CleanupOrphanedChromeProcesses(profileDir string) {
 // temp profiles (--user-data-dir=.../pinchtab-profile-*).
 // Called on server shutdown — one ps scan, immediate SIGKILL.
 func KillAllPinchtabChrome() int {
-	// Find Chrome processes using either temp or persistent pinchtab profiles
 	var pids []int
 	tempPids := findPIDsByNeedle("pinchtab-profile")
 	persistPids := findPIDsByNeedle(".pinchtab/profiles")
@@ -238,15 +237,12 @@ func killChromeByProfileDir(profileDir string) int {
 		return 0
 	}
 
-	// SIGTERM first
 	for _, pid := range pids {
 		_ = syscall.Kill(pid, syscall.SIGTERM)
 	}
 
-	// Give Chrome 500ms to shut down gracefully
 	time.Sleep(500 * time.Millisecond)
 
-	// SIGKILL any survivors
 	killed := 0
 	for _, pid := range pids {
 		if err := syscall.Kill(pid, 0); err != nil {

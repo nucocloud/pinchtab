@@ -303,7 +303,6 @@ func (l *Browser) walkDOM(tab *liteTab, node dom.Node, filter string, depth int)
 
 	tag := strings.ToLower(el.TagName())
 
-	// Skip non-visible and script/style elements.
 	if tag == "script" || tag == "style" || tag == "noscript" || tag == "link" || tag == "meta" {
 		return nodes
 	}
@@ -436,7 +435,6 @@ func getRole(el dom.Element) string {
 	return "generic"
 }
 
-// getAccessibleName resolves an element's accessible name.
 func getAccessibleName(el dom.Element) string {
 	if label, ok := el.GetAttribute("aria-label"); ok {
 		return label
@@ -465,7 +463,6 @@ func getAccessibleName(el dom.Element) string {
 	return ""
 }
 
-// isInteractive returns true for elements a user can interact with.
 func isInteractive(el dom.Element) bool {
 	switch strings.ToLower(el.TagName()) {
 	case "a":

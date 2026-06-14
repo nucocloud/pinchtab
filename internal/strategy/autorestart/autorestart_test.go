@@ -648,8 +648,6 @@ func TestStrategy_HandleEvent_SkipsDuplicateDuringRestart(t *testing.T) {
 	}
 }
 
-// --- Mock runner for orchestrator tests ---
-
 type mockRunner struct {
 	portAvail bool
 }

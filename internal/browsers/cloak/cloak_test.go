@@ -366,9 +366,7 @@ func TestClassifyLaunchErrorBrowserNotCanceled(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
 // Parity tests: verify launch-arg and validation behaviour across configs.
-// ---------------------------------------------------------------------------
 
 func TestBuildLaunchArgsParityWithRepresentativeConfigs(t *testing.T) {
 	b, ok := browsers.Get("cloak")

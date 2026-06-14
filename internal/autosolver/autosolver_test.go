@@ -7,8 +7,6 @@ import (
 	"time"
 )
 
-// --- Mock implementations ---
-
 type mockPage struct {
 	url   string
 	title string
@@ -132,8 +130,6 @@ type mockLLM struct {
 func (m *mockLLM) SuggestNextAction(_ context.Context, _ LLMRequest) (*LLMResponse, error) {
 	return m.resp, m.err
 }
-
-// --- Tests ---
 
 func TestSolve_NormalPage(t *testing.T) {
 	cfg := DefaultConfig()

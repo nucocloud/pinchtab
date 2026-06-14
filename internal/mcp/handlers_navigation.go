@@ -37,7 +37,6 @@ func handleNavigate(c *Client) func(context.Context, mcp.CallToolRequest) (*mcp.
 			return resultFromBytes(body, code)
 		}
 
-		// If snap=true, append interactive compact snapshot
 		if snap, ok := optBool(r, "snap"); ok && snap {
 			q := url.Values{}
 			q.Set("filter", "interactive")

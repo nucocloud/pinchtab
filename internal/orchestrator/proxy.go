@@ -215,7 +215,6 @@ func (o *Orchestrator) handleProxyScreencast(w http.ResponseWriter, r *http.Requ
 		handlers.SetProxyWSBackendAuthorization(req.Header, "Bearer "+token)
 	}
 
-	// Use WebSocket proxy for proper upgrade
 	handlers.ProxyWebSocket(w, req, targetURL.String())
 }
 
@@ -330,12 +329,12 @@ func (o *Orchestrator) applyInstanceAuth(req *http.Request, inst *InstanceIntern
 func classifyLaunchError(err error) int {
 	msg := err.Error()
 	if strings.Contains(msg, "cannot contain") || strings.Contains(msg, "cannot be empty") {
-		return 400 // Bad Request - validation error
+		return 400
 	}
 	if strings.Contains(msg, "already") || strings.Contains(msg, "in use") {
-		return 409 // Conflict - resource already exists
+		return 409
 	}
-	return 500 // Internal Server Error
+	return 500
 }
 
 // enrichActivityFromResponse extracts tabId and url from the bridge JSON
@@ -369,8 +368,6 @@ func (o *Orchestrator) handleProxyResponseHeaders(origReq *http.Request, resp *h
 		return
 	}
 
-	// Tab close → invalidate locator entry. Pre-existing behavior, kept
-	// here so callers continue to get cache freshness for free.
 	if o.instanceMgr != nil {
 		if tabID := tabClosePathID(origReq); tabID != "" {
 			o.instanceMgr.InvalidateTab(tabID)
@@ -441,7 +438,6 @@ func tabsCacheRequestAffectsTabs(req *http.Request, resp *http.Response) bool {
 		}
 	}
 	if strings.HasPrefix(path, "/tabs/") {
-		// Sub-routes that mutate tab state: /tabs/{id}/{close,navigate,reload,back,forward}
 		switch {
 		case strings.HasSuffix(path, "/close"),
 			strings.HasSuffix(path, "/navigate"),

@@ -166,7 +166,6 @@ func (tr *TailReader) Read(limit int) ([]Event, error) {
 		return nil, err
 	}
 
-	// Update offset to current position.
 	newOffset, _ := f.Seek(0, 1)
 	tr.store.tailMu.Lock()
 	tr.store.tailFile = path

@@ -27,7 +27,6 @@ func (e ValidationError) Error() string {
 func ValidateFileConfig(fc *FileConfig) []error {
 	var errs []error
 
-	// Server validation
 	if fc.Server.Port != "" {
 		if err := validatePort(fc.Server.Port, "server.port"); err != nil {
 			errs = append(errs, err)
@@ -108,7 +107,6 @@ func ValidateFileConfig(fc *FileConfig) []error {
 		})
 	}
 
-	// Instance defaults validation
 	if fc.InstanceDefaults.Headless != nil && fc.InstanceDefaults.Mode != "" {
 		errs = append(errs, ValidationError{
 			Field:   "instanceDefaults.headless",
@@ -170,7 +168,6 @@ func ValidateFileConfig(fc *FileConfig) []error {
 		})
 	}
 
-	// Multi-instance validation
 	if fc.MultiInstance.Strategy != "" {
 		if !isValidStrategy(fc.MultiInstance.Strategy) {
 			errs = append(errs, ValidationError{
@@ -188,7 +185,6 @@ func ValidateFileConfig(fc *FileConfig) []error {
 		}
 	}
 
-	// Attach validation
 	for _, scheme := range fc.Security.Attach.AllowSchemes {
 		if !isValidAttachScheme(scheme) {
 			errs = append(errs, ValidationError{
@@ -202,7 +198,6 @@ func ValidateFileConfig(fc *FileConfig) []error {
 		errs = append(errs, validateBrowserExtraFlags(fc.Browser.BrowserExtraFlags)...)
 	}
 
-	// IDPI validation
 	errs = append(errs, validateIDPIConfig(fc.Security.IDPI, effectiveSecurityAllowedDomains(fc.Security))...)
 	errs = append(errs, validateAllowedDomainList("security.downloadAllowedDomains", fc.Security.DownloadAllowedDomains)...)
 	errs = append(errs, validateTrustedCIDRList("security.trustedProxyCIDRs", fc.Security.TrustedProxyCIDRs)...)
@@ -220,7 +215,6 @@ func ValidateFileConfig(fc *FileConfig) []error {
 		})
 	}
 
-	// Timeouts validation
 	if fc.Timeouts.ActionSec < 0 {
 		errs = append(errs, ValidationError{
 			Field:   "timeouts.actionSec",
@@ -346,7 +340,6 @@ func validatePort(port string, field string) error {
 }
 
 func validateBind(bind string, field string) error {
-	// Accept common bind addresses
 	validBinds := map[string]bool{
 		"127.0.0.1": true,
 		"0.0.0.0":   true,
@@ -357,10 +350,7 @@ func validateBind(bind string, field string) error {
 	if validBinds[bind] {
 		return nil
 	}
-	// Basic IP format check (not exhaustive, just sanity)
-	// If it contains a dot, assume it's an IPv4 attempt
-	// If it contains a colon, assume it's an IPv6 attempt
-	// This is intentionally loose — the OS will reject truly invalid addresses
+	// Intentionally loose — the OS will reject truly invalid addresses.
 	return nil
 }
 
@@ -614,7 +604,6 @@ func ValidAttachSchemes() []string {
 // validateBrowsersBlock validates the top-level browsers configuration block.
 func validateBrowsersBlock(fc FileConfig) []error {
 	bc := fc.Browsers
-	// Skip validation if entire block is empty/zero
 	if bc.Default == "" && len(bc.Available) == 0 && len(bc.Config) == 0 {
 		return nil
 	}
@@ -630,14 +619,12 @@ func validateBrowsersBlock(fc FileConfig) []error {
 		}
 	}
 
-	// Validate each entry in available
 	for i, name := range bc.Available {
 		if _, ok := browsers.Get(strings.ToLower(strings.TrimSpace(name))); !ok {
 			errs = append(errs, fmt.Errorf("browsers.available[%d]: unknown browser %q (known: %v)", i, name, browsers.IDs()))
 		}
 	}
 
-	// Validate default is in available (if available is explicitly set)
 	if bc.Default != "" && len(bc.Available) > 0 {
 		found := false
 		for _, name := range bc.Available {

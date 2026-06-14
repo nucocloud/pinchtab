@@ -143,7 +143,6 @@ func (h *Handlers) HandleNetworkExport(w http.ResponseWriter, r *http.Request) {
 	redactHeaders := r.URL.Query().Get("redact") != "false"
 	output := r.URL.Query().Get("output")
 
-	// Timeout + client disconnect for body fetches (#4, #5)
 	fetchCtx, fetchCancel := context.WithTimeout(tabCtx, h.Config.ActionTimeout)
 	defer fetchCancel()
 	go httpx.CancelOnClientDone(r.Context(), fetchCancel)
@@ -193,7 +192,6 @@ func (h *Handlers) HandleNetworkExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Stream to response
 	w.Header().Set("Content-Type", enc.ContentType())
 	if err := enc.Start(w); err != nil {
 		return
@@ -219,7 +217,6 @@ func (h *Handlers) writeExportFile(
 		userPath = fmt.Sprintf("network-%s%s", ts, enc.FileExtension())
 	}
 
-	// Path safety: use SafeCreatePath + containment check (#1)
 	exportDir := filepath.Join(h.Config.StateDir, "exports")
 	if err := os.MkdirAll(exportDir, 0750); err != nil {
 		return fmt.Errorf("create dir: %w", err)

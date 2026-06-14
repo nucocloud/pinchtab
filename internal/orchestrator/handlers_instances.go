@@ -529,7 +529,6 @@ func (o *Orchestrator) validateAttachURL(rawURL string) error {
 		return fmt.Errorf("invalid attach URL: %w", err)
 	}
 
-	// Validate scheme
 	schemeAllowed := false
 	for _, allowed := range o.runtimeCfg.AttachAllowSchemes {
 		if parsed.Scheme == allowed {
@@ -554,7 +553,6 @@ func (o *Orchestrator) validateAttachURL(rawURL string) error {
 		}
 	}
 
-	// Validate host
 	host := parsed.Hostname()
 	if !isAllowedAttachHost(host, o.runtimeCfg.AttachAllowHosts) {
 		return fmt.Errorf("host %q not allowed (allowed: %v)", host, o.runtimeCfg.AttachAllowHosts)

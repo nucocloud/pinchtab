@@ -598,8 +598,6 @@ func TestProfileListIncludesUseWhen(t *testing.T) {
 	}
 }
 
-// === Security Validation Tests ===
-
 func TestValidateProfileName(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -759,7 +757,6 @@ func TestProfileHandlerCreateReturns409OnDuplicate(t *testing.T) {
 	mux := http.NewServeMux()
 	pm.RegisterHandlers(mux)
 
-	// Create first profile
 	body := `{"name":"duplicate-test"}`
 	req := httptest.NewRequest("POST", "/profiles/create", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -770,7 +767,6 @@ func TestProfileHandlerCreateReturns409OnDuplicate(t *testing.T) {
 		t.Fatalf("first create failed: %d %s", w.Code, w.Body.String())
 	}
 
-	// Try to create duplicate
 	req = httptest.NewRequest("POST", "/profiles/create", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
@@ -784,7 +780,6 @@ func TestProfileHandlerCreateReturns409OnDuplicate(t *testing.T) {
 func TestProfileImportRejectsPathTraversal(t *testing.T) {
 	pm := NewProfileManager(t.TempDir())
 
-	// Create a valid source directory
 	src := filepath.Join(t.TempDir(), "chrome-src")
 	_ = os.MkdirAll(filepath.Join(src, "Default"), 0755)
 	_ = os.WriteFile(filepath.Join(src, "Default", "Preferences"), []byte(`{}`), 0644)

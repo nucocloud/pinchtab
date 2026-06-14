@@ -92,8 +92,6 @@ func Instances(client *http.Client, base, token string, cmd *cobra.Command) {
 	}
 }
 
-// --- profiles ---
-
 func Profiles(client *http.Client, base, token string, cmd *cobra.Command) {
 	jsonOutput, _ := cmd.Flags().GetBool("json")
 	if jsonOutput {
@@ -129,9 +127,6 @@ func decodeProfilesResponse(body []byte) ([]map[string]any, error) {
 	return nil, fmt.Errorf("expected /profiles to return a JSON array")
 }
 
-// --- internal helpers ---
-
-// getInstances fetches the list of running instances
 func getInstances(client *http.Client, base, token string) []map[string]any {
 	resp, err := http.NewRequest("GET", base+"/instances", nil)
 	if err != nil {

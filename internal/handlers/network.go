@@ -181,7 +181,6 @@ func (h *Handlers) HandleNetwork(w http.ResponseWriter, r *http.Request) {
 
 	bufferSize := parseBufferSize(r)
 
-	// Lazily start capture if not already active for this tab
 	buf := nm.GetBuffer(resolvedTabID)
 	if buf == nil {
 		if err := nm.StartCaptureWithSize(tabCtx, resolvedTabID, bufferSize); err != nil {
@@ -276,7 +275,6 @@ func (h *Handlers) HandleNetworkByID(w http.ResponseWriter, r *http.Request) {
 		"tabId": resolvedTabID,
 	}
 
-	// Optionally include response body
 	if r.URL.Query().Get("body") == "true" && entry.Finished && !entry.Failed {
 		bodyMode := parseNetworkBodyMode(r)
 		if bodyMode == networkBodyModeRetainedPreferred && entry.BodyPending {
@@ -395,7 +393,6 @@ func (h *Handlers) HandleNetworkStream(w http.ResponseWriter, r *http.Request) {
 
 	bufferSize := parseBufferSize(r)
 
-	// Ensure capture is active
 	buf := nm.GetBuffer(resolvedTabID)
 	if buf == nil {
 		if err := nm.StartCaptureWithSize(tabCtx, resolvedTabID, bufferSize); err != nil {
@@ -488,7 +485,6 @@ func (h *Handlers) HandleTabNetworkByID(w http.ResponseWriter, r *http.Request) 
 	u := *r.URL
 	u.RawQuery = q.Encode()
 	req.URL = &u
-	// Set the requestId path value by creating a new request with the path
 	h.HandleNetworkByID(w, req)
 }
 

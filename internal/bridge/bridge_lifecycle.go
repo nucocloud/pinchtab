@@ -199,8 +199,6 @@ func (b *Bridge) EnsureBrowser(cfg *config.RuntimeConfig) error {
 
 	if err := AcquireProfileLock(cfg.ProfileDir); err != nil {
 		if cfg.Headless {
-			// If we are in headless mode, we are more flexible.
-			// Instead of failing, we can use a unique temporary profile dir.
 			uniqueDir, tmpErr := os.MkdirTemp("", "pinchtab-profile-*")
 			if tmpErr == nil {
 				slog.Warn("profile in use; using unique temporary profile for headless instance",

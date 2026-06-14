@@ -251,9 +251,7 @@ func TestCloakBrowserFlagArgsNilForNonCloak(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
 // Stub browser that does NOT support remote CDP (for guard tests)
-// ---------------------------------------------------------------------------
 
 type noCDPBrowser struct{}
 

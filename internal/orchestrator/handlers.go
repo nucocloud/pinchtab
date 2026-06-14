@@ -52,14 +52,12 @@ func (o *Orchestrator) RegisterHandlers(mux *http.ServeMux) {
 }
 
 func (o *Orchestrator) registerHandlers(mux *http.ServeMux, skipLaunch bool) {
-	// Profile management
 	if !skipLaunch {
 		mux.HandleFunc("POST /profiles/{id}/start", o.handleStartByID)
 	}
 	mux.HandleFunc("POST /profiles/{id}/stop", o.handleStopByID)
 	mux.HandleFunc("GET /profiles/{id}/instance", o.handleProfileInstance)
 
-	// Instance management
 	mux.HandleFunc("GET /instances", o.handleList)
 	mux.HandleFunc("GET /instances/{id}", o.handleGetInstance)
 	mux.HandleFunc("GET /instances/tabs", o.handleAllTabs)
@@ -88,7 +86,6 @@ func (o *Orchestrator) registerHandlers(mux *http.ServeMux, skipLaunch bool) {
 	for _, route := range routes.TabScopedRoutes() {
 		mux.HandleFunc(route, o.proxyTabRequest)
 	}
-	// Tab-scoped capability-gated routes.
 	for cap, eps := range routes.TabScopedCapabilityRoutes() {
 		var enabled bool
 		var feature, setting, code string

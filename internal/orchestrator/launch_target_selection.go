@@ -43,7 +43,6 @@ func (o *Orchestrator) ResolveRequestedBrowser(requested string) (targetName, pr
 				return resolved.Name, resolved.Provider, nil
 			}
 		case 0:
-			// No matching target for this browser — treat as unknown.
 			return "", "", &UnknownBrowserError{Target: requested, Err: fmt.Errorf("no browser target configured for browser %q", requested)}
 		default:
 			dt := config.ResolveDefaultTarget(o.runtimeCfg)

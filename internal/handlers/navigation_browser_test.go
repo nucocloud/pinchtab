@@ -227,8 +227,6 @@ func TestHandleText_BrowserParam_Invalid_Returns400(t *testing.T) {
 	}
 }
 
-// --- Browser selection precedence tests ---
-//
 // These tests verify the handler-level browser resolution chain:
 //   request param > session browser > instance browser > global default > chrome
 //
@@ -545,8 +543,6 @@ func TestHandleNavigate_SameTabResult_NormalPathUnchanged(t *testing.T) {
 	}
 }
 
-// --- explicit-browser vs running-browser conflict (H6) ---
-
 func TestHandleNavigate_ExplicitBrowserConflictsWithRunning_409(t *testing.T) {
 	m := &mockBridge{runningBrowser: config.BrowserChrome}
 	h := New(m, &config.RuntimeConfig{
@@ -647,8 +643,6 @@ func TestHandleNavigate_ExplicitBrowserNothingRunning_OK(t *testing.T) {
 		t.Fatalf("explicit browser with nothing running must not 409: %s", w.Body.String())
 	}
 }
-
-// --- deferred Chrome launch for static-first navigates (H1b) ---
 
 // A static-accept on a fresh navigate must never launch Chrome.
 func TestHandleNavigate_StaticFirstServesWithoutChromeLaunch(t *testing.T) {

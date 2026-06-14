@@ -110,10 +110,6 @@ func (s *CloudflareSolver) Solve(ctx context.Context, opts solver.Options) (*sol
 	return result, nil
 }
 
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-
 type cfBoundingBox struct {
 	X      float64
 	Y      float64

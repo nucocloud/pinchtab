@@ -81,7 +81,6 @@ func (h *Handlers) HandlePDF(w http.ResponseWriter, r *http.Request) {
 	defer tCancel()
 	go httpx.CancelOnClientDone(r.Context(), tCancel)
 
-	// Parse PDF parameters from PrintToPDFParams
 	landscape := r.URL.Query().Get("landscape") == "true"
 	preferCSSPageSize := r.URL.Query().Get("preferCSSPageSize") == "true"
 	displayHeaderFooter := r.URL.Query().Get("displayHeaderFooter") == "true"

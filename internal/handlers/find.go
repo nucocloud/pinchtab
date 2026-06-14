@@ -95,7 +95,6 @@ func (h *Handlers) HandleFind(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Try cached snapshot first; auto-fetch if not available.
 	nodes := h.resolveSnapshotNodes(resolvedTabID)
 	if len(nodes) == 0 {
 		// Auto-refresh: take a fresh snapshot via CDP using the context
@@ -110,7 +109,6 @@ func (h *Handlers) HandleFind(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = bridge.EnrichA11yNodesWithDOMMetadata(ctxTab, nodes)
 
-	// Build descriptors from A11yNodes.
 	descs := semanticDescriptorsFromNodes(nodes)
 
 	// IDPI: scan AX-node text corpus and full page body text for injection

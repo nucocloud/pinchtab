@@ -87,7 +87,6 @@ func (h *Handlers) HandleCapture(w http.ResponseWriter, r *http.Request) {
 		browser = config.BrowserChrome
 	}
 
-	// Resolve the effective config with target-specific overrides merged in.
 	effectiveCfg, err := h.resolveEffectiveConfig(browser)
 	if err != nil {
 		var ambErr *config.AmbiguousBrowserError
@@ -258,8 +257,6 @@ func (h *Handlers) HandleCapture(w http.ResponseWriter, r *http.Request) {
 		DomEpoch: result.DomEpoch,
 	})
 
-	// Image output: file (default) writes bytes to disk and returns a path;
-	// inline returns base64; raw returns the bytes as the response body.
 	imageInfo := map[string]any{
 		"format":           result.ImageFormat,
 		"bytes":            len(result.ImageBytes),

@@ -137,7 +137,6 @@ func (h *Handlers) setCredentials(w http.ResponseWriter, r *http.Request, req cr
 	defer tCancel()
 
 	if username == "" {
-		// Clear credentials: disable fetch domain and remove stored credentials.
 		h.credentialStore.Delete(resolvedTabID)
 
 		if proxyAuthConfigured(h.Config) {

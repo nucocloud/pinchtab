@@ -141,7 +141,6 @@ func fingerprintFlagsCheck(ctx context.Context, cfg interface{}) browsers.Doctor
 		return browsers.DoctorCheckResult{Status: browsers.DoctorSkip, Detail: "skipped — no browser.binary set (see cloakbrowser_present)"}
 	}
 
-	// Build fingerprint flags using our own BuildLaunchArgs.
 	launchCfg := browsers.LaunchConfig{
 		Cloak: env.Cloak,
 	}
@@ -153,7 +152,6 @@ func fingerprintFlagsCheck(ctx context.Context, cfg interface{}) browsers.Doctor
 			Err:    err,
 		}
 	}
-	// Extract only fingerprint flags.
 	var fpFlags []string
 	for _, a := range allArgs {
 		if strings.HasPrefix(a, "--fingerprint") {

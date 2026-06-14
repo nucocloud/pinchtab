@@ -32,10 +32,6 @@ func NewInstance(browserCtx context.Context, headless bool) *Instance {
 
 var _ browsers.RuntimeInstance = (*Instance)(nil)
 
-// ---------------------------------------------------------------------------
-// Visual capture
-// ---------------------------------------------------------------------------
-
 // CaptureScreenshot captures a screenshot of the current page.
 func (i *Instance) CaptureScreenshot(ctx context.Context, format string, quality int, clip *cdptk.ScreenshotClip) ([]byte, error) {
 	var buf []byte
@@ -84,13 +80,6 @@ func (i *Instance) CaptureScreenshot(ctx context.Context, format string, quality
 	}
 	return buf, nil
 }
-
-// Screencast streaming (StartScreencast and its event-driven/polling
-// strategies) lives in instance_screencast.go.
-
-// ---------------------------------------------------------------------------
-// JavaScript evaluation
-// ---------------------------------------------------------------------------
 
 // Evaluate evaluates a JavaScript expression in the page context.
 func (i *Instance) Evaluate(ctx context.Context, expression string, result any, opts browsers.EvalOpts) error {
@@ -154,7 +143,6 @@ func (i *Instance) EvaluateInFrame(ctx context.Context, frameID string, expressi
 // calls the given JavaScript function on it.
 func (i *Instance) CallFunctionOnNode(ctx context.Context, backendNodeID int64, functionDecl string, args []map[string]any, result any) error {
 	return chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
-		// Step 1: Resolve backend node ID to a remote object.
 		var resolveResult json.RawMessage
 		if err := chromedp.FromContext(ctx).Target.Execute(ctx, "DOM.resolveNode", map[string]any{
 			"backendNodeId": backendNodeID,
@@ -174,7 +162,6 @@ func (i *Instance) CallFunctionOnNode(ctx context.Context, backendNodeID int64, 
 			return fmt.Errorf("element not found in DOM (backendNodeId=%d)", backendNodeID)
 		}
 
-		// Step 2: Call the function on the resolved object.
 		params := map[string]any{
 			"functionDeclaration": functionDecl,
 			"objectId":            resolved.Object.ObjectID,
@@ -189,7 +176,6 @@ func (i *Instance) CallFunctionOnNode(ctx context.Context, backendNodeID int64, 
 			return fmt.Errorf("call function on node: %w", err)
 		}
 
-		// Step 3: Parse the result.
 		var callParsed struct {
 			Result struct {
 				Type  string          `json:"type"`
@@ -212,10 +198,6 @@ func (i *Instance) CallFunctionOnNode(ctx context.Context, backendNodeID int64, 
 		return json.Unmarshal(callParsed.Result.Value, result)
 	}))
 }
-
-// ---------------------------------------------------------------------------
-// DOM
-// ---------------------------------------------------------------------------
 
 // DescribeNode returns DOM structural info for a backend node ID.
 func (i *Instance) DescribeNode(ctx context.Context, backendNodeID int64) (*browsers.NodeInfo, error) {
@@ -300,10 +282,6 @@ func (i *Instance) SetFileInputFiles(ctx context.Context, nodeID int64, paths []
 	}))
 }
 
-// ---------------------------------------------------------------------------
-// Cookies
-// ---------------------------------------------------------------------------
-
 // GetCookies retrieves cookies for the given URLs via CDP.
 func (i *Instance) GetCookies(ctx context.Context, urls []string) ([]browsers.CookieData, error) {
 	var cookies []*network.Cookie
@@ -369,10 +347,6 @@ func (i *Instance) SetCookie(ctx context.Context, params browsers.SetCookieParam
 	}))
 }
 
-// ---------------------------------------------------------------------------
-// Emulation
-// ---------------------------------------------------------------------------
-
 // SetViewport overrides device metrics for the page.
 func (i *Instance) SetViewport(ctx context.Context, params browsers.ViewportParams) error {
 	return chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
@@ -395,10 +369,6 @@ func (i *Instance) SetEmulatedMedia(ctx context.Context, feature, value string) 
 	}))
 }
 
-// ---------------------------------------------------------------------------
-// Network state
-// ---------------------------------------------------------------------------
-
 // SetNetworkConditions emulates network conditions via CDP.
 func (i *Instance) SetNetworkConditions(ctx context.Context, params browsers.NetworkConditions) error {
 	return chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
@@ -418,10 +388,6 @@ func (i *Instance) SetExtraHTTPHeaders(ctx context.Context, headers map[string]s
 	}))
 }
 
-// ---------------------------------------------------------------------------
-// Navigation info
-// ---------------------------------------------------------------------------
-
 // CurrentURL returns the current page URL.
 func (i *Instance) CurrentURL(ctx context.Context) (string, error) {
 	var url string
@@ -435,10 +401,6 @@ func (i *Instance) CurrentTitle(ctx context.Context) (string, error) {
 	err := chromedp.Run(ctx, chromedp.Title(&title))
 	return title, err
 }
-
-// ---------------------------------------------------------------------------
-// PDF
-// ---------------------------------------------------------------------------
 
 // PrintToPDF generates a PDF of the current page via CDP.
 func (i *Instance) PrintToPDF(ctx context.Context, params browsers.PDFParams) ([]byte, error) {
@@ -475,10 +437,6 @@ func (i *Instance) PrintToPDF(ctx context.Context, params browsers.PDFParams) ([
 	}))
 	return buf, err
 }
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 // frameExecutionContextID returns a Runtime.executionContextId that evaluates
 // in the given frame's document. Returns (0, nil) when frameID is empty so

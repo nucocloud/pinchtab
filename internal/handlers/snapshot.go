@@ -101,7 +101,6 @@ func (h *Handlers) HandleSnapshot(w http.ResponseWriter, r *http.Request) {
 		browser = config.BrowserChrome
 	}
 
-	// Resolve the effective config with target-specific overrides merged in.
 	effectiveCfg, err := h.resolveEffectiveConfig(browser)
 	if err != nil {
 		var ambErr *config.AmbiguousBrowserError
@@ -225,7 +224,6 @@ func (h *Handlers) HandleSnapshot(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Check if scoped snapshot returned 0 nodes but element exists in DOM
 	var scopedEmptyHint string
 	if len(flat) == 0 && selector != "" && scopeNodeID != 0 {
 		var elemInfo string

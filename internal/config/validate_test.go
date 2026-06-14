@@ -610,7 +610,6 @@ func TestValidationError_Error(t *testing.T) {
 }
 
 func TestValidEnumValues(t *testing.T) {
-	// Test that the valid values match the validation functions
 	for _, level := range ValidStealthLevels() {
 		if !isValidStealthLevel(level) {
 			t.Errorf("ValidStealthLevels contains %q but isValidStealthLevel returns false", level)
@@ -641,8 +640,6 @@ func TestValidEnumValues(t *testing.T) {
 		}
 	}
 }
-
-// --- IDPI validation tests ---
 
 // TestValidateIDPIConfig_Disabled verifies that a disabled IDPI config produces
 // no errors regardless of what fields are set.

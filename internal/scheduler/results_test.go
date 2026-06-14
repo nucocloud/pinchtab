@@ -35,25 +35,21 @@ func TestResultStoreList(t *testing.T) {
 	rs.Store(&Task{ID: "t2", AgentID: "a1", State: StateQueued})
 	rs.Store(&Task{ID: "t3", AgentID: "a2", State: StateDone})
 
-	// All tasks
 	all := rs.List("", nil)
 	if len(all) != 3 {
 		t.Errorf("expected 3, got %d", len(all))
 	}
 
-	// Filter by agent
 	a1Only := rs.List("a1", nil)
 	if len(a1Only) != 2 {
 		t.Errorf("expected 2 for a1, got %d", len(a1Only))
 	}
 
-	// Filter by state
 	doneOnly := rs.List("", []TaskState{StateDone})
 	if len(doneOnly) != 2 {
 		t.Errorf("expected 2 done, got %d", len(doneOnly))
 	}
 
-	// Filter by both
 	a1Done := rs.List("a1", []TaskState{StateDone})
 	if len(a1Done) != 1 {
 		t.Errorf("expected 1, got %d", len(a1Done))
