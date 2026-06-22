@@ -13,9 +13,6 @@ import (
 	"github.com/pinchtab/semantic/recovery"
 )
 
-// cacheActionIntent stores the element's semantic identity in the
-// IntentCache so the recovery engine can reconstruct a query if the
-// ref becomes stale.
 func (h *Handlers) cacheActionIntent(tabID string, req bridge.ActionRequest) {
 	if h.Recovery == nil || req.Ref == "" {
 		return
@@ -27,9 +24,9 @@ func (h *Handlers) cacheActionIntent(tabID string, req bridge.ActionRequest) {
 	}
 	desc := semantic.ElementDescriptor{Ref: req.Ref}
 	if cache := h.Bridge.GetRefCache(tabID); cache != nil {
-		for _, enriched := range semanticDescriptorsFromNodes(cache.Nodes) {
-			if enriched.Ref == req.Ref {
-				desc = enriched
+		for i := range cache.Nodes {
+			if cache.Nodes[i].Ref == req.Ref {
+				desc = descriptorFromNode(cache.Nodes[i])
 				break
 			}
 		}
@@ -48,6 +45,63 @@ func (h *Handlers) executeAction(ctx context.Context, req bridge.ActionRequest, 
 	}
 	result, err := h.Bridge.ExecuteAction(ctx, req.Kind, req)
 	return result, "", err
+}
+
+// executeActionResilient runs one resolved action with pointer-retry, stale-ref
+// cache refresh, and semantic self-healing. When refMissing is set it goes
+// recovery-first (Recovery.Attempt); otherwise it executes then heals on
+// failure. Callers must handle the refMissing-without-recovery case (404 /
+// per-step failure) before calling — refMissing=true assumes h.Recovery != nil.
+// req.NodeID is mutated in place, as the inline action/batch/macro paths did.
+func (h *Handlers) executeActionResilient(ctx context.Context, req *bridge.ActionRequest, cfg *config.RuntimeConfig, resolvedTabID string, refMissing bool) (map[string]any, string, *recovery.RecoveryResult, error) {
+	if refMissing {
+		rr, recRes, recErr := h.Recovery.Attempt(
+			ctx, resolvedTabID, req.Ref, req.Kind,
+			func(c context.Context, _ string, nodeID int64) (map[string]any, error) {
+				req.NodeID = nodeID
+				res, _, err := h.executeAction(c, *req, cfg)
+				return res, err
+			},
+		)
+		if recErr != nil {
+			return nil, "", &rr, fmt.Errorf("ref %s not found and recovery failed: %w", req.Ref, recErr)
+		}
+		return recRes, "", &rr, nil
+	}
+
+	result, backend, err := h.executeAction(ctx, *req, cfg)
+	if err != nil && shouldRetryPointerAction(*req, err) {
+		if req.Ref != "" && shouldRetryStaleRef(err) {
+			recordStaleRefRetry()
+			h.refreshRefCache(ctx, resolvedTabID)
+			if cache := h.Bridge.GetRefCache(resolvedTabID); cache != nil {
+				if target, ok := cache.Lookup(req.Ref); ok {
+					req.NodeID = target.BackendNodeID
+				}
+			}
+		}
+		h.refreshActionNodeIDFromSelector(ctx, req)
+		time.Sleep(pointerRetryDelay)
+		result, backend, err = h.executeAction(ctx, *req, cfg)
+	}
+
+	var rr *recovery.RecoveryResult
+	if err != nil && req.Ref != "" && h.Recovery != nil && h.Recovery.ShouldAttempt(err, req.Ref) {
+		r2, recRes, recErr := h.Recovery.AttemptWithClassification(
+			ctx, resolvedTabID, req.Ref, req.Kind,
+			recovery.ClassifyFailure(err),
+			func(c context.Context, _ string, nodeID int64) (map[string]any, error) {
+				req.NodeID = nodeID
+				res, _, e := h.executeAction(c, *req, cfg)
+				return res, e
+			},
+		)
+		rr = &r2
+		if recErr == nil {
+			result, err = recRes, nil
+		}
+	}
+	return result, backend, rr, err
 }
 
 func switchedTabFromActionResult(result map[string]any) string {

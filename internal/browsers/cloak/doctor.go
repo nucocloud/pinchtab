@@ -14,8 +14,7 @@ import (
 
 const cloakMinVersion = "120.0.0"
 
-// DoctorChecks returns CloakBrowser-specific health checks for the doctor command.
-// This overrides the inherited Chrome DoctorChecks method.
+// DoctorChecks overrides the inherited Chrome DoctorChecks method.
 func (Browser) DoctorChecks(_ browsers.TargetConfig) []browsers.DoctorCheck {
 	return []browsers.DoctorCheck{
 		{

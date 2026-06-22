@@ -52,6 +52,7 @@ func RunBridgeServer(cfg *config.RuntimeConfig, version string) {
 	mux := http.NewServeMux()
 	h := handlers.New(bridgeInstance, cfg, nil, nil, nil)
 	h.Version = version
+	h.StartBackgroundCleanup()
 	configureBridgeRouter(h, cfg)
 
 	shutdownOnce := &sync.Once{}

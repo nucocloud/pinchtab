@@ -99,6 +99,34 @@ func TestValidateTargetAcceptsEmpty(t *testing.T) {
 	}
 }
 
+func TestGhostChromeChromePresentCheck(t *testing.T) {
+	b := &Browser{}
+	checks := b.DoctorChecks(browsers.TargetConfig{})
+	var found bool
+	for i := range checks {
+		if checks[i].ID == "chrome_present" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("chrome_present check not found in ghost-chrome DoctorChecks (ghost-chrome escalates to Chrome)")
+	}
+	// chrome_present must precede handle_decisions (presence before behavior).
+	var presentIdx, handleIdx = -1, -1
+	for i := range checks {
+		switch checks[i].ID {
+		case "chrome_present":
+			presentIdx = i
+		case "handle_decisions":
+			handleIdx = i
+		}
+	}
+	if presentIdx == -1 || handleIdx == -1 || presentIdx > handleIdx {
+		t.Fatalf("expected chrome_present before handle_decisions, got indices present=%d handle=%d", presentIdx, handleIdx)
+	}
+}
+
 func TestGhostChromeHandleDecisionsCheck(t *testing.T) {
 	b := &Browser{}
 	checks := b.DoctorChecks(browsers.TargetConfig{})

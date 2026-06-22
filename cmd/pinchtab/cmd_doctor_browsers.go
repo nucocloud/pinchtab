@@ -91,32 +91,12 @@ func writeBrowsersText(w io.Writer, report doctor.BrowsersReport) {
 		if len(bi.Checks) > 0 {
 			_, _ = fmt.Fprintln(w, "  Checks:")
 			for _, c := range bi.Checks {
-				marker := checkMarker(c.Status)
-				detail := c.Detail
-				if detail == "" && c.ErrMsg != "" {
-					detail = c.ErrMsg
-				}
-				_, _ = fmt.Fprintf(w, "    %s %s: %s\n", marker, c.Name, detail)
+				doctor.WriteBrowserCheckRow(w, c)
 			}
 		} else if bi.Registered {
 			_, _ = fmt.Fprintln(w, "  Checks: (none)")
 		}
 		_, _ = fmt.Fprintln(w)
-	}
-}
-
-func checkMarker(s doctor.CheckStatus) string {
-	switch s {
-	case doctor.StatusPass:
-		return "OK  "
-	case doctor.StatusFail:
-		return "FAIL"
-	case doctor.StatusWarn:
-		return "WARN"
-	case doctor.StatusSkip:
-		return "SKIP"
-	default:
-		return "?   "
 	}
 }
 

@@ -593,7 +593,6 @@ func TestHandleStartInstance_RequestFallbackTargets_Wins(t *testing.T) {
 		t.Fatalf("second call Browser = %q, want chrome (backup target uses chrome provider)", fl.calls[1].Browser)
 	}
 
-	// Verify internal state via Browser field.
 	instances := o.List()
 	if len(instances) != 1 {
 		t.Fatalf("expected 1 instance, got %d", len(instances))
@@ -601,7 +600,6 @@ func TestHandleStartInstance_RequestFallbackTargets_Wins(t *testing.T) {
 	if instances[0].Browser != config.BrowserChrome {
 		t.Fatalf("internal Browser = %q, want chrome", instances[0].Browser)
 	}
-	// FallbackFrom is still in JSON, verify from response.
 	var inst bridge.Instance
 	if err := json.NewDecoder(w.Body).Decode(&inst); err != nil {
 		t.Fatalf("decode: %v", err)

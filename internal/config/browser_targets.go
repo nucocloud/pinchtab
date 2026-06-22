@@ -9,7 +9,6 @@ import (
 	"github.com/pinchtab/pinchtab/internal/browsers"
 )
 
-// DefaultBrowserTargetName is the synthetic target name produced by the legacy-config migration shim.
 const DefaultBrowserTargetName = "default"
 
 var browserTargetNameRegex = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
@@ -64,7 +63,7 @@ func cloneBrowserProxyConfig(in BrowserProxyConfig) BrowserProxyConfig {
 	return out
 }
 
-// ValidateBrowserTargets validates targets/defaultTarget/fallbackOrder; returns nil when no targets are configured.
+// ValidateBrowserTargets returns nil when no targets are configured.
 func ValidateBrowserTargets(bc BrowserConfig) []error {
 	if len(bc.Targets) == 0 {
 		return nil
@@ -279,7 +278,6 @@ func cloneBoolPtr(in *bool) *bool {
 	return &v
 }
 
-// TargetsForBrowser returns all target names whose Provider matches the given browser name (after normalization).
 func TargetsForBrowser(cfg *RuntimeConfig, browser string) []string {
 	if cfg == nil || len(cfg.Targets) == 0 {
 		return nil
@@ -308,7 +306,6 @@ func (e *AmbiguousBrowserError) Error() string {
 		e.Browser, strings.Join(e.Targets, ", "))
 }
 
-// ResolveDefaultTarget returns the effective default target; empty when no targets are configured.
 func ResolveDefaultTarget(cfg *RuntimeConfig) string {
 	if cfg == nil || len(cfg.Targets) == 0 {
 		return ""
@@ -324,6 +321,35 @@ func ResolveDefaultTarget(cfg *RuntimeConfig) string {
 		}
 	}
 	return ""
+}
+
+// MatchBrowserToTarget maps a provider/browser name to a single configured
+// target name using the prefer-configured-default tie-break shared by the
+// orchestrator's request resolution and the launch path: exactly one match
+// wins; multiple matches resolve to the configured default target when it is
+// among them. It returns ("", matches) when there is no unambiguous winner —
+// zero matches (matches empty) or several with no default among them — so each
+// caller applies its own policy (error vs. lenient fallthrough). matches is the
+// full TargetsForBrowser list, for callers that need to build an ambiguity error.
+func MatchBrowserToTarget(cfg *RuntimeConfig, browser string) (target string, matches []string) {
+	if cfg == nil || len(cfg.Targets) == 0 {
+		return "", nil
+	}
+	matches = TargetsForBrowser(cfg, browser)
+	switch len(matches) {
+	case 1:
+		return matches[0], matches
+	case 0:
+		return "", matches
+	default:
+		dt := ResolveDefaultTarget(cfg)
+		for _, m := range matches {
+			if m == dt {
+				return dt, matches
+			}
+		}
+		return "", matches
+	}
 }
 
 func ResolveDefaultBrowserTarget(cfg *RuntimeConfig) (*ResolvedBrowserTarget, error) {

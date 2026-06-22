@@ -30,25 +30,25 @@ func (o *Orchestrator) proxyTabRequest(w http.ResponseWriter, r *http.Request) {
 	// before proxying, so the dashboard stream shows meaningful labels.
 	activity.EnrichRouteActivity(r)
 
-	proxyToInstance := func(inst *bridge.Instance) {
-		activity.EnrichRequest(r, activity.Update{
-			InstanceID:  inst.ID,
-			ProfileID:   inst.ProfileID,
-			ProfileName: inst.ProfileName,
-			TabID:       tabID,
-		})
-		targetURL, buildErr := o.instancePathURLFromBridge(inst, r.URL.Path, r.URL.RawQuery)
-		if buildErr != nil {
-			httpx.Error(w, 502, buildErr)
-			return
-		}
-		o.proxyToURL(w, r, targetURL)
+	inst, err := o.resolveInstanceForTab(tabID)
+	if err != nil {
+		httpx.Error(w, 404, err)
+		return
 	}
+	o.proxyResolvedTab(w, r, inst, tabID)
+}
 
+// resolveInstanceForTab decides which running instance owns tabID — the routing
+// policy, kept separate from the proxy transport (proxyResolvedTab). It tries
+// the O(1) locator cache first, then the bridge-query fallback (registering the
+// result on a hit), then — to avoid false 404s when the dashboard's tab list
+// momentarily diverges from the child bridge — the single-running-instance
+// shortcut. On a total miss it returns the lookup error for the caller to
+// surface as 404.
+func (o *Orchestrator) resolveInstanceForTab(tabID string) (*bridge.Instance, error) {
 	if o.instanceMgr != nil {
 		if inst, err := o.instanceMgr.FindInstanceByTabID(tabID); err == nil {
-			proxyToInstance(inst)
-			return
+			return inst, nil
 		}
 	}
 
@@ -57,23 +57,33 @@ func (o *Orchestrator) proxyTabRequest(w http.ResponseWriter, r *http.Request) {
 		if o.instanceMgr != nil {
 			o.instanceMgr.Locator.Register(tabID, inst.ID)
 		}
-		proxyToInstance(&inst.Instance)
-		return
+		return &inst.Instance, nil
 	}
 
-	// Fallback: when exactly one instance is running, proxy to it even if
-	// the dashboard-side tab lookup failed. This lets the child bridge resolve
-	// the tab ID directly and avoids false 404s when the dashboard's cached or
-	// listed tab IDs momentarily diverge from the child bridge's registry.
 	if only := o.singleRunningInstance(); only != nil {
-		proxyToInstance(&only.Instance)
-		return
+		return &only.Instance, nil
 	}
 
-	httpx.Error(w, 404, err)
+	return nil, err
 }
 
-// proxyToInstance proxies a request to a specific instance by ID in the path.
+// proxyResolvedTab forwards the request to the resolved instance — the transport
+// step, kept separate from the routing policy (resolveInstanceForTab).
+func (o *Orchestrator) proxyResolvedTab(w http.ResponseWriter, r *http.Request, inst *bridge.Instance, tabID string) {
+	activity.EnrichRequest(r, activity.Update{
+		InstanceID:  inst.ID,
+		ProfileID:   inst.ProfileID,
+		ProfileName: inst.ProfileName,
+		TabID:       tabID,
+	})
+	targetURL, buildErr := o.instancePathURLFromBridge(inst, r.URL.Path, r.URL.RawQuery)
+	if buildErr != nil {
+		httpx.Error(w, 502, buildErr)
+		return
+	}
+	o.proxyToURL(w, r, targetURL)
+}
+
 func (o *Orchestrator) proxyToInstance(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
@@ -111,30 +121,38 @@ func (o *Orchestrator) proxyToInstance(w http.ResponseWriter, r *http.Request) {
 	o.proxyToURL(w, r, targetURL)
 }
 
-// proxyToURL proxies an HTTP request to the given target URL.
 func (o *Orchestrator) proxyToURL(w http.ResponseWriter, r *http.Request, targetURL *url.URL) {
+	// Resolve the target instance once; RewriteRequest/OnResponseHeaders always
+	// act on targetURL, so they reuse this instead of re-scanning o.instances.
+	targetInst := o.proxyTargetInstance(targetURL)
 	iproxy.Forward(w, r, targetURL, iproxy.Options{
 		Client: o.client,
 		AllowedURL: func(u *url.URL) bool {
+			// Redirect targets are validated per-hop (instance/SSRF gate). A
+			// same-origin u maps to the already-resolved instance; only
+			// different-origin redirects need a fresh scan.
+			if sameOrigin(u, targetURL) {
+				return targetInst != nil
+			}
 			return o.proxyTargetInstance(u) != nil
 		},
 		RewriteRequest: func(req *http.Request) {
 			activity.PropagateHeaders(r.Context(), req)
-			if inst := o.proxyTargetInstance(targetURL); inst != nil {
-				req.Header.Set(activity.HeaderPTInstance, inst.ID)
-				if inst.ProfileID != "" {
-					req.Header.Set(activity.HeaderPTProfileID, inst.ProfileID)
+			if targetInst != nil {
+				req.Header.Set(activity.HeaderPTInstance, targetInst.ID)
+				if targetInst.ProfileID != "" {
+					req.Header.Set(activity.HeaderPTProfileID, targetInst.ProfileID)
 				}
-				if inst.ProfileName != "" {
-					req.Header.Set(activity.HeaderPTProfile, inst.ProfileName)
+				if targetInst.ProfileName != "" {
+					req.Header.Set(activity.HeaderPTProfile, targetInst.ProfileName)
 				}
-				o.applyInstanceAuth(req, inst)
+				o.applyInstanceAuth(req, targetInst)
 			}
 		},
 		OnResponseHeaders: func(origReq *http.Request, resp *http.Response) {
 			var targetInstanceID string
-			if inst := o.proxyTargetInstance(targetURL); inst != nil {
-				targetInstanceID = inst.ID
+			if targetInst != nil {
+				targetInstanceID = targetInst.ID
 			}
 			o.handleProxyResponseHeaders(origReq, resp, targetInstanceID)
 		},
@@ -156,7 +174,6 @@ func (o *Orchestrator) ProxyToTarget(w http.ResponseWriter, r *http.Request, tar
 	o.proxyToURL(w, r, targetURL)
 }
 
-// findRunningInstanceByTabID finds the instance that owns the given tab.
 func (o *Orchestrator) findRunningInstanceByTabID(tabID string) (*InstanceInternal, error) {
 	o.mu.RLock()
 	instances := make([]*InstanceInternal, 0, len(o.instances))
@@ -208,48 +225,41 @@ func (o *Orchestrator) handleProxyScreencast(w http.ResponseWriter, r *http.Requ
 	activity.PropagateHeaders(r.Context(), req)
 	req.Header.Del("Authorization")
 	req.Header.Del("Cookie")
-	handlers.SetProxyWSBackendAuthorization(req.Header, "")
+	iproxy.SetProxyWSBackendAuthorization(req.Header, "")
 	if token := inst.authToken; token != "" {
-		handlers.SetProxyWSBackendAuthorization(req.Header, "Bearer "+token)
+		iproxy.SetProxyWSBackendAuthorization(req.Header, "Bearer "+token)
 	} else if token := o.childAuthToken; token != "" {
-		handlers.SetProxyWSBackendAuthorization(req.Header, "Bearer "+token)
+		iproxy.SetProxyWSBackendAuthorization(req.Header, "Bearer "+token)
 	}
 
-	handlers.ProxyWebSocket(w, req, targetURL.String())
+	iproxy.ProxyWebSocket(w, req, targetURL.String())
+}
+
+func (o *Orchestrator) buildInstancePathURL(rawURL, port, path, rawQuery string) (*url.URL, error) {
+	baseURL, err := o.parseHTTPInstanceURL(rawURL, port)
+	if err != nil {
+		return nil, err
+	}
+	return &url.URL{
+		Scheme:   baseURL.Scheme,
+		Host:     baseURL.Host,
+		Path:     path,
+		RawQuery: rawQuery,
+	}, nil
 }
 
 func (o *Orchestrator) instancePathURL(inst *InstanceInternal, path, rawQuery string) (*url.URL, error) {
 	if inst == nil {
 		return nil, fmt.Errorf("instance not found")
 	}
-	baseURL, err := o.parseHTTPInstanceURL(inst.URL, inst.Port)
-	if err != nil {
-		return nil, err
-	}
-	target := &url.URL{
-		Scheme:   baseURL.Scheme,
-		Host:     baseURL.Host,
-		Path:     path,
-		RawQuery: rawQuery,
-	}
-	return target, nil
+	return o.buildInstancePathURL(inst.URL, inst.Port, path, rawQuery)
 }
 
 func (o *Orchestrator) instancePathURLFromBridge(inst *bridge.Instance, path, rawQuery string) (*url.URL, error) {
 	if inst == nil {
 		return nil, fmt.Errorf("instance not found")
 	}
-	baseURL, err := o.parseHTTPInstanceURL(inst.URL, inst.Port)
-	if err != nil {
-		return nil, err
-	}
-	target := &url.URL{
-		Scheme:   baseURL.Scheme,
-		Host:     baseURL.Host,
-		Path:     path,
-		RawQuery: rawQuery,
-	}
-	return target, nil
+	return o.buildInstancePathURL(inst.URL, inst.Port, path, rawQuery)
 }
 
 func (o *Orchestrator) parseHTTPInstanceURL(rawURL, port string) (*url.URL, error) {
@@ -314,7 +324,7 @@ func (o *Orchestrator) applyInstanceAuth(req *http.Request, inst *InstanceIntern
 	if token != "" {
 		bearer := "Bearer " + token
 		req.Header.Set("Authorization", bearer)
-		handlers.SetProxyWSBackendAuthorization(req.Header, bearer)
+		iproxy.SetProxyWSBackendAuthorization(req.Header, bearer)
 	}
 	// Mark spawned-child hops as trusted-internal-proxy so the instance
 	// honors X-PinchTab-* identity headers we propagate. Attached external
@@ -325,7 +335,6 @@ func (o *Orchestrator) applyInstanceAuth(req *http.Request, inst *InstanceIntern
 	}
 }
 
-// classifyLaunchError returns appropriate HTTP status code for launch errors.
 func classifyLaunchError(err error) int {
 	msg := err.Error()
 	if strings.Contains(msg, "cannot contain") || strings.Contains(msg, "cannot be empty") {

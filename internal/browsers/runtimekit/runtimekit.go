@@ -10,7 +10,6 @@ import (
 	"github.com/pinchtab/pinchtab/internal/config"
 )
 
-// ProviderLaunchPlan is the resolved launch contract for a browser provider.
 type ProviderLaunchPlan struct {
 	Browser browsers.Browser
 	Args    []string

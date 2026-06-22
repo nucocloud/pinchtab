@@ -13,7 +13,6 @@ import (
 	"time"
 )
 
-// CDPProbeResult holds the outcome of a successful LaunchAndProbe call.
 type CDPProbeResult struct {
 	Port       int
 	VersionURL string
@@ -125,8 +124,6 @@ func scrapeDevtoolsPort(r io.ReadCloser, portCh chan<- int, errCh chan<- error) 
 	errCh <- errors.New("stderr closed before DevTools banner appeared")
 }
 
-// probeCDPVersionWithRetry polls the /json/version endpoint until it responds
-// HTTP 200 or the context deadline is reached.
 func probeCDPVersionWithRetry(ctx context.Context, url string) error {
 	deadline, ok := ctx.Deadline()
 	if !ok {

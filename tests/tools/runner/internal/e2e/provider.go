@@ -305,10 +305,10 @@ func dockerImagePresent(image string) (bool, error) {
 	return false, fmt.Errorf("inspect Docker image %s: %w: %s", image, err, msg)
 }
 
-// writeCloakConfig reads a chrome-flavoured pinchtab config and writes a
-// cloak-flavoured copy: it sets browsers.default, browser.binary, and the
-// browser.cloak block. The fingerprint seed mirrors scripts/lib/smoke-config.sh.
-func writeCloakConfig(src, dst string) error {
+// rewriteProviderConfig reads a chrome-flavoured pinchtab config, applies the
+// provider-specific mutate, forces configVersion (so the startup wizard won't
+// rewrite the file) and browsers.default, then writes the result to dst.
+func rewriteProviderConfig(src, dst, defaultBrowser string, mutate func(cfg map[string]any)) error {
 	raw, err := os.ReadFile(src) // #nosec G304 -- src is constrained to tests/e2e/config/*.json.
 	if err != nil {
 		return err
@@ -318,28 +318,16 @@ func writeCloakConfig(src, dst string) error {
 		return fmt.Errorf("parse: %w", err)
 	}
 
-	browser, _ := cfg["browser"].(map[string]any)
-	if browser == nil {
-		browser = map[string]any{}
+	if mutate != nil {
+		mutate(cfg)
 	}
-	browser["binary"] = "/opt/cloakbrowser/chrome"
-	browser["cloak"] = map[string]any{
-		"fingerprintSeed":           "42069",
-		"platform":                  "linux",
-		"locale":                    "en-US",
-		"timezone":                  "UTC",
-		"disableDefaultStealthArgs": true,
-	}
-	cfg["browser"] = browser
 
-	// Set configVersion so the startup wizard doesn't rewrite the file,
-	// and browsers.default to select the cloak browser provider.
 	cfg["configVersion"] = "0.8.0"
 	browsers, _ := cfg["browsers"].(map[string]any)
 	if browsers == nil {
 		browsers = map[string]any{}
 	}
-	browsers["default"] = "cloak"
+	browsers["default"] = defaultBrowser
 	cfg["browsers"] = browsers
 
 	out, err := json.MarshalIndent(cfg, "", "  ")
@@ -349,33 +337,33 @@ func writeCloakConfig(src, dst string) error {
 	return os.WriteFile(dst, append(out, '\n'), 0o644) // #nosec G306 -- read-only config fixture.
 }
 
+// writeCloakConfig reads a chrome-flavoured pinchtab config and writes a
+// cloak-flavoured copy: it sets browsers.default, browser.binary, and the
+// browser.cloak block. The fingerprint seed mirrors scripts/lib/smoke-config.sh.
+func writeCloakConfig(src, dst string) error {
+	return rewriteProviderConfig(src, dst, "cloak", func(cfg map[string]any) {
+		browser, _ := cfg["browser"].(map[string]any)
+		if browser == nil {
+			browser = map[string]any{}
+		}
+		browser["binary"] = "/opt/cloakbrowser/chrome"
+		browser["cloak"] = map[string]any{
+			"fingerprintSeed":           "42069",
+			"platform":                  "linux",
+			"locale":                    "en-US",
+			"timezone":                  "UTC",
+			"disableDefaultStealthArgs": true,
+		}
+		cfg["browser"] = browser
+	})
+}
+
 // writeGhostChromeConfig reads a chrome-flavoured pinchtab config and writes a
 // ghost-chrome-flavoured copy: it sets browsers.default to "ghost-chrome" and
 // configVersion to prevent the startup wizard from overwriting it. No binary or
 // cloak block changes — ghost-chrome uses Chrome under the hood.
 func writeGhostChromeConfig(src, dst string) error {
-	raw, err := os.ReadFile(src) // #nosec G304 -- src is constrained to tests/e2e/config/*.json.
-	if err != nil {
-		return err
-	}
-	var cfg map[string]any
-	if err := json.Unmarshal(raw, &cfg); err != nil {
-		return fmt.Errorf("parse: %w", err)
-	}
-
-	cfg["configVersion"] = "0.8.0"
-	browsers, _ := cfg["browsers"].(map[string]any)
-	if browsers == nil {
-		browsers = map[string]any{}
-	}
-	browsers["default"] = "ghost-chrome"
-	cfg["browsers"] = browsers
-
-	out, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal: %w", err)
-	}
-	return os.WriteFile(dst, append(out, '\n'), 0o644) // #nosec G306 -- read-only config fixture.
+	return rewriteProviderConfig(src, dst, "ghost-chrome", nil)
 }
 
 // writeConfigOnlyComposeOverride writes a compose override that mounts
@@ -415,9 +403,7 @@ func writeProviderComposeOverride(path string, configs map[string]string, fixtur
 	for _, svc := range pinchtabServiceTable {
 		configPath, ok := configs[svc.configName]
 		if !ok {
-			// No config generated (probably renamed); skip silently — the
-			// service will fail at startup and surface a clear error.
-			continue
+			return fmt.Errorf("provider %q override: service %q has no generated config %q (renamed or removed fixture in tests/e2e/config?)", provider, svc.name, svc.configName)
 		}
 		svcImage := stockPinchtabImage
 		if provider == "cloak" && !svc.keepStockProvider {

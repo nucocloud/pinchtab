@@ -13,8 +13,6 @@ type BinaryDiscovery struct {
 	Probed []string
 }
 
-// DiscoverBinary returns the first executable found via PATH then fallback
-// paths; Probed lists every location inspected for diagnostic messages.
 func DiscoverBinary(names, paths []string) BinaryDiscovery {
 	var probed []string
 	for _, name := range names {

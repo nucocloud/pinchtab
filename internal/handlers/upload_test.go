@@ -49,6 +49,28 @@ func (m *recordingUploadBridge) SetFileInputFiles(_ context.Context, nodeID int6
 	return nil
 }
 
+type failingSelectorUploadBridge struct {
+	mockBridge
+}
+
+func (failingSelectorUploadBridge) ResolveSelectorToNodeID(context.Context, string) (int64, error) {
+	return 0, fmt.Errorf("no element matches selector")
+}
+
+// A selector that doesn't resolve to a file input is a client error (4xx),
+// not a 500 — consistent with the other element-targeting handlers.
+func TestHandleUpload_SelectorNotFoundIs404(t *testing.T) {
+	tmpDir := t.TempDir()
+	h := New(&failingSelectorUploadBridge{}, &config.RuntimeConfig{AllowUpload: true, StateDir: tmpDir}, nil, nil, nil)
+	req := httptest.NewRequest("POST", "/upload?tabId=t1", bytes.NewReader([]byte(`{"files":["aGVsbG8="]}`)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h.HandleUpload(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for unresolved selector, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestHandleUpload_BadJSON(t *testing.T) {
 	h := New(&mockBridge{}, &config.RuntimeConfig{AllowUpload: true}, nil, nil, nil)
 	req := httptest.NewRequest("POST", "/upload", bytes.NewReader([]byte("not json")))
@@ -253,7 +275,6 @@ func TestHandleTabUpload_NoTab(t *testing.T) {
 
 func TestHandleUpload_BodyTooLarge(t *testing.T) {
 	h := New(&mockBridge{}, &config.RuntimeConfig{AllowUpload: true}, nil, nil, nil)
-	// Create a body larger than 10MB
 	bigBody := make([]byte, 11<<20) // 11MB
 	req := httptest.NewRequest("POST", "/upload", bytes.NewReader(bigBody))
 	req.Header.Set("Content-Type", "application/json")
@@ -265,7 +286,6 @@ func TestHandleUpload_BodyTooLarge(t *testing.T) {
 }
 
 func TestDecodeFileData_DataURL(t *testing.T) {
-	// 1x1 red PNG as data URL
 	input := "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=="
 	data, ext, err := decodeFileData(input)
 	if err != nil {
@@ -277,14 +297,12 @@ func TestDecodeFileData_DataURL(t *testing.T) {
 	if len(data) == 0 {
 		t.Error("expected non-empty data")
 	}
-	// Check PNG magic bytes
 	if data[0] != 0x89 || data[1] != 'P' {
 		t.Error("expected PNG magic bytes")
 	}
 }
 
 func TestDecodeFileData_RawBase64(t *testing.T) {
-	// 1x1 red PNG as raw base64
 	input := "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=="
 	data, ext, err := decodeFileData(input)
 	if err != nil {
@@ -460,7 +478,8 @@ func TestNewCleansStaleUploadStagingDirs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_ = New(&mockBridge{}, &config.RuntimeConfig{StateDir: tmpDir}, nil, nil, nil)
+	h := New(&mockBridge{}, &config.RuntimeConfig{StateDir: tmpDir}, nil, nil, nil)
+	h.StartBackgroundCleanup()
 
 	deadline := time.Now().Add(500 * time.Millisecond)
 	for {

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -13,7 +14,6 @@ import (
 	"github.com/pinchtab/pinchtab/internal/config/geo"
 )
 
-// ValidationError represents a configuration validation error.
 type ValidationError struct {
 	Field   string
 	Message string
@@ -414,83 +414,61 @@ func validateCloakBrowserConfigAt(fieldPrefix string, cloak CloakBrowserConfig) 
 	return errs
 }
 
+// Enumerated config option sets are defined exactly once here; both the
+// isValid* membership checks and the exported Valid*() lists derive from these
+// slices so the two can't drift apart.
+var (
+	cloakPlatforms     = []string{"windows", "macos", "linux"}
+	stealthLevels      = []string{"light", "medium", "full"}
+	evictionPolicies   = []string{"reject", "close_oldest", "close_lru"}
+	lifecyclePolicies  = []string{"keep", "close_idle"}
+	strategies         = []string{"simple", "explicit", "simple-autorestart", "always-on", "no-instance"}
+	allocationPolicies = []string{"fcfs", "round_robin", "random"}
+	attachSchemes      = []string{"ws", "wss", "http", "https"}
+)
+
 func isValidCloakPlatform(platform string) bool {
-	switch strings.ToLower(strings.TrimSpace(platform)) {
-	case "windows", "macos", "linux":
-		return true
-	default:
-		return false
-	}
+	return slices.Contains(cloakPlatforms, strings.ToLower(strings.TrimSpace(platform)))
 }
 
 func isValidStealthLevel(level string) bool {
-	switch level {
-	case "light", "medium", "full":
-		return true
-	default:
-		return false
-	}
+	return slices.Contains(stealthLevels, level)
 }
 
 func isValidEvictionPolicy(policy string) bool {
-	switch policy {
-	case "reject", "close_oldest", "close_lru":
-		return true
-	default:
-		return false
-	}
+	return slices.Contains(evictionPolicies, policy)
 }
 
 func isValidLifecyclePolicy(policy string) bool {
-	switch policy {
-	case "keep", "close_idle":
-		return true
-	default:
-		return false
-	}
+	return slices.Contains(lifecyclePolicies, policy)
 }
 
 func ValidLifecyclePolicies() []string {
-	return []string{"keep", "close_idle"}
+	return slices.Clone(lifecyclePolicies)
 }
 
 func isValidStrategy(strategy string) bool {
-	switch strategy {
-	case "simple", "explicit", "simple-autorestart", "always-on", "no-instance":
-		return true
-	default:
-		return false
-	}
+	return slices.Contains(strategies, strategy)
 }
 
 func isValidAllocationPolicy(policy string) bool {
-	switch policy {
-	case "fcfs", "round_robin", "random":
-		return true
-	default:
-		return false
-	}
+	return slices.Contains(allocationPolicies, policy)
 }
 
 func isValidAttachScheme(scheme string) bool {
-	switch scheme {
-	case "ws", "wss", "http", "https":
-		return true
-	default:
-		return false
-	}
+	return slices.Contains(attachSchemes, scheme)
 }
 
 func ValidStealthLevels() []string {
-	return []string{"light", "medium", "full"}
+	return slices.Clone(stealthLevels)
 }
 
 func ValidEvictionPolicies() []string {
-	return []string{"reject", "close_oldest", "close_lru"}
+	return slices.Clone(evictionPolicies)
 }
 
 func ValidStrategies() []string {
-	return []string{"simple", "explicit", "simple-autorestart", "always-on", "no-instance"}
+	return slices.Clone(strategies)
 }
 
 // validateIDPIConfig validates the security.idpi sub-section.
@@ -591,17 +569,14 @@ func validatePositiveIntLimit(field string, value *int, max int) []error {
 	return nil
 }
 
-// ValidAllocationPolicies returns all valid allocation policy values.
 func ValidAllocationPolicies() []string {
-	return []string{"fcfs", "round_robin", "random"}
+	return slices.Clone(allocationPolicies)
 }
 
-// ValidAttachSchemes returns all valid attach URL schemes.
 func ValidAttachSchemes() []string {
-	return []string{"ws", "wss", "http", "https"}
+	return slices.Clone(attachSchemes)
 }
 
-// validateBrowsersBlock validates the top-level browsers configuration block.
 func validateBrowsersBlock(fc FileConfig) []error {
 	bc := fc.Browsers
 	if bc.Default == "" && len(bc.Available) == 0 && len(bc.Config) == 0 {
@@ -627,8 +602,9 @@ func validateBrowsersBlock(fc FileConfig) []error {
 
 	if bc.Default != "" && len(bc.Available) > 0 {
 		found := false
+		wantDefault := strings.ToLower(strings.TrimSpace(bc.Default))
 		for _, name := range bc.Available {
-			if name == bc.Default {
+			if strings.ToLower(strings.TrimSpace(name)) == wantDefault {
 				found = true
 				break
 			}

@@ -9,7 +9,6 @@ import (
 	_ "github.com/pinchtab/pinchtab/internal/browsers/all"
 )
 
-// handleStub always returns DecisionHandle with empty reason.
 type handleStub struct{}
 
 func (handleStub) ID() string                                                  { return "handle-stub" }
@@ -33,7 +32,6 @@ func (handleStub) CanHandle(_ browsers.RequestIntent) browsers.HandleDecision {
 }
 func (handleStub) NewRuntimeInstance(_ context.Context, _ bool) browsers.RuntimeInstance { return nil }
 
-// skipStub always returns DecisionSkip with a fixed reason.
 type skipStub struct{}
 
 func (skipStub) ID() string                                                  { return "skip-stub" }
@@ -57,7 +55,6 @@ func (skipStub) CanHandle(_ browsers.RequestIntent) browsers.HandleDecision {
 }
 func (skipStub) NewRuntimeInstance(_ context.Context, _ bool) browsers.RuntimeInstance { return nil }
 
-// failStub always returns DecisionFail with a fixed reason.
 type failStub struct{}
 
 func (failStub) ID() string                                                  { return "fail-stub" }
@@ -81,7 +78,6 @@ func (failStub) CanHandle(_ browsers.RequestIntent) browsers.HandleDecision {
 }
 func (failStub) NewRuntimeInstance(_ context.Context, _ bool) browsers.RuntimeInstance { return nil }
 
-// Registration guards -- each stub is registered exactly once.
 var (
 	registerHandleOnce sync.Once
 	registerSkipOnce   sync.Once

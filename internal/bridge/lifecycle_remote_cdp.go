@@ -9,11 +9,9 @@ import (
 	"github.com/chromedp/chromedp"
 	bridgeruntime "github.com/pinchtab/pinchtab/internal/bridge/runtime"
 	"github.com/pinchtab/pinchtab/internal/config"
-	"github.com/pinchtab/pinchtab/internal/ids"
 	internalurls "github.com/pinchtab/pinchtab/internal/urls"
 )
 
-// ensureRemoteCDPLocked attaches to an external browser via CDP URL.
 // Caller must hold b.initMu. No profile lock, no launched process; Cleanup
 // cancels PinchTab-owned contexts only.
 func (b *Bridge) ensureRemoteCDPLocked(cfg *config.RuntimeConfig) error {
@@ -35,22 +33,7 @@ func (b *Bridge) ensureRemoteCDPLocked(cfg *config.RuntimeConfig) error {
 	b.initialized = true
 	b.stealthLaunchMode = launchMode
 
-	if b.IdMgr == nil {
-		b.IdMgr = ids.NewManager()
-	}
-	if b.LogStore == nil {
-		b.LogStore = NewConsoleLogStore(1000)
-	}
-	if b.TabManager == nil {
-		b.TabManager = NewTabManager(browserCtx, cfg, b.IdMgr, b.LogStore, b.tabSetup)
-		b.SetOnAfterClose(func() { go b.SaveState() })
-		b.SetDialogManager(b.Dialogs)
-		b.SetNetworkMonitor(b.netMonitor)
-		b.SetRouteManager(b.routeMgr)
-	}
-	if b.Actions == nil {
-		b.InitActionRegistry()
-	}
+	b.reinitWiring(browserCtx, reinitWiringOpts{initActionRegistry: true})
 
 	if err := b.ensureAtLeastOnePageTarget(browserCtx); err != nil {
 		slog.Warn("failed to ensure a page target on remote CDP", "err", err)

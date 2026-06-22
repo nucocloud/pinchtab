@@ -14,7 +14,6 @@ import (
 	"github.com/pinchtab/pinchtab/internal/browsers/chrome"
 )
 
-// Browser implements browsers.Browser as a stub over Chrome.
 type Browser struct {
 	chrome chrome.Browser
 }
@@ -30,8 +29,8 @@ func (b Browser) DiscoverBinary() browsers.BinaryDiscovery {
 	return b.chrome.DiscoverBinary()
 }
 
-func (b *Browser) DoctorChecks(_ browsers.TargetConfig) []browsers.DoctorCheck {
-	return []browsers.DoctorCheck{
+func (b Browser) DoctorChecks(cfg browsers.TargetConfig) []browsers.DoctorCheck {
+	checks := []browsers.DoctorCheck{
 		{
 			ID:          "handle_decisions",
 			Description: "Verify ghost-chrome handle/skip behavior and state-changing safety",
@@ -77,6 +76,17 @@ func (b *Browser) DoctorChecks(_ browsers.TargetConfig) []browsers.DoctorCheck {
 			},
 		},
 	}
+
+	// ghost-chrome escalates to Chrome for any rendered/visual/interactive work,
+	// so a missing Chrome binary must be diagnosed up front. Reuse Chrome's own
+	// chrome_present check rather than duplicating its discovery/version logic.
+	for _, c := range b.chrome.DoctorChecks(cfg) {
+		if c.ID == "chrome_present" {
+			checks = append([]browsers.DoctorCheck{c}, checks...)
+			break
+		}
+	}
+	return checks
 }
 
 func (b Browser) BuildLaunchArgs(cfg browsers.LaunchConfig) ([]string, []string, error) {
@@ -113,12 +123,16 @@ func ghostCanHandle(intent browsers.RequestIntent) browsers.HandleDecision {
 	}
 }
 
-func (b *Browser) CanHandle(intent browsers.RequestIntent) browsers.HandleDecision {
+func (b Browser) CanHandle(intent browsers.RequestIntent) browsers.HandleDecision {
 	return ghostCanHandle(intent)
 }
 
 func (Browser) NewRuntimeInstance(browserCtx context.Context, headless bool) browsers.RuntimeInstance {
 	return NewInstance(browserCtx, headless)
 }
+
+// All methods use value receivers (consistent with chrome/cloak), so the value
+// type satisfies the interface; the pointer registered below does too.
+var _ browsers.Browser = Browser{}
 
 func init() { browsers.Register(&Browser{}) }

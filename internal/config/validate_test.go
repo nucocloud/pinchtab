@@ -639,6 +639,19 @@ func TestValidEnumValues(t *testing.T) {
 			t.Errorf("ValidAttachSchemes contains %q but isValidAttachScheme returns false", scheme)
 		}
 	}
+
+	for _, policy := range ValidLifecyclePolicies() {
+		if !isValidLifecyclePolicy(policy) {
+			t.Errorf("ValidLifecyclePolicies contains %q but isValidLifecyclePolicy returns false", policy)
+		}
+	}
+
+	// Known-bad values must be rejected by every membership check.
+	if isValidStealthLevel("bogus") || isValidEvictionPolicy("bogus") ||
+		isValidStrategy("bogus") || isValidAllocationPolicy("bogus") ||
+		isValidAttachScheme("bogus") || isValidLifecyclePolicy("bogus") {
+		t.Error("a bogus value was accepted by a membership check")
+	}
 }
 
 // TestValidateIDPIConfig_Disabled verifies that a disabled IDPI config produces
@@ -653,8 +666,6 @@ func TestValidateIDPIConfig_Disabled(t *testing.T) {
 	}
 }
 
-// TestValidateIDPIConfig_ValidConfig verifies that a well-formed enabled config
-// produces no errors.
 func TestValidateIDPIConfig_ValidConfig(t *testing.T) {
 	errs := validateIDPIConfig(IDPIConfig{
 		Enabled:        true,
@@ -665,8 +676,6 @@ func TestValidateIDPIConfig_ValidConfig(t *testing.T) {
 	}
 }
 
-// TestValidateIDPIConfig_EmptyDomain verifies that an empty or whitespace-only
-// domain pattern is rejected.
 func TestValidateIDPIConfig_EmptyDomain(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -691,8 +700,6 @@ func TestValidateIDPIConfig_EmptyDomain(t *testing.T) {
 	}
 }
 
-// TestValidateIDPIConfig_DomainWithInternalWhitespace verifies that a domain
-// pattern containing internal spaces is rejected.
 func TestValidateIDPIConfig_DomainWithInternalWhitespace(t *testing.T) {
 	errs := validateIDPIConfig(IDPIConfig{
 		Enabled: true,
@@ -913,8 +920,6 @@ func TestValidateFileConfig_AutoSolverValidation(t *testing.T) {
 	}
 }
 
-// TestValidateIDPIConfig_EmptyCustomPattern verifies that an empty or
-// whitespace-only custom pattern is rejected.
 func TestValidateIDPIConfig_EmptyCustomPattern(t *testing.T) {
 	cases := []string{"", "  ", "\t"}
 	for _, p := range cases {

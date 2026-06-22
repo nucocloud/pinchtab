@@ -78,8 +78,9 @@ func (o *Orchestrator) registerHandlers(mux *http.ServeMux, skipLaunch bool) {
 	mux.HandleFunc("GET /instances/{id}/tabs", o.handleInstanceTabs)
 	mux.HandleFunc("POST /instances/{id}/tabs/open", o.handleInstanceTabOpen)
 	mux.HandleFunc("POST /instances/{id}/tab", o.proxyToInstance)
-	registerCapabilityRoute(mux, "GET /instances/{id}/proxy/screencast", o.AllowsScreencast(), "screencast", "security.allowScreencast", "screencast_disabled", o.handleProxyScreencast)
-	registerCapabilityRoute(mux, "GET /instances/{id}/screencast", o.AllowsScreencast(), "screencast", "security.allowScreencast", "screencast_disabled", o.proxyToInstance)
+	screencastMeta, _ := routes.Meta(routes.CapScreencast)
+	registerCapabilityRoute(mux, "GET /instances/{id}/proxy/screencast", o.Allows(routes.CapScreencast), screencastMeta.Label, screencastMeta.Setting, screencastMeta.DisabledCode, o.handleProxyScreencast)
+	registerCapabilityRoute(mux, "GET /instances/{id}/screencast", o.Allows(routes.CapScreencast), screencastMeta.Label, screencastMeta.Setting, screencastMeta.DisabledCode, o.proxyToInstance)
 
 	// Tab operations - generic proxy (all route to the appropriate instance).
 	// Sourced from the shared route catalogue to stay in sync with bridge and strategy.
@@ -87,36 +88,13 @@ func (o *Orchestrator) registerHandlers(mux *http.ServeMux, skipLaunch bool) {
 		mux.HandleFunc(route, o.proxyTabRequest)
 	}
 	for cap, eps := range routes.TabScopedCapabilityRoutes() {
-		var enabled bool
-		var feature, setting, code string
-		switch cap {
-		case routes.CapEvaluate:
-			enabled = o.AllowsEvaluate()
-			feature, setting, code = "evaluate", "security.allowEvaluate", "evaluate_disabled"
-		case routes.CapDownload:
-			enabled = o.AllowsDownload()
-			feature, setting, code = "download", "security.allowDownload", "download_disabled"
-		case routes.CapCookies:
-			enabled = o.AllowsCookies()
-			feature, setting, code = "cookies", "security.allowCookies", "cookies_disabled"
-		case routes.CapUpload:
-			enabled = o.AllowsUpload()
-			feature, setting, code = "upload", "security.allowUpload", "upload_disabled"
-		case routes.CapScreencast:
-			enabled = o.AllowsScreencast()
-			feature, setting, code = "screencast", "security.allowScreencast", "screencast_disabled"
-		case routes.CapMacro:
-			enabled = o.AllowsMacro()
-			feature, setting, code = "macro", "security.allowMacro", "macro_disabled"
-		case routes.CapStateExport:
-			enabled = o.AllowsStateExport()
-			feature, setting, code = "stateExport", "security.allowStateExport", "state_export_disabled"
-		case routes.CapNetworkIntercept:
-			enabled = o.AllowsNetworkIntercept()
-			feature, setting, code = "networkIntercept", "security.allowNetworkIntercept", "network_intercept_disabled"
+		meta, ok := routes.Meta(cap)
+		if !ok {
+			continue
 		}
+		enabled := o.Allows(cap)
 		for _, ep := range eps {
-			registerCapabilityRoute(mux, ep.TabRoute(), enabled, feature, setting, code, o.proxyTabRequest)
+			registerCapabilityRoute(mux, ep.TabRoute(), enabled, meta.Label, meta.Setting, meta.DisabledCode, o.proxyTabRequest)
 		}
 	}
 

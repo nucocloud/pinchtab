@@ -93,6 +93,36 @@ func TestWriteCloakComposeOverrideMountsExtensionFixtures(t *testing.T) {
 	}
 }
 
+func TestWriteProviderComposeOverrideFailsOnMissingConfig(t *testing.T) {
+	tmp := t.TempDir()
+	fixturesDir := filepath.Join(tmp, "fixtures")
+	outPath := filepath.Join(tmp, "docker-compose.cloak.yml")
+
+	// Full config set minus one entry: a renamed/removed fixture must fail the
+	// override build, not be silently dropped.
+	configs := map[string]string{
+		"pinchtab.json":                       filepath.Join(tmp, "pinchtab.json"),
+		"pinchtab-autoclose.json":             filepath.Join(tmp, "pinchtab-autoclose.json"),
+		"pinchtab-medium-permissive.json":     filepath.Join(tmp, "pinchtab-medium-permissive.json"),
+		"pinchtab-full-permissive.json":       filepath.Join(tmp, "pinchtab-full-permissive.json"),
+		"pinchtab-network-retain-bodies.json": filepath.Join(tmp, "pinchtab-network-retain-bodies.json"),
+		"pinchtab-ghostchrome.json":           filepath.Join(tmp, "pinchtab-ghostchrome.json"),
+		"pinchtab-bridge.json":                filepath.Join(tmp, "pinchtab-bridge.json"),
+		// "pinchtab-secure.json" intentionally omitted.
+	}
+
+	err := writeCloakComposeOverride(outPath, configs, fixturesDir, defaultCloakImage)
+	if err == nil {
+		t.Fatal("expected error for missing service config, got nil")
+	}
+	if !strings.Contains(err.Error(), "pinchtab-secure") {
+		t.Fatalf("error should name the missing service/config, got: %v", err)
+	}
+	if _, statErr := os.Stat(outPath); statErr == nil {
+		t.Fatalf("override file should not be written when generation fails: %s", outPath)
+	}
+}
+
 func TestEnsureCloakImageBuildsByDefault(t *testing.T) {
 	tmp := t.TempDir()
 	logPath := filepath.Join(tmp, "docker.log")

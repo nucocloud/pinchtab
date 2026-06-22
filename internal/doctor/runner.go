@@ -80,18 +80,13 @@ func Registry(cfg *config.RuntimeConfig) []CheckEntry {
 
 	browserID := config.NormalizeBrowser(browserFromCfg(cfg))
 	if b, ok := browsers.Get(browserID); ok {
-		env := buildDoctorEnv(cfg)
+		env := doctorEnvForBrowser(cfg, browserID)
 		for _, dc := range b.DoctorChecks(browsers.TargetConfig{Provider: browserID}) {
 			dc := dc
 			entries = append(entries, CheckEntry{
 				Name: dc.ID,
 				Fn: func(ctx context.Context, _ *config.RuntimeConfig) CheckResult {
-					r := dc.Fn(ctx, env)
-					return CheckResult{
-						Status: mapDoctorStatus(r.Status),
-						Detail: r.Detail,
-						Err:    r.Err,
-					}
+					return browserCheckResult(ctx, dc, env)
 				},
 			})
 		}
@@ -108,8 +103,22 @@ func Registry(cfg *config.RuntimeConfig) []CheckEntry {
 }
 
 func browserFromCfg(cfg *config.RuntimeConfig) string {
+	return defaultBrowserForDoctor(cfg)
+}
+
+// defaultBrowserForDoctor mirrors launch-time resolution: when targets are
+// configured, the default target's provider is what actually launches, so the
+// doctor must check/flag that — not the raw browsers.default (which the config
+// store keeps verbatim). Falls back to cfg.DefaultBrowser when no targets are
+// configured or the default target can't be resolved.
+func defaultBrowserForDoctor(cfg *config.RuntimeConfig) string {
 	if cfg == nil {
 		return ""
+	}
+	if len(cfg.Targets) > 0 {
+		if resolved, err := config.ResolveDefaultBrowserTarget(cfg); err == nil && resolved != nil && resolved.Provider != "" {
+			return config.NormalizeBrowser(resolved.Provider)
+		}
 	}
 	return cfg.DefaultBrowser
 }
@@ -126,6 +135,20 @@ func mapDoctorStatus(s browsers.DoctorStatus) CheckStatus {
 		return StatusSkip
 	default:
 		return StatusSkip
+	}
+}
+
+// browserCheckResult runs one provider DoctorCheck against env and maps it to a
+// CheckResult, shared by the registry (`doctor --check`) and ReportBrowsers
+// (`doctor browser`) paths so check translation can't drift between them.
+func browserCheckResult(ctx context.Context, dc browsers.DoctorCheck, env *browsers.DoctorEnv) CheckResult {
+	r := dc.Fn(ctx, env)
+	return CheckResult{
+		Name:   dc.ID,
+		Status: mapDoctorStatus(r.Status),
+		Detail: r.Detail,
+		Err:    r.Err,
+		ErrMsg: errMsg(r.Err),
 	}
 }
 

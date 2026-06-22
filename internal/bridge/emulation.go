@@ -7,15 +7,6 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
-// ViewportParams holds parameters for setting the browser viewport.
-type ViewportParams struct {
-	Width             int64
-	Height            int64
-	DeviceScaleFactor float64
-	Mobile            bool
-}
-
-// SetViewport sets the browser viewport dimensions via CDP emulation.
 func (b *Bridge) SetViewport(ctx context.Context, params ViewportParams) error {
 	return chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		return emulation.SetDeviceMetricsOverride(params.Width, params.Height, params.DeviceScaleFactor, params.Mobile).
@@ -25,7 +16,6 @@ func (b *Bridge) SetViewport(ctx context.Context, params ViewportParams) error {
 	}))
 }
 
-// SetGeolocation overrides the browser geolocation via CDP emulation.
 func (b *Bridge) SetGeolocation(ctx context.Context, lat, lng, accuracy float64) error {
 	return chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		return emulation.SetGeolocationOverride().
@@ -36,7 +26,6 @@ func (b *Bridge) SetGeolocation(ctx context.Context, lat, lng, accuracy float64)
 	}))
 }
 
-// SetEmulatedMedia emulates a CSS media feature via CDP.
 func (b *Bridge) SetEmulatedMedia(ctx context.Context, feature, value string) error {
 	return chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		return emulation.SetEmulatedMedia().

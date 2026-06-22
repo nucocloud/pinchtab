@@ -74,34 +74,18 @@ func (h *Handlers) handleInspect(w http.ResponseWriter, r *http.Request, kind in
 	tabID := r.URL.Query().Get("tabId")
 	h.recordReadRequest(r, string(kind), tabID)
 
-	if err := h.ensureBrowser(h.Config); err != nil {
-		if h.writeBridgeUnavailable(w, err) {
-			return
-		}
-		httpx.Error(w, 500, fmt.Errorf("browser initialization: %w", err))
+	if !h.ensureBrowserOrRespond(w, h.Config) {
 		return
 	}
 
-	ctx, resolvedTabID, err := h.tabContextWithHeader(w, r, tabID)
-	if err != nil {
-		WriteTabContextError(w, err, 404)
-		return
-	}
-	if _, ok := h.enforceCurrentTabDomainPolicy(w, r, ctx, resolvedTabID); !ok {
+	resolvedTabID, tCtx, cancel, ok := h.resolveReadContext(w, r, tabID, h.Config.ActionTimeout)
+	if !ok {
 		return
 	}
 	defer h.armAutoCloseIfEnabled(resolvedTabID)
+	defer cancel()
 
-	tCtx, tCancel := context.WithTimeout(ctx, h.Config.ActionTimeout)
-	defer tCancel()
-	go httpx.CancelOnClientDone(r.Context(), tCancel)
-
-	targetFrameID := r.URL.Query().Get("frameId")
-	if targetFrameID == "" {
-		if scope, ok := h.currentFrameScope(resolvedTabID); ok {
-			targetFrameID = scope.FrameID
-		}
-	}
+	targetFrameID := h.resolveTargetFrameID(r, resolvedTabID)
 
 	payload, err := h.inspectPayload(tCtx, resolvedTabID, targetFrameID, r.URL.Query().Get("selector"), r.URL.Query().Get("ref"), kind)
 	if err != nil {
@@ -169,19 +153,27 @@ func inspectDocumentExpression(kind inspectKind) string {
 			return {
 				title: doc.title || "",
 				url: String(doc.location ? doc.location.href : win.location.href),
-				html: doc.documentElement ? doc.documentElement.outerHTML : "",
 				styles
 			};
 		})()`
-	default:
+	case inspectKindHTML:
 		return `(() => {
 			const doc = document;
 			const win = doc.defaultView || window;
 			return {
 				title: doc.title || "",
 				url: String(doc.location ? doc.location.href : win.location.href),
-				html: doc.documentElement ? doc.documentElement.outerHTML : "",
-				styles: {}
+				html: doc.documentElement ? doc.documentElement.outerHTML : ""
+			};
+		})()`
+	default:
+		// title / url: no outerHTML, no computed styles.
+		return `(() => {
+			const doc = document;
+			const win = doc.defaultView || window;
+			return {
+				title: doc.title || "",
+				url: String(doc.location ? doc.location.href : win.location.href)
 			};
 		})()`
 	}
@@ -236,7 +228,7 @@ func inspectFunctionDeclaration(kind inspectKind) string {
 				styles,
 			};
 		}`
-	default:
+	case inspectKindHTML:
 		return `function() {
 			const el = this;
 			const doc = el.ownerDocument || document;
@@ -245,6 +237,17 @@ func inspectFunctionDeclaration(kind inspectKind) string {
 				title: doc.title || '',
 				url: String(doc.location ? doc.location.href : win.location.href),
 				html: el.outerHTML || '',
+			};
+		}`
+	default:
+		// title / url: no outerHTML.
+		return `function() {
+			const el = this;
+			const doc = el.ownerDocument || document;
+			const win = doc.defaultView || window;
+			return {
+				title: doc.title || '',
+				url: String(doc.location ? doc.location.href : win.location.href),
 			};
 		}`
 	}

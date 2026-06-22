@@ -238,7 +238,6 @@ func TestAgentSessionAPI_Revoke(t *testing.T) {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
 	}
 
-	// Token should no longer authenticate
 	if sess, ok := store.Authenticate(token); ok || sess != nil {
 		t.Fatal("expected token to be invalidated after revoke")
 	}
@@ -334,7 +333,6 @@ func TestAgentSessionAPI_Create_WithBrowser(t *testing.T) {
 		t.Fatalf("browser = %q, want chrome", resp["browser"])
 	}
 
-	// Verify stored session also has the browser
 	id, ok := resp["id"].(string)
 	if !ok || id == "" {
 		t.Fatal("expected id in response")

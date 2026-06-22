@@ -192,6 +192,42 @@ func (r *Runner) printPlanHeader() {
 	_, _ = fmt.Fprintln(r.stdout, "")
 }
 
+// stackPlanRun configures a shared-stack suite run for bringUpAndRunPlans.
+type stackPlanRun struct {
+	stack string
+	plans []suitePlan
+	// restartAfter returns the services to restart after the plan at index i of
+	// n (nil/empty = no restart), letting each caller encode its own timing.
+	restartAfter func(plan suitePlan, index, total int) []string
+}
+
+// bringUpAndRunPlans builds+starts the shared stack for the plans' services,
+// then runs each plan in order, restarting services per cfg.restartAfter
+// between plans and printing a blank line after each. It returns per-plan exit
+// codes keyed by def.Name (only non-zero codes are stored), whether any restart
+// returned non-zero, and a non-zero setupCode if bringup failed. It does NOT
+// tear down the stack — the caller owns teardown semantics.
+func (r *Runner) bringUpAndRunPlans(cfg stackPlanRun) (codes map[string]int, restartFailed bool, setupCode int) {
+	services := servicesForPlans(cfg.plans, []string{"pinchtab", "fixtures"})
+	if code := r.bringUpSharedStack(cfg.stack, services); code != 0 {
+		return nil, false, code
+	}
+
+	codes = map[string]int{}
+	for i, plan := range cfg.plans {
+		if code := r.runSinglePlanWithCompose(plan, cfg.stack); code != 0 {
+			codes[plan.def.Name] = code
+		}
+		if svcs := cfg.restartAfter(plan, i, len(cfg.plans)); len(svcs) > 0 {
+			if rc := r.restartSharedStack(cfg.stack, svcs); rc != 0 {
+				restartFailed = true
+			}
+		}
+		_, _ = fmt.Fprintln(r.stdout, "")
+	}
+	return codes, restartFailed, 0
+}
+
 func (r *Runner) runBasic() int {
 	stack := singleCompose
 	exitCodes := map[string]int{"api": 0, "cli": 0, "infra": 0}
@@ -205,17 +241,21 @@ func (r *Runner) runBasic() int {
 		return 1
 	}
 
-	if code := r.bringUpSharedStack(stack, servicesForPlans(plans, []string{"pinchtab", "fixtures"})); code != 0 {
+	codes, _, setupCode := r.bringUpAndRunPlans(stackPlanRun{
+		stack: stack,
+		plans: plans,
+		restartAfter: func(suitePlan, int, int) []string {
+			return nil
+		},
+	})
+	if setupCode != 0 {
 		_ = r.composeDown(stack)
-		return code
+		return setupCode
 	}
 	defer r.composeDown(stack)
 
-	for _, plan := range plans {
-		if code := r.runSinglePlanWithCompose(plan, stack); code != 0 {
-			exitCodes[plan.def.Name] = code
-		}
-		_, _ = fmt.Fprintln(r.stdout, "")
+	for name, code := range codes {
+		exitCodes[name] = code
 	}
 
 	if exitCodes["api"] != 0 || exitCodes["cli"] != 0 || exitCodes["infra"] != 0 {
@@ -247,23 +287,24 @@ func (r *Runner) runExtended() int {
 		return 1
 	}
 
-	if code := r.bringUpSharedStack(stack, servicesForPlans(plans, []string{"pinchtab", "fixtures"})); code != 0 {
+	codes, _, setupCode := r.bringUpAndRunPlans(stackPlanRun{
+		stack: stack,
+		plans: plans,
+		restartAfter: func(plan suitePlan, _, _ int) []string {
+			if plan.def.Name == "cli-extended" || plan.def.Name == "infra-extended" {
+				return []string{"pinchtab"}
+			}
+			return nil
+		},
+	})
+	if setupCode != 0 {
 		_ = r.composeDown(stack)
-		return code
+		return setupCode
 	}
 	defer r.composeDown(stack)
 
-	for _, plan := range plans {
-		if code := r.runSinglePlanWithCompose(plan, stack); code != 0 {
-			exitCodes[plan.def.Name] = code
-			if plan.def.Name == "plugin" {
-				exitCodes["plugin"] = code
-			}
-		}
-		if plan.def.Name == "cli-extended" || plan.def.Name == "infra-extended" {
-			_ = r.restartSharedStack(stack, []string{"pinchtab"})
-		}
-		_, _ = fmt.Fprintln(r.stdout, "")
+	for name, code := range codes {
+		exitCodes[name] = code
 	}
 
 	if exitCodes["api-extended"] != 0 || exitCodes["cli-extended"] != 0 || exitCodes["infra-extended"] != 0 || exitCodes["plugin"] != 0 {
@@ -300,21 +341,25 @@ func (r *Runner) runSmoke() int {
 
 	failed := false
 	if len(plans) > 0 {
-		if code := r.bringUpSharedStack(stack, servicesForPlans(plans, []string{"pinchtab", "fixtures"})); code != 0 {
-			_ = r.composeDown(stack)
-			return code
-		}
-
-		for i, plan := range plans {
-			if code := r.runSinglePlanWithCompose(plan, stack); code != 0 {
-				failed = true
-			}
-			if plan.def.Name == "cli-smoke" && i < len(plans)-1 {
-				if code := r.restartSharedStack(stack, []string{"pinchtab"}); code != 0 {
-					failed = true
+		codes, restartFailed, setupCode := r.bringUpAndRunPlans(stackPlanRun{
+			stack: stack,
+			plans: plans,
+			restartAfter: func(plan suitePlan, i, n int) []string {
+				if plan.def.Name == "cli-smoke" && i < n-1 {
+					return []string{"pinchtab"}
 				}
-			}
-			_, _ = fmt.Fprintln(r.stdout, "")
+				return nil
+			},
+		})
+		if setupCode != 0 {
+			_ = r.composeDown(stack)
+			return setupCode
+		}
+		if len(codes) > 0 {
+			failed = true
+		}
+		if restartFailed {
+			failed = true
 		}
 		if code := r.composeDown(stack); code != 0 {
 			failed = true

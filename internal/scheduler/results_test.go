@@ -5,6 +5,27 @@ import (
 	"time"
 )
 
+func TestResultStoreGetReturnsCopy(t *testing.T) {
+	rs := NewResultStore(5 * time.Minute)
+	rs.Store(&Task{ID: "tsk_1", AgentID: "a1", State: StateDone, Params: map[string]any{"a": 1}})
+
+	got := rs.Get("tsk_1")
+	if got == nil {
+		t.Fatal("expected to find stored task")
+	}
+	// Mutating the returned task must not change stored state.
+	got.AgentID = "mutated"
+	got.Params["a"] = 999
+
+	again := rs.Get("tsk_1")
+	if again.AgentID != "a1" {
+		t.Errorf("stored AgentID = %q, want a1 (Get returned a live pointer)", again.AgentID)
+	}
+	if again.Params["a"] != 1 {
+		t.Errorf("stored Params[a] = %v, want 1 (Get returned shared map)", again.Params["a"])
+	}
+}
+
 func TestResultStoreStoreAndGet(t *testing.T) {
 	rs := NewResultStore(5 * time.Minute)
 

@@ -11,7 +11,6 @@ import (
 	"io"
 )
 
-// Run is the entry point dispatched from runner main.
 func Run(argv []string, stdout, stderr io.Writer) int {
 	if len(argv) == 0 {
 		_, _ = fmt.Fprintln(stderr, "usage: runner stealth <compare> [args...]")

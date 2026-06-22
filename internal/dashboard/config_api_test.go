@@ -81,6 +81,61 @@ func TestNewConfigAPISnapshotsBootConfigFromFile(t *testing.T) {
 	}
 }
 
+// TestCurrentConfigCachesByMtime verifies currentConfig serves the cached snapshot
+// while the file mtime is unchanged and reloads only when the mtime advances.
+func TestCurrentConfigCachesByMtime(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("PINCHTAB_CONFIG", configPath)
+
+	if err := os.WriteFile(configPath, []byte(`{"server":{"port":"8888"}}`), 0644); err != nil {
+		t.Fatalf("WriteFile A: %v", err)
+	}
+	info, err := os.Stat(configPath)
+	if err != nil {
+		t.Fatalf("Stat: %v", err)
+	}
+	origMtime := info.ModTime()
+
+	api := NewConfigAPI(config.Load(), nil, nil, nil, nil, "test", time.Now())
+
+	cfg, _, _, err := api.currentConfig()
+	if err != nil {
+		t.Fatalf("currentConfig A: %v", err)
+	}
+	if cfg.Server.Port != "8888" {
+		t.Fatalf("port = %q, want 8888", cfg.Server.Port)
+	}
+
+	// Rewrite with different content but FORCE the same mtime: the cache must serve
+	// the stale snapshot (proving it did not re-read the file).
+	if err := os.WriteFile(configPath, []byte(`{"server":{"port":"9999"}}`), 0644); err != nil {
+		t.Fatalf("WriteFile B: %v", err)
+	}
+	if err := os.Chtimes(configPath, origMtime, origMtime); err != nil {
+		t.Fatalf("Chtimes same: %v", err)
+	}
+	cfg, _, _, err = api.currentConfig()
+	if err != nil {
+		t.Fatalf("currentConfig cached: %v", err)
+	}
+	if cfg.Server.Port != "8888" {
+		t.Fatalf("port = %q, want 8888 (cached; same mtime should not reload)", cfg.Server.Port)
+	}
+
+	// Advance the mtime: the cache must invalidate and reload the new content.
+	later := origMtime.Add(2 * time.Second)
+	if err := os.Chtimes(configPath, later, later); err != nil {
+		t.Fatalf("Chtimes later: %v", err)
+	}
+	cfg, _, _, err = api.currentConfig()
+	if err != nil {
+		t.Fatalf("currentConfig reload: %v", err)
+	}
+	if cfg.Server.Port != "9999" {
+		t.Fatalf("port = %q, want 9999 (mtime changed → reload)", cfg.Server.Port)
+	}
+}
+
 func TestRestartReasonsIncludeStealthLevel(t *testing.T) {
 	cfg := config.DefaultFileConfig()
 	api := NewConfigAPI(config.Load(), nil, nil, nil, nil, "test", time.Now())

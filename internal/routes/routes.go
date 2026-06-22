@@ -21,6 +21,37 @@ const (
 	CapNetworkIntercept Capability = "networkIntercept"
 )
 
+// CapabilityMeta is the single source of truth for a capability gate's
+// HTTP-facing metadata: the human label used in messages, the config path that
+// enables it, and the stable error code returned when it is disabled. These
+// strings are part of the API contract (clients string-match the code), so they
+// are declared explicitly here rather than derived, and consumed by both the
+// bridge handlers and the orchestrator instead of being restated at each gate.
+type CapabilityMeta struct {
+	Capability   Capability
+	Label        string // message label, e.g. "evaluate"
+	Setting      string // config path, e.g. "security.allowEvaluate"
+	DisabledCode string // error code when disabled, e.g. "evaluate_disabled"
+}
+
+var capabilityMeta = map[Capability]CapabilityMeta{
+	CapEvaluate:         {CapEvaluate, "evaluate", "security.allowEvaluate", "evaluate_disabled"},
+	CapMacro:            {CapMacro, "macro", "security.allowMacro", "macro_disabled"},
+	CapScreencast:       {CapScreencast, "screencast", "security.allowScreencast", "screencast_disabled"},
+	CapDownload:         {CapDownload, "download", "security.allowDownload", "download_disabled"},
+	CapCookies:          {CapCookies, "cookies", "security.allowCookies", "cookies_disabled"},
+	CapUpload:           {CapUpload, "upload", "security.allowUpload", "upload_disabled"},
+	CapStateExport:      {CapStateExport, "stateExport", "security.allowStateExport", "state_export_disabled"},
+	CapNetworkIntercept: {CapNetworkIntercept, "networkIntercept", "security.allowNetworkIntercept", "network_intercept_disabled"},
+}
+
+// Meta returns the gate metadata for a capability. The second result is false
+// for CapNone or any capability without registered metadata.
+func Meta(cap Capability) (CapabilityMeta, bool) {
+	m, ok := capabilityMeta[cap]
+	return m, ok
+}
+
 // Endpoint describes a single API route.
 type Endpoint struct {
 	Method     string     // HTTP method: "GET", "POST"

@@ -184,6 +184,9 @@ func handleScreenshot(c *Client) func(context.Context, mcp.CallToolRequest) (*mc
 		if browser := optString(r, "browser"); browser != "" {
 			q.Set("browser", browser)
 		}
+		// Always request the inline base64 envelope screenshotResult parses,
+		// rather than relying on the server's default output mode.
+		q.Set("output", "inline")
 		body, code, err := c.Get(ctx, "/screenshot", q)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil

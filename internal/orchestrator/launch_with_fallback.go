@@ -69,7 +69,6 @@ type ResolvedLaunchTarget struct {
 	Provider string
 }
 
-// LaunchOutcome is the terminal state observed for a launched attempt.
 type LaunchOutcome struct {
 	Status string
 	Reason LaunchFailureReason
@@ -132,6 +131,13 @@ func (p LaunchPlanner) LaunchWithFallback(
 		firstFailTarget string
 		firstFailReason LaunchFailureReason
 	)
+	recordAttempt := func(i int, candidate string, reason LaunchFailureReason) {
+		attempts = append(attempts, fallbackAttempt{target: candidate, reason: reason})
+		if i == 0 {
+			firstFailTarget = candidate
+			firstFailReason = reason
+		}
+	}
 
 	for i, candidate := range candidates {
 		resolved, err := p.Launcher.ResolveTarget(candidate)
@@ -146,11 +152,7 @@ func (p LaunchPlanner) LaunchWithFallback(
 		inst, launchErr := p.Launcher.Launch(name, port, headless, attemptOpts)
 		if launchErr != nil {
 			reason := ClassifyLaunchFailure(launchErr)
-			attempts = append(attempts, fallbackAttempt{target: candidate, reason: reason})
-			if i == 0 {
-				firstFailTarget = candidate
-				firstFailReason = reason
-			}
+			recordAttempt(i, candidate, reason)
 			if !IsRecoverable(reason) {
 				return nil, fallbackExhaustedError(attempts, fmt.Errorf(
 					"launch with fallback: candidate %q failed non-recoverably (%s): %w",
@@ -160,8 +162,7 @@ func (p LaunchPlanner) LaunchWithFallback(
 			continue
 		}
 		if inst == nil {
-			reason := ReasonUnknown
-			attempts = append(attempts, fallbackAttempt{target: candidate, reason: reason})
+			recordAttempt(i, candidate, ReasonUnknown)
 			return nil, fallbackExhaustedError(attempts, fmt.Errorf(
 				"launch with fallback: candidate %q returned nil instance",
 				candidate,
@@ -171,11 +172,14 @@ func (p LaunchPlanner) LaunchWithFallback(
 		outcome, waitErr := p.Launcher.WaitForLaunchOutcome(inst.ID, timeout)
 		if waitErr != nil {
 			reason := ClassifyLaunchFailure(waitErr)
-			attempts = append(attempts, fallbackAttempt{target: candidate, reason: reason})
+			recordAttempt(i, candidate, reason)
 			p.Launcher.TearDownFailedAttempt(inst.ID)
-			return nil, fallbackExhaustedError(attempts, fmt.Errorf(
-				"launch with fallback: wait for %q: %w", candidate, waitErr,
-			))
+			if !IsRecoverable(reason) {
+				return nil, fallbackExhaustedError(attempts, fmt.Errorf(
+					"launch with fallback: wait for %q: %w", candidate, waitErr,
+				))
+			}
+			continue
 		}
 
 		if outcome.Status == "running" {
@@ -187,11 +191,7 @@ func (p LaunchPlanner) LaunchWithFallback(
 			return result, nil
 		}
 
-		attempts = append(attempts, fallbackAttempt{target: candidate, reason: outcome.Reason})
-		if i == 0 {
-			firstFailTarget = candidate
-			firstFailReason = outcome.Reason
-		}
+		recordAttempt(i, candidate, outcome.Reason)
 
 		if !IsRecoverable(outcome.Reason) {
 			p.Launcher.TearDownFailedAttempt(inst.ID)
@@ -207,8 +207,6 @@ func (p LaunchPlanner) LaunchWithFallback(
 	return nil, fallbackExhaustedError(attempts, nil)
 }
 
-// LaunchWithFallback tries candidates in order, tearing down recoverable failures before moving on.
-// Returns *UnknownBrowserError for invalid names, *FallbackExhaustedError when all candidates fail.
 func (o *Orchestrator) LaunchWithFallback(
 	name, port string, headless bool,
 	primaryAndFallbacks []string,
@@ -439,7 +437,6 @@ func (o *Orchestrator) cleanupDetachedFailedAttemptProfile(profileName, browser 
 	o.cleanupStoppedProfile(profileName, browser)
 }
 
-// dedupCandidates trims whitespace, drops empty/duplicate entries, preserves order.
 func dedupCandidates(in []string) []string {
 	out := make([]string, 0, len(in))
 	seen := make(map[string]struct{}, len(in))

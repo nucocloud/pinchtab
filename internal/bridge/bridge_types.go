@@ -15,9 +15,9 @@ type TabEntry struct {
 	Ctx                   context.Context
 	Cancel                context.CancelFunc
 	Accessed              bool
-	CDPID                 string    // raw CDP target ID
-	CreatedAt             time.Time // when the tab was first created/registered
-	LastUsed              time.Time // last time the tab was accessed via TabContext
+	CDPID                 string // raw CDP target ID
+	CreatedAt             time.Time
+	LastUsed              time.Time
 	Policy                TabPolicyState
 	Watching              bool
 	ConsoleCaptureEnabled bool
@@ -92,8 +92,6 @@ func (s FrameScope) Active() bool {
 	return s.FrameID != ""
 }
 
-// NavigateResult is the bridge-level response from a navigation, carrying
-// route metadata alongside the tab/URL/title information.
 type NavigateResult struct {
 	TabID string
 	URL   string
@@ -117,7 +115,6 @@ type SnapshotResult struct {
 	Route       *browserops.RouteMetadata
 }
 
-// TextResult is the bridge-level response from a text extraction operation.
 type TextResult struct {
 	Text        string
 	URL         string
@@ -127,7 +124,6 @@ type TextResult struct {
 	Route       *browserops.RouteMetadata
 }
 
-// NavigateParams carries per-request security policy for navigation.
 type NavigateParams struct {
 	MaxRedirects       int
 	AllowInternal      bool
@@ -157,7 +153,6 @@ func (e *StaticEscalateError) Error() string {
 	return fmt.Sprintf("static path cannot serve this navigate (quality %d): %s", e.Quality, e.Reason)
 }
 
-// ContentParams carries per-request IDPI policy for content operations.
 type ContentParams struct {
 	ContentGuard *contentguard.Scanner
 	MaxDepth     int // max AX tree depth for snapshots; 0 or -1 means unlimited

@@ -18,7 +18,6 @@ Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" |
 Where-Object { $_.CommandLine -and $_.CommandLine.Contains($needle) } |
 Select-Object -ExpandProperty ProcessId`
 
-// findPIDsByPowerShell finds Chrome PIDs whose command line contains the needle.
 func findPIDsByPowerShell(needle string) []int {
 	cmd := exec.Command("powershell", "-NoProfile", "-Command", findPIDsByPowerShellScript)
 	cmd.Env = append(os.Environ(), "PINCHTAB_NEEDLE="+needle)
@@ -43,7 +42,6 @@ func findPIDsByPowerShell(needle string) []int {
 	return pids
 }
 
-// taskkillPIDs force-kills processes and their children via taskkill /F /T.
 func taskkillPIDs(pids []int) int {
 	killed := 0
 	for _, pid := range pids {
@@ -63,7 +61,6 @@ func findChromePIDsByProfileDir(profileDir string) []int {
 	return findPIDsByPowerShell(fmt.Sprintf("--user-data-dir=%s", profileDir))
 }
 
-// killChromeByProfileDir finds and kills Chrome processes using the given profile directory.
 func killChromeByProfileDir(profileDir string) int {
 	pids := findChromePIDsByProfileDirFunc(profileDir)
 	if len(pids) == 0 {
@@ -72,7 +69,7 @@ func killChromeByProfileDir(profileDir string) int {
 	return taskkillPIDs(pids)
 }
 
-// terminateChromeByProfileDir: taskkill without /F (no SIGKILL escalation).
+// taskkill without /F (no SIGKILL escalation).
 func terminateChromeByProfileDir(profileDir string) int {
 	pids := findChromePIDsByProfileDirFunc(profileDir)
 	if len(pids) == 0 {
@@ -87,7 +84,6 @@ func terminateChromeByProfileDir(profileDir string) int {
 	return len(pids)
 }
 
-// KillAllPinchtabChrome kills all Chrome processes spawned by PinchTab.
 func KillAllPinchtabChrome() int {
 	var pids []int
 	seen := make(map[int]bool)
@@ -110,7 +106,6 @@ func KillAllPinchtabChrome() int {
 	return killed
 }
 
-// CleanupOrphanedChromeProcesses kills orphaned Chrome processes on Windows.
 func CleanupOrphanedChromeProcesses(profileDir string) {
 	if profileDir == "" {
 		return

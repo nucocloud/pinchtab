@@ -10,11 +10,10 @@ import (
 	bridgetabs "github.com/pinchtab/pinchtab/internal/bridge/tabs"
 	"github.com/pinchtab/pinchtab/internal/cdptk"
 	"github.com/pinchtab/pinchtab/internal/config"
+	"github.com/pinchtab/pinchtab/internal/runtimetypes"
 	"github.com/pinchtab/pinchtab/internal/stealth"
 )
 
-// TabTarget is a bridge-level representation of a browser tab/target,
-// decoupling handlers from the cdproto/target package.
 type TabTarget struct {
 	TargetID string `json:"targetId"`
 	URL      string `json:"url"`
@@ -24,7 +23,6 @@ type TabTarget struct {
 
 var ErrBrowserDraining = errors.New("browser restart in progress; retry shortly")
 
-// BridgeAPI abstracts browser tab operations for handler testing.
 type BridgeAPI interface {
 	BrowserContext() context.Context
 	TabContext(tabID string) (ctx *TabHandle, resolvedID string, err error)
@@ -36,7 +34,6 @@ type BridgeAPI interface {
 	// ScheduleAutoClose (re)arms the per-tab idle close timer when the
 	// lifecycle policy is "close_idle". No-op otherwise.
 	ScheduleAutoClose(tabID string)
-	// CancelAutoClose stops the per-tab idle close timer if any.
 	CancelAutoClose(tabID string)
 
 	GetRefCache(tabID string) *RefCache
@@ -71,7 +68,6 @@ type BridgeAPI interface {
 
 	NetworkMonitor() *NetworkMonitor
 
-	// Network request interception (Fetch domain).
 	AddRouteRule(tabID string, rule RouteRule) error
 	RemoveRouteRule(tabID, pattern string) (int, error)
 	ListRouteRules(tabID string) ([]RouteRule, error)
@@ -105,7 +101,6 @@ type BridgeAPI interface {
 	// frame's execution context. If frameID is empty, behaves like Evaluate.
 	EvaluateInFrame(ctx context.Context, frameID string, expression string, result any, opts EvalOpts) error
 
-	// DescribeNode returns DOM structural info for a backend node ID.
 	DescribeNode(ctx context.Context, backendNodeID int64) (*NodeInfo, error)
 
 	CaptureScreenshot(ctx context.Context, format string, quality int, clip *cdptk.ScreenshotClip) ([]byte, error)
@@ -131,12 +126,16 @@ type BridgeAPI interface {
 
 	DownloadURL(ctx context.Context, dlURL string, opts DownloadOpts) (*DownloadResult, error)
 
-	// HTTP auth credentials (Fetch domain)
 	EnableFetchWithAuth(ctx context.Context) error
 	DisableFetch(ctx context.Context) error
 	ListenAuthRequired(ctx context.Context, handler func(requestID string, isAuth bool))
 	ContinueWithAuth(ctx context.Context, requestID, username, password string) error
 	ContinueRequest(ctx context.Context, requestID string) error
+	// SetFetchPauseSuppressed toggles per-tab suppression of the proxy-auth
+	// listener's blanket ContinueRequest while the credentials handler owns
+	// request-pause dispatch. Declared here (not probed) so decorated bridges
+	// forward it instead of silently dropping the suppression contract.
+	SetFetchPauseSuppressed(tabID string, v bool)
 
 	GoBack(ctx context.Context) (didNavigate bool, err error)
 	GoForward(ctx context.Context) (didNavigate bool, err error)
@@ -144,15 +143,12 @@ type BridgeAPI interface {
 
 	WaitVisible(ctx context.Context, selector string) error
 
-	// Navigation policy (network guard)
 	EnableNetwork(ctx context.Context) error
 	ListenNetworkEvents(ctx context.Context, handler NetworkEventHandler)
 
-	// State: cookie restore
 	SetRawCookie(ctx context.Context, params RawSetCookieParams) error
 	GetRawCookies(ctx context.Context) ([]RawCookie, error)
 
-	// Stealth: fingerprint rotation
 	SetUserAgentOverride(ctx context.Context, params UserAgentOverrideParams) error
 	SetLocaleOverride(ctx context.Context, locale string) error
 	SetTimezoneOverride(ctx context.Context, timezoneID string) error
@@ -160,49 +156,26 @@ type BridgeAPI interface {
 	AddScriptToEvaluateOnNewDocument(ctx context.Context, source string) (string, error)
 }
 
-// EvalOpts configures JavaScript evaluation behavior.
-type EvalOpts struct {
-	AwaitPromise bool
-}
-
-// NodeInfo holds DOM structural info returned by DescribeNode.
-type NodeInfo struct {
-	LocalName      string
-	Attributes     []string
-	ChildNodeCount int
-}
-
-// ScreencastOpts configures a screencast stream.
-type ScreencastOpts struct {
-	Quality       int // 1-100, default 30
-	MaxWidth      int // pixels, default 800
-	MaxHeight     int // pixels, default 600
-	EveryNthFrame int // frame skipping for event mode, default 4
-	FPS           int // frames per second (caps at 30), default 1
-}
-
-// ScreencastStream delivers decoded binary JPEG frames over a channel.
-type ScreencastStream struct {
-	Frames <-chan []byte
-	done   chan struct{}
-	closer func()
-}
-
-// Close stops the screencast and releases resources.
-func (s *ScreencastStream) Close() {
-	select {
-	case <-s.done:
-	default:
-		close(s.done)
-	}
-	if s.closer != nil {
-		s.closer()
-	}
-}
+// Browser-runtime DTOs are defined once in internal/runtimetypes and aliased
+// here so bridge and the browsers RuntimeInstance speak one set of structs.
+// Construct ScreencastStream via runtimetypes.NewScreencastStreamWithDone (the
+// bridge screencast loop owns and closes the done channel itself).
+type (
+	EvalOpts          = runtimetypes.EvalOpts
+	NodeInfo          = runtimetypes.NodeInfo
+	ScreencastOpts    = runtimetypes.ScreencastOpts
+	ScreencastStream  = runtimetypes.ScreencastStream
+	CookieData        = runtimetypes.CookieData
+	SetCookieParams   = runtimetypes.SetCookieParams
+	ViewportParams    = runtimetypes.ViewportParams
+	NetworkConditions = runtimetypes.NetworkConditions
+	DownloadOpts      = runtimetypes.DownloadOpts
+	DownloadResult    = runtimetypes.DownloadResult
+	PDFParams         = runtimetypes.PDFParams
+)
 
 type LockInfo = bridgetabs.LockInfo
 
-// NetworkEventHandler receives network events for navigation guards.
 type NetworkEventHandler struct {
 	OnRequestWillBeSent func(frameID, requestID string, resourceType string)
 	OnResponseReceived  func(requestID string, remoteIPAddress string)
@@ -220,7 +193,6 @@ type RawSetCookieParams struct {
 	SameSite string // "Strict", "Lax", "None", or ""
 }
 
-// RawCookie represents a raw cookie from the CDP network domain.
 type RawCookie struct {
 	Name     string  `json:"name"`
 	Value    string  `json:"value"`
@@ -232,14 +204,12 @@ type RawCookie struct {
 	SameSite string  `json:"sameSite"`
 }
 
-// UserAgentOverrideParams holds parameters for user agent override.
 type UserAgentOverrideParams struct {
 	UserAgent      string
 	Platform       string
 	AcceptLanguage string
 }
 
-// DeviceMetricsOverrideParams holds parameters for device metrics override.
 type DeviceMetricsOverrideParams struct {
 	Width             int64
 	Height            int64
@@ -249,7 +219,6 @@ type DeviceMetricsOverrideParams struct {
 	ScreenHeight      int64
 }
 
-// ProfileService abstracts profile management operations.
 type ProfileService interface {
 	RegisterHandlers(mux *http.ServeMux)
 	List() ([]ProfileInfo, error)
@@ -262,7 +231,6 @@ type ProfileService interface {
 	RecordAction(profile string, record ActionRecord)
 }
 
-// OrchestratorService abstracts instance orchestration operations.
 type OrchestratorService interface {
 	RegisterHandlers(mux *http.ServeMux)
 	Launch(name, port string, headless bool, extensionPaths []string) (*Instance, error)
@@ -281,8 +249,8 @@ type OrchestratorService interface {
 type ProfileInfo struct {
 	ID                string    `json:"id,omitempty"`
 	Name              string    `json:"name"`
-	Path              string    `json:"path,omitempty"`       // File system path to profile directory
-	PathExists        bool      `json:"pathExists,omitempty"` // Whether the path exists on disk
+	Path              string    `json:"path,omitempty"`
+	PathExists        bool      `json:"pathExists,omitempty"`
 	Created           time.Time `json:"created"`
 	LastUsed          time.Time `json:"lastUsed"`
 	DiskUsage         int64     `json:"diskUsage"`

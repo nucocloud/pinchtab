@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/pinchtab/pinchtab/internal/activity"
 	"github.com/pinchtab/pinchtab/internal/httpx"
 	"github.com/pinchtab/pinchtab/internal/orchestrator"
 	"github.com/pinchtab/pinchtab/internal/strategy"
@@ -57,22 +56,11 @@ func (s *Strategy) proxyToFirst(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, status, err)
 		return
 	}
-	activity.EnrichRouteActivity(r)
-	strategy.EnrichForTarget(r, s.orch, target)
-	s.orch.ProxyToTarget(w, r, target+r.URL.Path)
+	strategy.EnrichAndProxy(s.orch, w, r, target)
 }
 
 func (s *Strategy) handleTabs(w http.ResponseWriter, r *http.Request) {
-	target, status, err := s.orch.FirstRunningURLForRequest(r)
-	if err != nil {
-		httpx.Error(w, status, err)
-		return
-	}
-	if target == "" {
-		httpx.JSON(w, 200, map[string]any{"tabs": []any{}})
-		return
-	}
-	s.orch.ProxyToTarget(w, r, target+"/tabs")
+	strategy.ProxyTabsToFirst(s.orch, w, r)
 }
 
 // ensureRunning returns the URL of a running instance, auto-launching one if needed.

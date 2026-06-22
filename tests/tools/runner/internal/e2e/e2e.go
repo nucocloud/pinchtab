@@ -59,7 +59,6 @@ func Run(argv []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	// Matrix mode: run once per provider, tearing down between each.
 	if len(args.Providers) > 1 {
 		return runProviderMatrix(args, stdout, stderr)
 	}
@@ -72,8 +71,6 @@ func Run(argv []string, stdout, stderr io.Writer) int {
 	return r.Run()
 }
 
-// runProviderMatrix iterates over each provider in args.Providers, runs
-// the full suite for that provider, and reports a combined result.
 func runProviderMatrix(args Args, stdout, stderr io.Writer) int {
 	_, _ = fmt.Fprintf(stdout, "runner e2e (Go) - browser matrix: %s\n\n",
 		strings.Join(args.Providers, ", "))
@@ -207,8 +204,8 @@ func ParseArgs(argv []string) (Args, error) {
 	return args, nil
 }
 
-// resolveProviderList expands the --browser value into a deduplicated
-// ordered list.  "all" expands to ["chrome","cloak","ghost-chrome"].
+// resolveProviderList expands "all" to ["chrome","cloak","ghost-chrome"];
+// otherwise dedupes the comma-separated list, preserving order.
 func resolveProviderList(raw string) []string {
 	if raw == "all" {
 		return []string{"chrome", "cloak", "ghost-chrome"}

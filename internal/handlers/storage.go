@@ -1,10 +1,8 @@
 package handlers
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -13,6 +11,7 @@ import (
 
 	"github.com/pinchtab/pinchtab/internal/activity"
 	"github.com/pinchtab/pinchtab/internal/httpx"
+	"github.com/pinchtab/pinchtab/internal/routes"
 )
 
 // HandleStorage dispatches to the appropriate storage operation based on HTTP method.
@@ -38,10 +37,50 @@ func (h *Handlers) ensureStateExportEnabled(w http.ResponseWriter) bool {
 	if h.stateExportEnabled() {
 		return true
 	}
-	httpx.ErrorCode(w, 403, "state_export_disabled", httpx.DisabledEndpointMessage("stateExport", "security.allowStateExport"), false, map[string]any{
-		"setting": "security.allowStateExport",
-	})
+	h.writeCapabilityDisabled(w, routes.CapStateExport)
 	return false
+}
+
+// runStorageOp resolves the current tab, runs the storage script under a 10s
+// timeout, decodes the JSON result, records activity + logs, and writes the
+// response. It writes any error response and returns. opLabel is the error/log
+// infix ("get"/"set"/"delete"); activityAction is the recordActivity action;
+// logType/logKey are the structured-log values.
+func (h *Handlers) runStorageOp(w http.ResponseWriter, r *http.Request, tabID, script, opLabel, activityAction, logType, logKey string) {
+	ctx, resolvedTabID, err := h.tabContext(r, tabID)
+	if err != nil {
+		WriteTabContextError(w, err, 404)
+		return
+	}
+	if _, ok := h.enforceCurrentTabDomainPolicy(w, r, ctx, resolvedTabID); !ok {
+		return
+	}
+
+	tCtx, tCancel := context.WithTimeout(ctx, 10*time.Second)
+	defer tCancel()
+
+	var resultJSON string
+	if err := h.evalJS(tCtx, script, &resultJSON); err != nil {
+		httpx.Error(w, 500, fmt.Errorf("evaluate storage %s: %w", opLabel, err))
+		return
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal([]byte(resultJSON), &result); err != nil {
+		httpx.Error(w, 500, fmt.Errorf("parse storage %s result: %w", opLabel, err))
+		return
+	}
+
+	h.recordActivity(r, activity.Update{Action: activityAction})
+
+	slog.Info("storage: "+opLabel,
+		"type", logType,
+		"key", logKey,
+		"tabId", resolvedTabID,
+		"remoteAddr", r.RemoteAddr,
+	)
+
+	httpx.JSON(w, 200, result)
 }
 
 // handleStorageGet retrieves localStorage and/or sessionStorage items.
@@ -58,42 +97,8 @@ func (h *Handlers) handleStorageGet(w http.ResponseWriter, r *http.Request) {
 	storageType := r.URL.Query().Get("type")
 	key := r.URL.Query().Get("key")
 
-	ctx, resolvedTabID, err := h.tabContext(r, tabID)
-	if err != nil {
-		WriteTabContextError(w, err, 404)
-		return
-	}
-	if _, ok := h.enforceCurrentTabDomainPolicy(w, r, ctx, resolvedTabID); !ok {
-		return
-	}
-
-	tCtx, tCancel := context.WithTimeout(ctx, 10*time.Second)
-	defer tCancel()
-
 	script := buildStorageGetScript(storageType, key)
-
-	var resultJSON string
-	if err := h.evalJS(tCtx, script, &resultJSON); err != nil {
-		httpx.Error(w, 500, fmt.Errorf("evaluate storage get: %w", err))
-		return
-	}
-
-	var result map[string]interface{}
-	if err := json.Unmarshal([]byte(resultJSON), &result); err != nil {
-		httpx.Error(w, 500, fmt.Errorf("parse storage result: %w", err))
-		return
-	}
-
-	h.recordActivity(r, activity.Update{Action: "storage.read"})
-
-	slog.Info("storage: get",
-		"type", storageType,
-		"key", key,
-		"tabId", resolvedTabID,
-		"remoteAddr", r.RemoteAddr,
-	)
-
-	httpx.JSON(w, 200, result)
+	h.runStorageOp(w, r, tabID, script, "get", "storage.read", storageType, key)
 }
 
 type storageSetRequest struct {
@@ -127,18 +132,6 @@ func (h *Handlers) handleStorageSet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, resolvedTabID, err := h.tabContext(r, req.TabID)
-	if err != nil {
-		WriteTabContextError(w, err, 404)
-		return
-	}
-	if _, ok := h.enforceCurrentTabDomainPolicy(w, r, ctx, resolvedTabID); !ok {
-		return
-	}
-
-	tCtx, tCancel := context.WithTimeout(ctx, 10*time.Second)
-	defer tCancel()
-
 	storageObj := "localStorage"
 	if req.Type == "session" {
 		storageObj = "sessionStorage"
@@ -156,28 +149,7 @@ func (h *Handlers) handleStorageSet(w http.ResponseWriter, r *http.Request) {
 		}
 	`, storageObj, string(keyJSON), string(valueJSON))
 
-	var resultJSON string
-	if err := h.evalJS(tCtx, script, &resultJSON); err != nil {
-		httpx.Error(w, 500, fmt.Errorf("evaluate storage set: %w", err))
-		return
-	}
-
-	var result map[string]interface{}
-	if err := json.Unmarshal([]byte(resultJSON), &result); err != nil {
-		httpx.Error(w, 500, fmt.Errorf("parse storage set result: %w", err))
-		return
-	}
-
-	h.recordActivity(r, activity.Update{Action: "storage.write"})
-
-	slog.Info("storage: set",
-		"type", req.Type,
-		"key", req.Key,
-		"tabId", resolvedTabID,
-		"remoteAddr", r.RemoteAddr,
-	)
-
-	httpx.JSON(w, 200, result)
+	h.runStorageOp(w, r, req.TabID, script, "set", "storage.write", req.Type, req.Key)
 }
 
 // handleStorageDelete removes a storage item or clears storage.
@@ -220,42 +192,8 @@ func (h *Handlers) handleStorageDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, resolvedTabID, err := h.tabContext(r, req.TabID)
-	if err != nil {
-		WriteTabContextError(w, err, 404)
-		return
-	}
-	if _, ok := h.enforceCurrentTabDomainPolicy(w, r, ctx, resolvedTabID); !ok {
-		return
-	}
-
-	tCtx, tCancel := context.WithTimeout(ctx, 10*time.Second)
-	defer tCancel()
-
 	script := buildStorageDeleteScript(req.Type, req.Key)
-
-	var resultJSON string
-	if err := h.evalJS(tCtx, script, &resultJSON); err != nil {
-		httpx.Error(w, 500, fmt.Errorf("evaluate storage delete: %w", err))
-		return
-	}
-
-	var result map[string]interface{}
-	if err := json.Unmarshal([]byte(resultJSON), &result); err != nil {
-		httpx.Error(w, 500, fmt.Errorf("parse storage delete result: %w", err))
-		return
-	}
-
-	h.recordActivity(r, activity.Update{Action: "storage.delete"})
-
-	slog.Info("storage: delete",
-		"type", req.Type,
-		"key", req.Key,
-		"tabId", resolvedTabID,
-		"remoteAddr", r.RemoteAddr,
-	)
-
-	httpx.JSON(w, 200, result)
+	h.runStorageOp(w, r, req.TabID, script, "delete", "storage.delete", req.Type, req.Key)
 }
 
 // buildStorageGetScript builds a JS expression that reads from localStorage
@@ -419,105 +357,19 @@ func buildStorageDeleteScript(storageType, key string) string {
 //
 // @Endpoint GET /tabs/{id}/storage
 func (h *Handlers) HandleTabStorageGet(w http.ResponseWriter, r *http.Request) {
-	tabID := r.PathValue("id")
-	if tabID == "" {
-		httpx.Error(w, 400, fmt.Errorf("tab id required"))
-		return
-	}
-
-	q := r.URL.Query()
-	q.Set("tabId", tabID)
-
-	req := r.Clone(r.Context())
-	u := *r.URL
-	u.RawQuery = q.Encode()
-	req.URL = &u
-
-	h.handleStorageGet(w, req)
+	h.withPathTabID(w, r, h.handleStorageGet)
 }
 
 // HandleTabStorageSet sets a storage item for a tab identified by path ID.
 //
 // @Endpoint POST /tabs/{id}/storage
 func (h *Handlers) HandleTabStorageSet(w http.ResponseWriter, r *http.Request) {
-	tabID := r.PathValue("id")
-	if tabID == "" {
-		httpx.Error(w, 400, fmt.Errorf("tab id required"))
-		return
-	}
-
-	body := map[string]any{}
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodySize))
-	if err := dec.Decode(&body); err != nil && !errors.Is(err, io.EOF) {
-		httpx.Error(w, 400, fmt.Errorf("decode: %w", err))
-		return
-	}
-
-	if rawTabID, ok := body["tabId"]; ok {
-		if provided, ok := rawTabID.(string); !ok || provided == "" {
-			httpx.Error(w, 400, fmt.Errorf("invalid tabId"))
-			return
-		} else if provided != tabID {
-			httpx.Error(w, 400, fmt.Errorf("tabId in body does not match path id"))
-			return
-		}
-	}
-
-	body["tabId"] = tabID
-
-	payload, err := json.Marshal(body)
-	if err != nil {
-		httpx.Error(w, 500, fmt.Errorf("encode: %w", err))
-		return
-	}
-
-	req := r.Clone(r.Context())
-	req.Body = io.NopCloser(bytes.NewReader(payload))
-	req.ContentLength = int64(len(payload))
-	req.Header = r.Header.Clone()
-	req.Header.Set("Content-Type", "application/json")
-	h.handleStorageSet(w, req)
+	h.withPathTabIDBody(w, r, h.handleStorageSet)
 }
 
 // HandleTabStorageDelete deletes storage items for a tab identified by path ID.
 //
 // @Endpoint DELETE /tabs/{id}/storage
 func (h *Handlers) HandleTabStorageDelete(w http.ResponseWriter, r *http.Request) {
-	tabID := r.PathValue("id")
-	if tabID == "" {
-		httpx.Error(w, 400, fmt.Errorf("tab id required"))
-		return
-	}
-
-	body := map[string]any{}
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodySize))
-	if err := dec.Decode(&body); err != nil && !errors.Is(err, io.EOF) {
-		httpx.Error(w, 400, fmt.Errorf("decode: %w", err))
-		return
-	}
-
-	if rawTabID, ok := body["tabId"]; ok {
-		if provided, ok := rawTabID.(string); !ok || provided == "" {
-			httpx.Error(w, 400, fmt.Errorf("invalid tabId"))
-			return
-		} else if provided != tabID {
-			httpx.Error(w, 400, fmt.Errorf("tabId in body does not match path id"))
-			return
-		}
-	}
-
-	body["tabId"] = tabID
-
-	payload, err := json.Marshal(body)
-	if err != nil {
-		httpx.Error(w, 500, fmt.Errorf("encode: %w", err))
-		return
-	}
-
-	req := r.Clone(r.Context())
-	req.Body = io.NopCloser(bytes.NewReader(payload))
-	req.ContentLength = int64(len(payload))
-	req.Header = r.Header.Clone()
-	req.Header.Set("Content-Type", "application/json")
-	h.handleStorageDelete(w, req)
+	h.withPathTabIDBody(w, r, h.handleStorageDelete)
 }

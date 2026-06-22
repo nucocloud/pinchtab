@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/pinchtab/pinchtab/internal/cli"
 	"github.com/pinchtab/pinchtab/internal/cli/apiclient"
 	"github.com/pinchtab/pinchtab/internal/cli/output"
 	"github.com/spf13/cobra"
@@ -44,16 +45,15 @@ func Health(client *http.Client, base, token string, cmd *cobra.Command) {
 
 func printHealthHints(ok bool) {
 	_, _ = fmt.Fprintln(os.Stdout)
-	_, _ = fmt.Fprintln(os.Stdout, "Next steps:")
 	if ok {
-		_, _ = fmt.Fprintf(os.Stdout, "  %-64s %s\n", "export PINCHTAB_SESSION=$(pinchtab session create --agent-id <id>)", "# start a dedicated session")
-		_, _ = fmt.Fprintf(os.Stdout, "  %-64s %s\n", "pinchtab nav <url>", "# open a page in the current tab")
-		_, _ = fmt.Fprintf(os.Stdout, "  %-64s %s\n", "pinchtab snap", "# inspect interactive elements")
+		cli.WriteCommandHints(os.Stdout, "Next steps:", cli.NextStepsRunningHints, 64, false)
 		return
 	}
-	_, _ = fmt.Fprintf(os.Stdout, "  %-44s %s\n", "pinchtab daemon", "# check service status and logs")
-	_, _ = fmt.Fprintf(os.Stdout, "  %-44s %s\n", "pinchtab security", "# review security posture")
-	_, _ = fmt.Fprintf(os.Stdout, "  %-44s %s\n", "pinchtab health --json", "# full health payload")
+	cli.WriteCommandHints(os.Stdout, "Next steps:", []cli.CommandHint{
+		{Command: "pinchtab daemon", Comment: "# check service status and logs"},
+		{Command: "pinchtab security", Comment: "# review security posture"},
+		{Command: "pinchtab health --json", Comment: "# full health payload"},
+	}, 44, false)
 }
 
 func Instances(client *http.Client, base, token string, cmd *cobra.Command) {

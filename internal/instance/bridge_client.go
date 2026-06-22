@@ -34,8 +34,8 @@ func (bc *BridgeClient) FetchTabs(instanceURL string) ([]bridge.InstanceTab, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("fetch tabs: status %d", resp.StatusCode)
+	if err := statusError(resp, "fetch tabs"); err != nil {
+		return nil, err
 	}
 
 	// Bridge returns {"tabs": [...]}
@@ -64,9 +64,8 @@ func (bc *BridgeClient) CreateTab(ctx context.Context, port, url string) (string
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("create tab: status %d: %s", resp.StatusCode, respBody)
+	if err := statusError(resp, "create tab"); err != nil {
+		return "", err
 	}
 
 	var result struct {
@@ -100,9 +99,8 @@ func (bc *BridgeClient) NavigateTab(ctx context.Context, port, tabID, url string
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("navigate: status %d: %s", resp.StatusCode, respBody)
+	if err := statusError(resp, "navigate"); err != nil {
+		return err
 	}
 
 	return nil
@@ -123,8 +121,8 @@ func (bc *BridgeClient) CloseTab(ctx context.Context, port, tabID string) error 
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("close tab: status %d", resp.StatusCode)
+	if err := statusError(resp, "close tab"); err != nil {
+		return err
 	}
 	return nil
 }
@@ -232,4 +230,16 @@ func (bc *BridgeClient) ProxyToTab(w http.ResponseWriter, r *http.Request, port,
 
 func bridgeURL(port, path string) string {
 	return "http://localhost:" + port + path
+}
+
+// statusError returns a "<label>: status <code>: <body>" error when resp is not
+// 200, or nil otherwise. Centralizes the status-check + error-body read that the
+// typed bridge calls (fetch/create/navigate/close) each repeated. The caller
+// still owns closing resp.Body.
+func statusError(resp *http.Response, label string) error {
+	if resp.StatusCode == http.StatusOK {
+		return nil
+	}
+	body, _ := io.ReadAll(resp.Body)
+	return fmt.Errorf("%s: status %d: %s", label, resp.StatusCode, body)
 }

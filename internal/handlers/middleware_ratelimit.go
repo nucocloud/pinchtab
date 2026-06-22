@@ -26,7 +26,6 @@ const (
 	evictionInterval       = 30 * time.Second
 )
 
-// Operator tuning knob; children inherit it via the PINCHTAB_ env passthrough.
 var rateLimitMaxReq = func() int {
 	if v, err := strconv.Atoi(os.Getenv("PINCHTAB_RATE_LIMIT_MAX")); err == nil && v > 0 {
 		return v

@@ -31,6 +31,14 @@ func ValidateTarget(ctx context.Context, raw string, allowExplicitInternal bool,
 
 	host, hasHost := ExtractHost(raw)
 	if !hasHost {
+		// No resolvable host means the IP/SSRF checks below can't run, so a
+		// caller that relies on ValidateTarget alone would otherwise allow any
+		// scheme. Enforce scheme safety here too (defense in depth) so opaque
+		// targets like file:/data: are rejected regardless of caller ordering;
+		// scheme-less/relative inputs and about:blank still pass ValidateURL.
+		if err := ValidateURL(raw); err != nil {
+			return nil, err
+		}
 		return &ValidatedTarget{}, nil
 	}
 	if netguard.IsLocalHost(host) {

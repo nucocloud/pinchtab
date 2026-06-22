@@ -5,6 +5,9 @@ export type DashboardActivityEvent = ActivityLogEvent & {
   message?: string;
   progress?: number;
   total?: number;
+  // Numeric timestamp (Date.parse of `timestamp`), computed once at
+  // normalization so filtering/sorting never re-parses the string per render.
+  tsMs?: number;
 };
 export type DashboardActivityResponse = ActivityLogResponse;
 

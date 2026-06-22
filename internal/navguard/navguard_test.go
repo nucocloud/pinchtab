@@ -77,6 +77,46 @@ func TestValidateTarget_AllowsLocalHosts(t *testing.T) {
 	}
 }
 
+func TestParseCIDRs_DropsUnparseableKeepsValid(t *testing.T) {
+	got := ParseCIDRs([]string{
+		"10.0.0.0/8",  // valid CIDR
+		"192.168.1.1", // bare IPv4 -> /32
+		"::1",         // bare IPv6 -> /128
+		"  ",          // blank, skipped silently
+		"example.com", // hostname -> dropped (with warning)
+		"junk/99",     // invalid CIDR -> dropped
+	})
+	if len(got) != 3 {
+		t.Fatalf("ParseCIDRs returned %d nets, want 3 (valid entries only): %v", len(got), got)
+	}
+}
+
+func TestValidateTarget_RejectsNoHostUnsafeSchemes(t *testing.T) {
+	v := &Validator{}
+	for _, rawURL := range []string{
+		"file:///etc/passwd",
+		"data:text/html,<script>alert(1)</script>",
+		"javascript:alert(1)",
+	} {
+		if _, err := v.ValidateTarget(context.Background(), rawURL, false); err == nil {
+			t.Fatalf("ValidateTarget(%q) should reject no-host unsafe scheme", rawURL)
+		}
+	}
+}
+
+func TestValidateTarget_AllowsNoHostSafeInputs(t *testing.T) {
+	v := &Validator{}
+	for _, rawURL := range []string{
+		"about:blank",
+		"some/relative/path",
+		"",
+	} {
+		if _, err := v.ValidateTarget(context.Background(), rawURL, false); err != nil {
+			t.Fatalf("ValidateTarget(%q) should allow safe hostless input, got %v", rawURL, err)
+		}
+	}
+}
+
 func TestValidateTarget_RejectsPrivateLiteralIP(t *testing.T) {
 	v := &Validator{}
 	if _, err := v.ValidateTarget(context.Background(), "http://192.168.1.10/app", false); err == nil {

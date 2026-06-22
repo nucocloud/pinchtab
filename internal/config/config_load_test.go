@@ -30,7 +30,6 @@ func TestEnvOr(t *testing.T) {
 
 func TestLoadConfigDefaults(t *testing.T) {
 	clearConfigEnvVars(t)
-	// Point to non-existent config to test pure defaults
 	_ = os.Setenv("PINCHTAB_CONFIG", filepath.Join(t.TempDir(), "nonexistent.json"))
 	defer func() { _ = os.Unsetenv("PINCHTAB_CONFIG") }()
 
@@ -177,9 +176,39 @@ func TestLoadConfigDefaults(t *testing.T) {
 	}
 }
 
+// TestLoadConfigDefaultSolvers asserts the default autosolver backend list
+// advertises only the implemented backends (cloudflare + semantic) and does
+// NOT include the skeleton-only capsolver/twocaptcha external backends.
+func TestLoadConfigDefaultSolvers(t *testing.T) {
+	clearConfigEnvVars(t)
+	_ = os.Setenv("PINCHTAB_CONFIG", filepath.Join(t.TempDir(), "nonexistent.json"))
+	defer func() { _ = os.Unsetenv("PINCHTAB_CONFIG") }()
+
+	cfg := Load()
+
+	has := func(name string) bool {
+		for _, s := range cfg.AutoSolver.Solvers {
+			if s == name {
+				return true
+			}
+		}
+		return false
+	}
+
+	for _, want := range []string{"cloudflare", "semantic"} {
+		if !has(want) {
+			t.Errorf("default AutoSolver.Solvers = %v, want it to contain %q", cfg.AutoSolver.Solvers, want)
+		}
+	}
+	for _, unwanted := range []string{"capsolver", "twocaptcha"} {
+		if has(unwanted) {
+			t.Errorf("default AutoSolver.Solvers = %v, must NOT contain skeleton backend %q", cfg.AutoSolver.Solvers, unwanted)
+		}
+	}
+}
+
 func TestLoadConfigTokenEnvOverride(t *testing.T) {
 	clearConfigEnvVars(t)
-	// Point to non-existent config to isolate env var testing
 	_ = os.Setenv("PINCHTAB_CONFIG", filepath.Join(t.TempDir(), "nonexistent.json"))
 	_ = os.Setenv("PINCHTAB_TOKEN", "secret")
 	defer func() {
@@ -188,14 +217,12 @@ func TestLoadConfigTokenEnvOverride(t *testing.T) {
 	}()
 
 	cfg := Load()
-	// Port and Bind use defaults (no env var override anymore)
 	if cfg.Port != "9867" {
 		t.Errorf("default Port = %v, want 9867", cfg.Port)
 	}
 	if cfg.Bind != "127.0.0.1" {
 		t.Errorf("default Bind = %v, want 127.0.0.1", cfg.Bind)
 	}
-	// Token still supports env var override
 	if cfg.Token != "secret" {
 		t.Errorf("env Token = %v, want secret", cfg.Token)
 	}
@@ -230,7 +257,6 @@ func TestConfigFileWithNestedValues(t *testing.T) {
 		_ = os.Unsetenv("PINCHTAB_CONFIG")
 	}()
 
-	// Config file says port 8888 and strategy explicit
 	nestedConfig := `{
 		"server": {
 			"port": "8888"
@@ -352,6 +378,33 @@ func TestRuntimeConfigActivityStateDirFallsBackToStateDir(t *testing.T) {
 
 	if got := cfg.ActivityStateDir(); got != "/tmp/pinchtab-state" {
 		t.Fatalf("ActivityStateDir() = %q, want %q", got, "/tmp/pinchtab-state")
+	}
+}
+
+// When the file omits security.attach.allowHosts/allowSchemes, the seeded
+// runtime defaults must survive (not be clobbered with an empty list). A file
+// that sets them still overrides.
+func TestApplyFileConfigToRuntime_OmittedAttachListsKeepDefaults(t *testing.T) {
+	cfg := &RuntimeConfig{
+		AttachAllowHosts:   []string{"127.0.0.1", "localhost", "::1"},
+		AttachAllowSchemes: []string{"ws", "wss", "http", "https"},
+	}
+	fc := FileConfig{}
+	ApplyFileConfigToRuntime(cfg, &fc)
+
+	if strings.Join(cfg.AttachAllowSchemes, ",") != "ws,wss,http,https" {
+		t.Errorf("omitted attach.allowSchemes should keep defaults, got %v", cfg.AttachAllowSchemes)
+	}
+	if strings.Join(cfg.AttachAllowHosts, ",") != "127.0.0.1,localhost,::1" {
+		t.Errorf("omitted attach.allowHosts should keep defaults, got %v", cfg.AttachAllowHosts)
+	}
+
+	cfg2 := &RuntimeConfig{AttachAllowSchemes: []string{"ws", "wss", "http", "https"}}
+	fc2 := FileConfig{}
+	fc2.Security.Attach.AllowSchemes = []string{"https"}
+	ApplyFileConfigToRuntime(cfg2, &fc2)
+	if strings.Join(cfg2.AttachAllowSchemes, ",") != "https" {
+		t.Errorf("file attach.allowSchemes should override default, got %v", cfg2.AttachAllowSchemes)
 	}
 }
 
@@ -880,7 +933,6 @@ func TestFileConfigFromRuntime_UsesDefaultBrowser(t *testing.T) {
 		t.Errorf("FileConfigFromRuntime Browsers.Default = %q, want chrome", fc.Browsers.Default)
 	}
 
-	// Verify that the marshaled JSON also omits browser.provider
 	data, err := json.Marshal(fc)
 	if err != nil {
 		t.Fatalf("json.Marshal(FileConfig) error = %v", err)
@@ -905,7 +957,6 @@ func TestFileConfigFromRuntime_UsesDefaultBrowser(t *testing.T) {
 	}
 }
 
-// clearConfigEnvVars unsets all config-related env vars for clean tests.
 func clearConfigEnvVars(t *testing.T) {
 	t.Helper()
 	envVars := []string{
@@ -1070,7 +1121,6 @@ func TestLoadConfig_LegacyTabEvictionPolicyStillHonored(t *testing.T) {
 	if cfg.TabEvictionPolicy != "close_oldest" {
 		t.Errorf("legacy tabEvictionPolicy not honored; got %q", cfg.TabEvictionPolicy)
 	}
-	// Lifecycle defaults preserved (default is keep).
 	if cfg.TabLifecyclePolicy != "keep" {
 		t.Errorf("legacy-only config should leave lifecycle at default keep; got %q", cfg.TabLifecyclePolicy)
 	}
@@ -1115,7 +1165,6 @@ func TestLoadConfig_DefaultBrowsersNeverIncludesHighTrust(t *testing.T) {
 
 	cfg := Load()
 
-	// Default BrowsersAvailable must be exactly ["chrome"].
 	if len(cfg.BrowsersAvailable) != 1 || cfg.BrowsersAvailable[0] != "chrome" {
 		t.Fatalf("BrowsersAvailable = %v, want [chrome]", cfg.BrowsersAvailable)
 	}
@@ -1130,7 +1179,6 @@ func TestLoadConfig_DefaultBrowsersNeverIncludesHighTrust(t *testing.T) {
 		}
 	}
 
-	// Default browser must also be chrome.
 	if cfg.DefaultBrowser != "chrome" {
 		t.Errorf("DefaultBrowser = %q, want chrome", cfg.DefaultBrowser)
 	}
@@ -1198,5 +1246,50 @@ func TestApplyFileConfig_ReloadLegacyOnlyStillSynthesizesTargets(t *testing.T) {
 	}
 	if _, ok := cfg.Targets[DefaultBrowserTargetName]; !ok {
 		t.Fatalf("expected synthesized default target, got %v", cfg.Targets)
+	}
+}
+
+func hasDiagnostic(diags []LoadDiagnostic, level slog.Level, message string) bool {
+	for _, d := range diags {
+		if d.Level == level && d.Message == message {
+			return true
+		}
+	}
+	return false
+}
+
+// LoadConfig is the side-effect-free loader: it returns the config plus
+// diagnostics for the caller to log, and never logs or os.Exits itself.
+func TestLoadConfig_ValidFileReturnsConfigAndDiagnostics(t *testing.T) {
+	clearConfigEnvVars(t)
+	writeTestConfig(t, `{"server":{"port":"8888"}}`)
+
+	cfg, diags, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v, want nil", err)
+	}
+	if cfg == nil || cfg.Port != "8888" {
+		t.Fatalf("LoadConfig() Port = %v, want 8888", cfg.Port)
+	}
+	if !hasDiagnostic(diags, slog.LevelDebug, "loading config file") {
+		t.Errorf("expected a debug 'loading config file' diagnostic, got %+v", diags)
+	}
+}
+
+// A malformed config file is non-fatal: LoadConfig returns the defaults config,
+// a warn diagnostic, and a nil error (the previous Load() logged + continued).
+func TestLoadConfig_MalformedFileWarnsWithoutError(t *testing.T) {
+	clearConfigEnvVars(t)
+	writeTestConfig(t, `{ this is not valid json`)
+
+	cfg, diags, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v, want nil (parse failure is non-fatal)", err)
+	}
+	if cfg == nil || cfg.Port != "9867" {
+		t.Fatalf("LoadConfig() Port = %v, want default 9867 when the file fails to parse", cfg.Port)
+	}
+	if !hasDiagnostic(diags, slog.LevelWarn, "failed to parse config") {
+		t.Errorf("expected a warn 'failed to parse config' diagnostic, got %+v", diags)
 	}
 }

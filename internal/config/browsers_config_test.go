@@ -256,7 +256,6 @@ func TestBrowsersBlock_DefaultOnlyImpliesAvailable(t *testing.T) {
 	if cfg.DefaultBrowser != "cloak" {
 		t.Errorf("DefaultBrowser = %q, want %q", cfg.DefaultBrowser, "cloak")
 	}
-	// When only default is set, available should be inferred as [default]
 	if len(cfg.BrowsersAvailable) != 1 || cfg.BrowsersAvailable[0] != "cloak" {
 		t.Errorf("BrowsersAvailable = %v, want [cloak]", cfg.BrowsersAvailable)
 	}

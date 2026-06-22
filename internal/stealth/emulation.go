@@ -66,6 +66,13 @@ func ApplyTargetEmulation(ctx context.Context, cfg *config.RuntimeConfig, userAg
 		return nil
 	}
 
+	if config.PinchTabStealthDefaultsDisabled(cfg) {
+		// Native Cloak does its own source-level fingerprinting; PinchTab's
+		// page/worker emulation overrides would conflict. Self-defend in case a
+		// future caller forgets to guard (all current callers already do).
+		return nil
+	}
+
 	if err := emulation.SetAutomationOverride(false).Do(ctx); err != nil {
 		return fmt.Errorf("automation override: %w", err)
 	}

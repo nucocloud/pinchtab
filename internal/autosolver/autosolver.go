@@ -104,73 +104,22 @@ func (as *AutoSolver) Solve(ctx context.Context, page Page, executor ActionExecu
 		}
 
 		solved, entry := as.trySemantic(ctx, page, executor, intent)
-		if entry != nil {
-			result.History = append(result.History, *entry)
-		}
+		appendAttempt(result, entry)
 		if solved {
-			result.Solved = true
-			result.SolverUsed = entry.Solver
-			result.FinalTitle = page.Title()
-			result.FinalURL = page.URL()
-			result.TotalDuration = time.Since(start)
-			slog.Info("autosolver_success",
-				"solver", entry.Solver,
-				"attempts", result.Attempts,
-				"duration_ms", result.TotalDuration.Milliseconds(),
-				"url", page.URL())
-			slog.Info("autosolver_done",
-				"solved", true,
-				"solver", entry.Solver,
-				"attempts", result.Attempts,
-				"duration_ms", result.TotalDuration.Milliseconds())
-			return result, nil
+			return as.finalizeSuccess(result, page, entry.Solver, start), nil
 		}
 
 		solved, entry = as.trySolvers(ctx, page, executor)
-		if entry != nil {
-			result.History = append(result.History, *entry)
-		}
+		appendAttempt(result, entry)
 		if solved {
-			result.Solved = true
-			result.SolverUsed = entry.Solver
-			result.FinalTitle = page.Title()
-			result.FinalURL = page.URL()
-			result.TotalDuration = time.Since(start)
-			slog.Info("autosolver_success",
-				"solver", entry.Solver,
-				"attempts", result.Attempts,
-				"duration_ms", result.TotalDuration.Milliseconds(),
-				"url", page.URL())
-			slog.Info("autosolver_done",
-				"solved", true,
-				"solver", entry.Solver,
-				"attempts", result.Attempts,
-				"duration_ms", result.TotalDuration.Milliseconds())
-			return result, nil
+			return as.finalizeSuccess(result, page, entry.Solver, start), nil
 		}
 
 		if as.config.LLMFallback && as.llm != nil {
 			solved, entry = as.tryLLM(ctx, page, executor, result.History)
-			if entry != nil {
-				result.History = append(result.History, *entry)
-			}
+			appendAttempt(result, entry)
 			if solved {
-				result.Solved = true
-				result.SolverUsed = "llm"
-				result.FinalTitle = page.Title()
-				result.FinalURL = page.URL()
-				result.TotalDuration = time.Since(start)
-				slog.Info("autosolver_success",
-					"solver", "llm",
-					"attempts", result.Attempts,
-					"duration_ms", result.TotalDuration.Milliseconds(),
-					"url", page.URL())
-				slog.Info("autosolver_done",
-					"solved", true,
-					"solver", "llm",
-					"attempts", result.Attempts,
-					"duration_ms", result.TotalDuration.Milliseconds())
-				return result, nil
+				return as.finalizeSuccess(result, page, "llm", start), nil
 			}
 		}
 	}
@@ -188,6 +137,32 @@ func (as *AutoSolver) Solve(ctx context.Context, page Page, executor ActionExecu
 		"attempts", result.Attempts,
 		"duration_ms", result.TotalDuration.Milliseconds())
 	return result, nil
+}
+
+func appendAttempt(result *Result, entry *AttemptEntry) {
+	if entry != nil {
+		result.History = append(result.History, *entry)
+	}
+}
+
+// finalizeSuccess records a solved result, logs success + done, and returns it.
+func (as *AutoSolver) finalizeSuccess(result *Result, page Page, solver string, start time.Time) *Result {
+	result.Solved = true
+	result.SolverUsed = solver
+	result.FinalTitle = page.Title()
+	result.FinalURL = page.URL()
+	result.TotalDuration = time.Since(start)
+	slog.Info("autosolver_success",
+		"solver", solver,
+		"attempts", result.Attempts,
+		"duration_ms", result.TotalDuration.Milliseconds(),
+		"url", page.URL())
+	slog.Info("autosolver_done",
+		"solved", true,
+		"solver", solver,
+		"attempts", result.Attempts,
+		"duration_ms", result.TotalDuration.Milliseconds())
+	return result
 }
 
 func (as *AutoSolver) detectIntent(ctx context.Context, page Page) (*Intent, error) {
@@ -433,6 +408,37 @@ func (as *AutoSolver) planSemanticAction(intent *Intent, step int, suggested *Su
 	return planned
 }
 
+// hydrateSemanticAction maps a resolved semantic match into an actionable
+// SuggestedAction: copies the match's selector/ref + coordinates (when present),
+// applies the empty-type → click fallback (filling Text from the flow value), and
+// validates that a click has a target. clickErr formats the caller-specific
+// "click needs a target" error (wording differs between execute and self-heal).
+func hydrateSemanticAction(action *SuggestedAction, match *ElementMatch, value string, clickErr func() error) error {
+	if match != nil {
+		if match.Selector != "" {
+			action.Selector = match.Selector
+		} else if match.Ref != "" {
+			action.Selector = match.Ref
+		}
+		if match.X != 0 || match.Y != 0 {
+			action.X = match.X
+			action.Y = match.Y
+		}
+	}
+
+	if action.Action == ActionType_ && action.Text == "" {
+		action.Text = value
+		if action.Text == "" {
+			action.Action = ActionClick
+		}
+	}
+
+	if action.Action == ActionClick && action.Selector == "" && action.X == 0 && action.Y == 0 {
+		return clickErr()
+	}
+	return nil
+}
+
 func (as *AutoSolver) prepareSemanticAction(ctx context.Context, page Page, intent *Intent, step int, action *SuggestedAction) (*SuggestedAction, error) {
 	if action == nil {
 		return nil, fmt.Errorf("nil action")
@@ -441,36 +447,22 @@ func (as *AutoSolver) prepareSemanticAction(ctx context.Context, page Page, inte
 	resolved := *action
 	flowStep := semanticFlowStepForIntent(intentTypeOf(intent), step, as.config.Credentials)
 
-	shouldResolveTarget := isHighLevelIntent(intentTypeOf(intent)) || actionNeedsTarget(&resolved)
-	if shouldResolveTarget {
-		match, err := as.semantic.FindElement(ctx, page, flowStep.Query)
+	var match *ElementMatch
+	if isHighLevelIntent(intentTypeOf(intent)) || actionNeedsTarget(&resolved) {
+		var err error
+		match, err = as.semantic.FindElement(ctx, page, flowStep.Query)
 		if err != nil {
 			return nil, fmt.Errorf("semantic find element query %q: %w", flowStep.Query, err)
 		}
-		if match != nil {
-			if match.Selector != "" {
-				resolved.Selector = match.Selector
-			} else if match.Ref != "" {
-				resolved.Selector = match.Ref
-			}
-			if match.X != 0 || match.Y != 0 {
-				resolved.X = match.X
-				resolved.Y = match.Y
-			}
-		} else if actionNeedsTarget(&resolved) {
+		if match == nil && actionNeedsTarget(&resolved) {
 			return nil, fmt.Errorf("semantic find returned no match for query %q", flowStep.Query)
 		}
 	}
 
-	if resolved.Action == ActionType_ && resolved.Text == "" {
-		resolved.Text = flowStep.Value
-		if resolved.Text == "" {
-			resolved.Action = ActionClick
-		}
-	}
-
-	if resolved.Action == ActionClick && resolved.Selector == "" && resolved.X == 0 && resolved.Y == 0 {
-		return nil, fmt.Errorf("semantic action requires selector or coordinates for query %q", flowStep.Query)
+	if err := hydrateSemanticAction(&resolved, match, flowStep.Value, func() error {
+		return fmt.Errorf("semantic action requires selector or coordinates for query %q", flowStep.Query)
+	}); err != nil {
+		return nil, err
 	}
 
 	return &resolved, nil
@@ -491,25 +483,10 @@ func (as *AutoSolver) selfHealSemanticAction(ctx context.Context, page Page, int
 	}
 
 	healed := *original
-	if match.Selector != "" {
-		healed.Selector = match.Selector
-	} else if match.Ref != "" {
-		healed.Selector = match.Ref
-	}
-	if match.X != 0 || match.Y != 0 {
-		healed.X = match.X
-		healed.Y = match.Y
-	}
-
-	if healed.Action == ActionType_ && healed.Text == "" {
-		healed.Text = flowStep.Value
-		if healed.Text == "" {
-			healed.Action = ActionClick
-		}
-	}
-
-	if healed.Action == ActionClick && healed.Selector == "" && healed.X == 0 && healed.Y == 0 {
-		return nil, fmt.Errorf("semantic self-heal match for query %q had no actionable selector or coordinates", flowStep.Query)
+	if err := hydrateSemanticAction(&healed, match, flowStep.Value, func() error {
+		return fmt.Errorf("semantic self-heal match for query %q had no actionable selector or coordinates", flowStep.Query)
+	}); err != nil {
+		return nil, err
 	}
 
 	return &healed, nil
@@ -752,34 +729,24 @@ func (as *AutoSolver) tryLLM(ctx context.Context, page Page, executor ActionExec
 	return true, entry
 }
 
+// suggestedActionFromLLM adapts an LLMResponse to a SuggestedAction so the LLM
+// path runs through the single executeSuggestedAction executor instead of a
+// divergent copy. The LLM response carries no X/Y/Expr, so those stay zero.
+func suggestedActionFromLLM(resp *LLMResponse) *SuggestedAction {
+	return &SuggestedAction{
+		Action:   resp.Action,
+		Selector: resp.Selector,
+		Text:     resp.Text,
+		URL:      resp.URL,
+		Reason:   resp.Reasoning,
+	}
+}
+
 func executeAction(ctx context.Context, executor ActionExecutor, resp *LLMResponse) error {
 	if resp == nil {
 		return fmt.Errorf("nil response")
 	}
-
-	switch resp.Action {
-	case ActionClick:
-		if resp.Selector != "" {
-			x, y, err := resolveSelectorCenter(ctx, executor, resp.Selector)
-			if err != nil {
-				return err
-			}
-			return executor.Click(ctx, x, y)
-		}
-		return fmt.Errorf("click action requires selector")
-
-	case ActionType_:
-		return executor.Type(ctx, resp.Text)
-
-	case ActionNavigate:
-		return executor.Navigate(ctx, resp.URL)
-
-	case ActionNone:
-		return nil
-
-	default:
-		return fmt.Errorf("unsupported action: %s", resp.Action)
-	}
+	return executeSuggestedAction(ctx, executor, suggestedActionFromLLM(resp))
 }
 
 func (as *AutoSolver) backoffDelay(attempt int) time.Duration {

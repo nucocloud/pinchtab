@@ -68,6 +68,34 @@ func stubDownloadHostResolution(t *testing.T, fn func(context.Context, string, s
 	})
 }
 
+type httpErrorDownloadBridge struct {
+	downloadPolicyBridge
+}
+
+func (m *httpErrorDownloadBridge) DownloadURL(ctx context.Context, dlURL string, opts bridge.DownloadOpts) (*bridge.DownloadResult, error) {
+	return &bridge.DownloadResult{StatusCode: 404, MIMEType: "text/html"}, fmt.Errorf("remote server returned HTTP 404")
+}
+
+// A remote HTTP-error status (4xx/5xx) on the download must map to 502, detected
+// from the structured StatusCode rather than sniffing the error string.
+func TestHandleDownload_RemoteHTTPErrorIs502(t *testing.T) {
+	stubDownloadHostResolution(t, func(ctx context.Context, network, host string) ([]net.IP, error) {
+		if host == "example.com" {
+			return []net.IP{net.ParseIP("93.184.216.34")}, nil
+		}
+		return nil, errors.New("not found")
+	})
+
+	h := New(&httpErrorDownloadBridge{}, &config.RuntimeConfig{AllowDownload: true}, nil, nil, nil)
+	req := httptest.NewRequest("GET", "/download?url=https://example.com/file.txt", nil)
+	w := httptest.NewRecorder()
+	h.HandleDownload(w, req)
+
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502 for remote HTTP-error download, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestHandleDownload_MissingURL(t *testing.T) {
 	h := New(&mockBridge{}, &config.RuntimeConfig{AllowDownload: true}, nil, nil, nil)
 	req := httptest.NewRequest("GET", "/download", nil)

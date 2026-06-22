@@ -17,13 +17,26 @@ func (e *IDPIBlockedError) Error() string {
 	return fmt.Sprintf("blocked by IDPI: %s", e.Reason)
 }
 
-// IsIDPIBlocked reports whether err is an IDPI block.
 func IsIDPIBlocked(err error) bool {
 	var target *IDPIBlockedError
 	return errors.As(err, &target)
 }
 
-// Capability identifies an operation a browser runtime may handle.
+// StaticActionRequest is the cycle-safe subset of a full browser action request
+// that static-routing layers (ghost-chrome's BridgeProxy) need to decide
+// whether the lightweight static browser can serve an action by ref. It lives
+// here, in a leaf package both bridge and the ghost-chrome packages import, so
+// the subset is defined once instead of being hand-copied to dodge the
+// bridge → config → browsers/all → ghostchrome import cycle. The richer
+// bridge.ActionRequest is mapped down to this at the adapter boundary.
+type StaticActionRequest struct {
+	TabID string
+	Kind  string
+	Ref   string
+	Text  string
+	Value string
+}
+
 type Capability string
 
 const (
@@ -39,7 +52,6 @@ const (
 	CapCapture    Capability = "capture"
 )
 
-// NavigateResult is the response from a navigation.
 type NavigateResult struct {
 	TabID string         `json:"tabId"`
 	URL   string         `json:"url"`
@@ -47,7 +59,6 @@ type NavigateResult struct {
 	Route *RouteMetadata `json:"route,omitempty"`
 }
 
-// SnapshotNode represents a single node in the accessibility-style snapshot.
 type SnapshotNode struct {
 	Ref         string `json:"ref"`
 	Role        string `json:"role"`
@@ -58,7 +69,6 @@ type SnapshotNode struct {
 	Interactive bool   `json:"interactive,omitempty"`
 }
 
-// SnapshotResult is the response from a snapshot operation.
 type SnapshotResult struct {
 	Nodes       []SnapshotNode `json:"nodes"`
 	URL         string         `json:"url,omitempty"`
@@ -67,7 +77,6 @@ type SnapshotResult struct {
 	IDPIWarning string         `json:"idpiWarning,omitempty"`
 }
 
-// TextResult is the response from a text extraction operation.
 type TextResult struct {
 	Text      string         `json:"text"`
 	URL       string         `json:"url,omitempty"`
@@ -76,13 +85,11 @@ type TextResult struct {
 	Route     *RouteMetadata `json:"route,omitempty"`
 }
 
-// ActionResult is the response from a click/type/other action.
 type ActionResult struct {
 	Data  map[string]any `json:"data,omitempty"`
 	Route *RouteMetadata `json:"route,omitempty"`
 }
 
-// RouteMetadata records the browser-selection decision for a request.
 type RouteMetadata struct {
 	RequestedBrowser string         `json:"requestedProvider"`
 	UsedBrowser      string         `json:"usedProvider"`
@@ -93,15 +100,12 @@ type RouteMetadata struct {
 	Attempts         []RouteAttempt `json:"attempts,omitempty"`
 }
 
-// RouteAttempt records a single browser that was considered during routing.
 type RouteAttempt struct {
 	Browser  string `json:"provider"`
 	Accepted bool   `json:"accepted"`
 	Reason   string `json:"reason,omitempty"`
 }
 
-// SingleBrowserRoute returns RouteMetadata for a straightforward single-browser
-// selection with no escalation.
 func SingleBrowserRoute(browser string) *RouteMetadata {
 	return &RouteMetadata{
 		RequestedBrowser: browser,

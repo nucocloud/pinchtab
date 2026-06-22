@@ -223,3 +223,59 @@ func TestCloakBrowserPresent_PassWithStub(t *testing.T) {
 		t.Fatalf("status = %v want pass; detail=%q err=%v", r.Status, r.Detail, r.Err)
 	}
 }
+
+// TestCloakCDPReachable_ResolvesTargetBinaryThroughRegistry proves the registry
+// `--check` path builds its env via doctorEnvForBrowser (the per-target cloak
+// binary) rather than the global buildDoctorEnv.
+//
+// The cdp_reachable check reads env.Binary: with no binary it SKIPs ("no
+// browser.binary set"); with a binary it attempts a launch. We configure a
+// cloak target whose binary is a DISTINCT path from the (empty) global chrome
+// binary. If the registry used the global env, env.Binary would be empty and
+// the check would SKIP. Instead it resolves the target binary and attempts to
+// launch it — the stub exits without a DevTools banner, so the check FAILs.
+// A Fail (not Skip) therefore proves the target binary was resolved.
+func TestCloakCDPReachable_ResolvesTargetBinaryThroughRegistry(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("stub binary tests require unix shell")
+	}
+	// Distinct stub binary that exits immediately without emitting a DevTools
+	// banner. Lives under its own temp dir — NOT on $PATH and NOT the global
+	// chrome binary — so only target resolution can find it.
+	dir := t.TempDir()
+	stub := filepath.Join(dir, "cloak-stub")
+	if err := os.WriteFile(stub, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.RuntimeConfig{
+		// Global chrome binary deliberately absent: if the registry used the
+		// global env, cdp_reachable would skip on the empty binary.
+		BrowserBinary: "",
+		Targets: config.BrowserTargetsConfig{
+			"cloak-1": {Provider: config.BrowserCloak, Binary: stub},
+		},
+	}
+
+	results := Run(context.Background(), cfg, "cdp_reachable")
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result for cdp_reachable filter, got %d", len(results))
+	}
+	r := results[0]
+
+	// A Skip means the env carried an empty binary — i.e. the global env, not
+	// the target env. The whole point of this test is that this does NOT happen.
+	if r.Status == StatusSkip {
+		t.Fatalf("cdp_reachable skipped (detail=%q): registry used the global env, "+
+			"not doctorEnvForBrowser's target binary", r.Detail)
+	}
+	if strings.Contains(r.Detail, "no browser.binary set") {
+		t.Fatalf("cdp_reachable did not see the target binary (detail=%q)", r.Detail)
+	}
+	// The stub launches but exits without a DevTools banner, so the launch
+	// attempt fails — confirming the registry resolved and launched the TARGET
+	// binary (a launch could only be attempted with a non-empty target binary).
+	if r.Status != StatusFail {
+		t.Fatalf("status = %v want fail; detail=%q err=%v", r.Status, r.Detail, r.Err)
+	}
+}

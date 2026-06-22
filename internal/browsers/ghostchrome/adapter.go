@@ -5,10 +5,8 @@ import (
 	"strings"
 )
 
-// QualityThreshold is the minimum quality score for accepting a Ghost result.
 const QualityThreshold = 60
 
-// GhostResult holds the outcome of a Ghost static fetch attempt.
 type GhostResult struct {
 	OK           bool
 	Content      string
@@ -22,8 +20,6 @@ type GhostResult struct {
 	SkipReason   string // non-empty when Ghost decided not to try
 }
 
-// ShouldAccept returns true when the ghost result is good enough to use
-// without escalating to a full browser.
 func (r *GhostResult) ShouldAccept() bool {
 	if !r.OK {
 		return false
@@ -44,8 +40,6 @@ func (r *GhostResult) ShouldAccept() bool {
 	return r.Quality >= QualityThreshold
 }
 
-// FormatReason returns a human-readable explanation of why the result
-// was skipped or what signals were observed.
 func (r *GhostResult) FormatReason() string {
 	if r.SkipReason != "" {
 		return r.SkipReason
@@ -53,14 +47,11 @@ func (r *GhostResult) FormatReason() string {
 	return fmt.Sprintf("quality=%d needsBrowser=%t pageClass=%s", r.Quality, r.NeedsBrowser, r.PageClass)
 }
 
-// SnapshotNode holds the minimal fields needed to assess a snapshot node's quality.
 type SnapshotNode struct {
 	Role string
 	Name string
 }
 
-// AssessContent evaluates pre-fetched text content against ghost quality criteria.
-// It returns a GhostResult indicating whether the content is rich enough to serve.
 func AssessContent(content string) *GhostResult {
 	result := &GhostResult{OK: true, Content: content, PageClass: "static"}
 	result.Quality = EstimateQuality(content)
@@ -72,7 +63,6 @@ func AssessContent(content string) *GhostResult {
 	return result
 }
 
-// AssessSnapshot returns true when the snapshot nodes are rich enough to serve.
 // Thin snapshots (fewer than 3 nodes) or those with only generic containers
 // are rejected so that the request escalates to Chrome.
 func AssessSnapshot(nodes []SnapshotNode) bool {
@@ -90,8 +80,6 @@ func AssessSnapshot(nodes []SnapshotNode) bool {
 	return false
 }
 
-// LooksLikeSPA returns true when the content appears to be an SPA shell
-// that needs a real browser to render meaningful content.
 func LooksLikeSPA(content string) bool {
 	words := len(strings.Fields(content))
 	if words > 100 {
@@ -113,7 +101,6 @@ func LooksLikeSPA(content string) bool {
 	return false
 }
 
-// EstimateQuality returns a 0-100 score based on content richness.
 func EstimateQuality(content string) int {
 	words := len(strings.Fields(content))
 	if words == 0 {

@@ -4,145 +4,31 @@ import (
 	"context"
 
 	"github.com/pinchtab/pinchtab/internal/cdptk"
+	"github.com/pinchtab/pinchtab/internal/runtimetypes"
 )
 
-// The types below mirror the identically-named types in internal/bridge so
-// that the RuntimeInstance interface can be defined without creating an import
-// cycle (config → browsers → bridge → config). Bridge implementations convert
-// between the two sets at the delegation boundary.
+// The runtime DTOs are defined once in internal/runtimetypes and aliased here so
+// the RuntimeInstance interface and internal/bridge share one set of structs
+// without an import cycle (config → browsers → bridge → config).
 
-// EvalOpts configures JavaScript evaluation behavior.
-type EvalOpts struct {
-	AwaitPromise bool
-}
+type (
+	EvalOpts          = runtimetypes.EvalOpts
+	NodeInfo          = runtimetypes.NodeInfo
+	ScreencastOpts    = runtimetypes.ScreencastOpts
+	ScreencastStream  = runtimetypes.ScreencastStream
+	CookieData        = runtimetypes.CookieData
+	SetCookieParams   = runtimetypes.SetCookieParams
+	ViewportParams    = runtimetypes.ViewportParams
+	NetworkConditions = runtimetypes.NetworkConditions
+	DownloadOpts      = runtimetypes.DownloadOpts
+	DownloadResult    = runtimetypes.DownloadResult
+	PDFParams         = runtimetypes.PDFParams
+)
 
-// NodeInfo holds DOM structural info returned by DescribeNode.
-type NodeInfo struct {
-	LocalName      string
-	Attributes     []string
-	ChildNodeCount int
-}
-
-// ScreencastOpts configures a screencast stream.
-type ScreencastOpts struct {
-	Quality       int // 1-100, default 30
-	MaxWidth      int // pixels, default 800
-	MaxHeight     int // pixels, default 600
-	EveryNthFrame int // frame skipping for event mode, default 4
-	FPS           int // frames per second (caps at 30), default 1
-}
-
-// ScreencastStream delivers decoded binary JPEG frames over a channel.
-// Callers must call Close when done to release resources.
-type ScreencastStream struct {
-	Frames <-chan []byte
-	done   chan struct{}
-	closer func()
-}
-
-// NewScreencastStream creates a ScreencastStream with the given frame
-// channel and cleanup function.
+// NewScreencastStream wraps runtimetypes.NewScreencastStream so provider runtimes
+// keep constructing streams through the browsers package.
 func NewScreencastStream(frames <-chan []byte, closer func()) *ScreencastStream {
-	return &ScreencastStream{
-		Frames: frames,
-		done:   make(chan struct{}),
-		closer: closer,
-	}
-}
-
-// Close stops the screencast and releases resources.
-func (s *ScreencastStream) Close() {
-	select {
-	case <-s.done:
-	default:
-		close(s.done)
-	}
-	if s.closer != nil {
-		s.closer()
-	}
-}
-
-// Done returns a channel that is closed when the stream is stopped.
-func (s *ScreencastStream) Done() <-chan struct{} {
-	return s.done
-}
-
-// CookieData is a browser-level representation of a cookie.
-type CookieData struct {
-	Name     string  `json:"name"`
-	Value    string  `json:"value"`
-	Domain   string  `json:"domain"`
-	Path     string  `json:"path"`
-	Expires  float64 `json:"expires"`
-	HTTPOnly bool    `json:"httpOnly"`
-	Secure   bool    `json:"secure"`
-	SameSite string  `json:"sameSite"`
-}
-
-// SetCookieParams holds parameters for setting a single cookie.
-type SetCookieParams struct {
-	Name     string  `json:"name"`
-	Value    string  `json:"value"`
-	URL      string  `json:"url"`
-	Domain   string  `json:"domain"`
-	Path     string  `json:"path"`
-	Secure   bool    `json:"secure"`
-	HTTPOnly bool    `json:"httpOnly"`
-	SameSite string  `json:"sameSite"`
-	Expires  float64 `json:"expires"`
-}
-
-// ViewportParams holds parameters for viewport emulation.
-type ViewportParams struct {
-	Width             int64
-	Height            int64
-	DeviceScaleFactor float64
-	Mobile            bool
-}
-
-// NetworkConditions holds parameters for network emulation.
-type NetworkConditions struct {
-	Offline            bool
-	Latency            float64
-	DownloadThroughput float64
-	UploadThroughput   float64
-}
-
-// DownloadOpts configures a browser-based download.
-type DownloadOpts struct {
-	MaxBytes           int
-	MaxRedirects       int
-	ValidateURL        func(rawURL string, isRedirect bool) error
-	ValidateRemoteIP   func(remoteIP string) error
-	IsDomainAllowed    func(rawURL string) bool
-	ParseContentLength func(headers map[string]interface{}) (int64, bool)
-}
-
-// DownloadResult holds the result of a browser-based download.
-type DownloadResult struct {
-	Body       []byte
-	MIMEType   string
-	StatusCode int
-}
-
-// PDFParams holds parameters for PDF generation.
-type PDFParams struct {
-	Landscape               bool
-	PrintBackground         bool
-	Scale                   float64
-	PaperWidth              float64
-	PaperHeight             float64
-	MarginTop               float64
-	MarginBottom            float64
-	MarginLeft              float64
-	MarginRight             float64
-	PageRanges              string
-	PreferCSSPageSize       bool
-	DisplayHeaderFooter     bool
-	GenerateTaggedPDF       bool
-	GenerateDocumentOutline bool
-	HeaderTemplate          string
-	FooterTemplate          string
+	return runtimetypes.NewScreencastStream(frames, closer)
 }
 
 // RuntimeInstance defines post-launch browser operations. Each browser

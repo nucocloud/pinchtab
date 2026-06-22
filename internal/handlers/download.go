@@ -17,6 +17,7 @@ import (
 	"github.com/pinchtab/pinchtab/internal/authn"
 	"github.com/pinchtab/pinchtab/internal/bridge"
 	"github.com/pinchtab/pinchtab/internal/httpx"
+	"github.com/pinchtab/pinchtab/internal/routes"
 )
 
 // HandleDownload fetches a URL using the browser's session (cookies, stealth)
@@ -25,9 +26,7 @@ import (
 // GET /download?url=<url>[&tabId=<id>][&output=file&path=/tmp/file][&raw=true]
 func (h *Handlers) HandleDownload(w http.ResponseWriter, r *http.Request) {
 	if !h.Config.AllowDownload {
-		httpx.ErrorCode(w, 403, "download_disabled", httpx.DisabledEndpointMessage("download", "security.allowDownload"), false, map[string]any{
-			"setting": "security.allowDownload",
-		})
+		h.writeCapabilityDisabled(w, routes.CapDownload)
 		return
 	}
 	dlURL := r.URL.Query().Get("url")
@@ -52,45 +51,8 @@ func (h *Handlers) HandleDownload(w http.ResponseWriter, r *http.Request) {
 
 	tabID := strings.TrimSpace(r.URL.Query().Get("tabId"))
 	if tabID != "" {
-		ctx, resolvedTabID, err := h.tabContext(r, tabID)
-		if err != nil {
-			WriteTabContextError(w, err, 404)
+		if !h.enforceDownloadTabPolicy(w, r, tabID, dlURL) {
 			return
-		}
-		owner := resolveOwner(r, "")
-		if err := h.enforceTabLease(resolvedTabID, owner); err != nil {
-			httpx.ErrorCode(w, http.StatusLocked, "tab_locked", err.Error(), false, nil)
-			return
-		}
-		currentURL, ok := h.enforceCurrentTabDomainPolicy(w, r, ctx, resolvedTabID)
-		if !ok {
-			return
-		}
-		if currentURL == "" {
-			if provider, ok := h.Bridge.(tabPolicyStateProvider); ok {
-				if state, ok := provider.GetTabPolicyState(resolvedTabID); ok && state.CurrentURL != "" {
-					currentURL = state.CurrentURL
-				}
-			}
-		}
-		if currentURL == "" {
-			lookupCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-			defer cancel()
-			var lookupErr error
-			currentURL, lookupErr = h.Bridge.CurrentURL(lookupCtx)
-			if lookupErr != nil {
-				httpx.Error(w, 500, fmt.Errorf("resolve current tab url: %w", lookupErr))
-				return
-			}
-		}
-		if authn.CredentialsFromRequest(r).Method == authn.MethodCookie {
-			if err := validateTabScopedDownloadURL(currentURL, dlURL); err != nil {
-				httpx.ErrorCode(w, http.StatusForbidden, "download_scope_forbidden", err.Error(), false, map[string]any{
-					"currentURL":   currentURL,
-					"requestedURL": dlURL,
-				})
-				return
-			}
 		}
 	}
 
@@ -129,57 +91,117 @@ func (h *Handlers) HandleDownload(w http.ResponseWriter, r *http.Request) {
 		},
 	})
 	if err != nil {
-		// Chrome aborts navigation for binary downloads (.gz, etc.).
-		// Fall back to a direct Go HTTP fetch using the browser's cookies.
 		if isNavigationAborted(err) {
-			slog.Info("download: Chrome navigation aborted, falling back to direct fetch", "url", dlURL)
-			body, mime, status, fetchErr := h.fetchDirectWithCookies(tCtx, browserCtx, dlURL, validator, maxDownloadBytes)
-			if fetchErr != nil {
-				errMsg := fetchErr.Error()
-				if strings.Contains(errMsg, "blocked") || strings.Contains(errMsg, "private") {
-					httpx.Error(w, 400, fmt.Errorf("unsafe browser request: %w", fetchErr))
-					return
-				}
-				httpx.Error(w, 502, fmt.Errorf("download fallback: %w", fetchErr))
-				return
-			}
-			if status >= 400 {
-				httpx.Error(w, 502, fmt.Errorf("remote server returned HTTP %d", status))
-				return
-			}
-			h.recordActivity(r, activity.Update{Action: "download", URL: dlURL})
-			h.writeDownloadResponse(w, body, mime, dlURL, output, filePath, raw, maxDownloadBytes)
+			h.tryDirectDownloadFallback(w, r, tCtx, browserCtx, dlURL, validator, maxDownloadBytes, output, filePath, raw)
 			return
 		}
-		if errors.Is(err, bridge.ErrTooManyRedirects) {
-			httpx.Error(w, 422, fmt.Errorf("download: %w", err))
-			return
-		}
-		if errors.Is(err, bridge.ErrDownloadTooLarge) {
-			httpx.ErrorCode(w, http.StatusRequestEntityTooLarge, "download_too_large", err.Error(), false, map[string]any{
-				"maxBytes": maxDownloadBytes,
-			})
-			return
-		}
-		if errors.Is(err, bridge.ErrDownloadTimeout) {
-			httpx.Error(w, 504, fmt.Errorf("download timed out"))
-			return
-		}
-		if strings.Contains(err.Error(), "HTTP") && result != nil && result.StatusCode >= 400 {
-			httpx.Error(w, 502, err)
-			return
-		}
-		errMsg := err.Error()
-		if strings.Contains(errMsg, "blocked") || strings.Contains(errMsg, "private") || strings.Contains(errMsg, "unsafe") {
-			httpx.Error(w, 400, fmt.Errorf("unsafe browser request: %w", err))
-			return
-		}
-		httpx.Error(w, 502, fmt.Errorf("navigate to download URL: %w", err))
+		writeDownloadError(w, err, result, maxDownloadBytes)
 		return
 	}
 
 	h.recordActivity(r, activity.Update{Action: "download", URL: dlURL})
 	h.writeDownloadResponse(w, result.Body, result.MIMEType, dlURL, output, filePath, raw, maxDownloadBytes)
+}
+
+// enforceDownloadTabPolicy applies tab-scoped policy (lease, current-tab domain
+// policy, and cookie-auth download-scope) for a tab-targeted download. It writes
+// the error response and returns false on any failure.
+func (h *Handlers) enforceDownloadTabPolicy(w http.ResponseWriter, r *http.Request, tabID, dlURL string) bool {
+	ctx, resolvedTabID, err := h.tabContext(r, tabID)
+	if err != nil {
+		WriteTabContextError(w, err, 404)
+		return false
+	}
+	owner := resolveOwner(r, "")
+	if err := h.enforceTabLease(resolvedTabID, owner); err != nil {
+		httpx.ErrorCode(w, http.StatusLocked, "tab_locked", err.Error(), false, nil)
+		return false
+	}
+	currentURL, ok := h.enforceCurrentTabDomainPolicy(w, r, ctx, resolvedTabID)
+	if !ok {
+		return false
+	}
+	if currentURL == "" {
+		if provider, ok := h.Bridge.(tabPolicyStateProvider); ok {
+			if state, ok := provider.GetTabPolicyState(resolvedTabID); ok && state.CurrentURL != "" {
+				currentURL = state.CurrentURL
+			}
+		}
+	}
+	if currentURL == "" {
+		lookupCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+		var lookupErr error
+		currentURL, lookupErr = h.Bridge.CurrentURL(lookupCtx)
+		if lookupErr != nil {
+			httpx.Error(w, 500, fmt.Errorf("resolve current tab url: %w", lookupErr))
+			return false
+		}
+	}
+	if authn.CredentialsFromRequest(r).Method == authn.MethodCookie {
+		if err := validateTabScopedDownloadURL(currentURL, dlURL); err != nil {
+			httpx.ErrorCode(w, http.StatusForbidden, "download_scope_forbidden", err.Error(), false, map[string]any{
+				"currentURL":   currentURL,
+				"requestedURL": dlURL,
+			})
+			return false
+		}
+	}
+	return true
+}
+
+// tryDirectDownloadFallback handles a Chrome navigation abort (binary downloads
+// like .gz) by retrying with a direct Go HTTP fetch using the browser's cookies.
+// It always writes a response.
+func (h *Handlers) tryDirectDownloadFallback(w http.ResponseWriter, r *http.Request, tCtx, browserCtx context.Context, dlURL string, validator *downloadURLGuard, maxDownloadBytes int, output, filePath string, raw bool) {
+	slog.Info("download: Chrome navigation aborted, falling back to direct fetch", "url", dlURL)
+	body, mime, status, fetchErr := h.fetchDirectWithCookies(tCtx, browserCtx, dlURL, validator, maxDownloadBytes)
+	if fetchErr != nil {
+		errMsg := fetchErr.Error()
+		if strings.Contains(errMsg, "blocked") || strings.Contains(errMsg, "private") {
+			httpx.Error(w, 400, fmt.Errorf("unsafe browser request: %w", fetchErr))
+			return
+		}
+		httpx.Error(w, 502, fmt.Errorf("download fallback: %w", fetchErr))
+		return
+	}
+	if status >= 400 {
+		httpx.Error(w, 502, fmt.Errorf("remote server returned HTTP %d", status))
+		return
+	}
+	h.recordActivity(r, activity.Update{Action: "download", URL: dlURL})
+	h.writeDownloadResponse(w, body, mime, dlURL, output, filePath, raw, maxDownloadBytes)
+}
+
+// writeDownloadError maps a non-aborted DownloadURL error to an HTTP response.
+func writeDownloadError(w http.ResponseWriter, err error, result *bridge.DownloadResult, maxDownloadBytes int) {
+	if errors.Is(err, bridge.ErrTooManyRedirects) {
+		httpx.Error(w, 422, fmt.Errorf("download: %w", err))
+		return
+	}
+	if errors.Is(err, bridge.ErrDownloadTooLarge) {
+		httpx.ErrorCode(w, http.StatusRequestEntityTooLarge, "download_too_large", err.Error(), false, map[string]any{
+			"maxBytes": maxDownloadBytes,
+		})
+		return
+	}
+	if errors.Is(err, bridge.ErrDownloadTimeout) {
+		httpx.Error(w, 504, fmt.Errorf("download timed out"))
+		return
+	}
+	// A populated result with a 4xx/5xx status is unambiguously a remote
+	// HTTP-error download here (redirect/size/timeout errors are typed and
+	// already handled above) — key off the structured status, not the message.
+	if result != nil && result.StatusCode >= 400 {
+		httpx.Error(w, 502, err)
+		return
+	}
+	errMsg := err.Error()
+	if strings.Contains(errMsg, "blocked") || strings.Contains(errMsg, "private") || strings.Contains(errMsg, "unsafe") {
+		httpx.Error(w, 400, fmt.Errorf("unsafe browser request: %w", err))
+		return
+	}
+	httpx.Error(w, 502, fmt.Errorf("navigate to download URL: %w", err))
 }
 
 func (h *Handlers) writeDownloadResponse(w http.ResponseWriter, body []byte, mime, dlURL, output, filePath string, raw bool, maxBytes int) {
@@ -245,8 +267,6 @@ func (h *Handlers) writeDownloadResponse(w http.ResponseWriter, body []byte, mim
 	})
 }
 
-// HandleTabDownload fetches a URL using the browser session for a tab identified by path ID.
-//
 // @Endpoint GET /tabs/{id}/download
 func (h *Handlers) HandleTabDownload(w http.ResponseWriter, r *http.Request) {
 	tabID := r.PathValue("id")

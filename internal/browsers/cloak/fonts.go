@@ -25,8 +25,6 @@ var LinuxFontDirs = []string{
 	"/var/lib/fonts",
 }
 
-// WindowsFontProbe holds the result of probing the system for Windows
-// fingerprint fonts.
 type WindowsFontProbe struct {
 	Matched  []string
 	Source   string

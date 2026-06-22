@@ -76,6 +76,8 @@
       "tags": ["screencast", "cloak", "diagnostics", "full"]
     },
     "infra/browser-routing-smoke.sh": {
+      "services": ["pinchtab", "fixtures"],
+      "ready": ["E2E_SERVER"],
       "tags": ["browser-routing", "smoke", "multi-browser"]
     },
     "infra/browser-routing-extended.sh": {

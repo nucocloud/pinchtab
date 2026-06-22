@@ -16,7 +16,6 @@ type TabHandle struct {
 	cdpCtx context.Context
 }
 
-// NewTabHandle wraps a chromedp context in a TabHandle.
 func NewTabHandle(cdpCtx context.Context) *TabHandle {
 	return &TabHandle{cdpCtx: cdpCtx}
 }

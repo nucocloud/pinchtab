@@ -41,6 +41,10 @@ type mockBridge struct {
 	staticFirstNavigate bool
 	staticEscalate      *bridge.StaticEscalateError
 	navigateParams      []bridge.NavigateParams
+
+	evaluateCalls int
+	evaluateExprs []string
+	evaluateFn    func(expression string, result any) error
 }
 
 func (m *mockBridge) TabContext(tabID string) (*bridge.TabHandle, string, error) {
@@ -185,6 +189,11 @@ func (m *mockBridge) GetErrorLogs(tabID string, limit int) []bridge.ErrorEntry {
 func (m *mockBridge) ClearErrorLogs(tabID string) {}
 
 func (m *mockBridge) Evaluate(ctx context.Context, expression string, result any, opts bridge.EvalOpts) error {
+	m.evaluateCalls++
+	m.evaluateExprs = append(m.evaluateExprs, expression)
+	if m.evaluateFn != nil {
+		return m.evaluateFn(expression, result)
+	}
 	return nil
 }
 
@@ -291,6 +300,7 @@ func (m *mockBridge) DisableFetch(ctx context.Context) error                    
 func (m *mockBridge) ListenAuthRequired(ctx context.Context, handler func(string, bool))     {}
 func (m *mockBridge) ContinueWithAuth(ctx context.Context, requestID, u, p string) error     { return nil }
 func (m *mockBridge) ContinueRequest(ctx context.Context, requestID string) error            { return nil }
+func (m *mockBridge) SetFetchPauseSuppressed(tabID string, v bool)                           {}
 func (m *mockBridge) GoBack(ctx context.Context) (bool, error)                               { return false, nil }
 func (m *mockBridge) GoForward(ctx context.Context) (bool, error)                            { return false, nil }
 func (m *mockBridge) Reload(ctx context.Context) error                                       { return nil }

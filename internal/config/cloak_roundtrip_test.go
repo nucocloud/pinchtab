@@ -13,7 +13,6 @@ func TestCloakChildConfigRoundTrip(t *testing.T) {
 	// Isolate from the developer's real config: the first Load must read
 	// defaults, not whatever ~/.pinchtab or PINCHTAB_CONFIG points at.
 	t.Setenv("PINCHTAB_CONFIG", filepath.Join(t.TempDir(), "absent.json"))
-	// Step 1: Simulate the orchestrator's RuntimeConfig with DefaultBrowser = "cloak"
 	cfg := config.Load()
 	cfg.DefaultBrowser = "cloak"
 	cfg.Cloak.DisableDefaultStealthArgs = true
@@ -32,7 +31,6 @@ func TestCloakChildConfigRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Check the JSON has browsers.default
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
 		t.Fatal(err)

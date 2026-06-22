@@ -6,7 +6,6 @@ import (
 	"time"
 )
 
-// Profile represents a browser profile stored on disk.
 // Matches internal/bridge/api.go ProfileInfo
 type Profile struct {
 	ID                string    `json:"id,omitempty"`
@@ -32,7 +31,6 @@ type SecurityPolicy struct {
 	AllowedDomains []string `json:"allowedDomains,omitempty"`
 }
 
-// Instance represents a running browser instance.
 // Matches internal/bridge/api.go Instance
 type Instance struct {
 	ID             string          `json:"id"`
@@ -58,7 +56,6 @@ type Instance struct {
 	FallbackReason string `json:"fallbackReason,omitempty"`
 }
 
-// Agent represents a connected AI agent.
 type Agent struct {
 	ID           string    `json:"id"`
 	Name         string    `json:"name,omitempty"`
@@ -67,13 +64,11 @@ type Agent struct {
 	RequestCount int       `json:"requestCount"`
 }
 
-// AgentDetail returns agent-centric dashboard data for a single agent.
 type AgentDetail struct {
 	Agent  Agent           `json:"agent"`
 	Events []ActivityEvent `json:"events"`
 }
 
-// ActivityEvent represents an action in the activity feed.
 type ActivityEvent struct {
 	ID        string                 `json:"id"`
 	AgentID   string                 `json:"agentId"`
@@ -88,14 +83,12 @@ type ActivityEvent struct {
 	Details   map[string]interface{} `json:"details,omitempty"`
 }
 
-// RouteAttempt records a single browser that was considered during routing.
 type RouteAttempt struct {
 	Browser  string `json:"provider"`
 	Accepted bool   `json:"accepted"`
 	Reason   string `json:"reason,omitempty"`
 }
 
-// RouteMetadata records the browser-selection decision for a request.
 type RouteMetadata struct {
 	RequestedBrowser string         `json:"requestedProvider"`
 	UsedBrowser      string         `json:"usedProvider"`
@@ -106,7 +99,6 @@ type RouteMetadata struct {
 	Attempts         []RouteAttempt `json:"attempts,omitempty"`
 }
 
-// ActivityLogEvent represents a queryable backend activity record.
 type ActivityLogEvent struct {
 	Timestamp   time.Time      `json:"timestamp"`
 	Source      string         `json:"source"`
@@ -128,27 +120,23 @@ type ActivityLogEvent struct {
 	Ref         string         `json:"ref,omitempty"`
 }
 
-// ActivityLogResponse is returned by the /api/activity endpoint.
 type ActivityLogResponse struct {
 	Events []ActivityLogEvent `json:"events"`
 	Count  int                `json:"count"`
 }
 
-// ScreencastSettings configures live tab previews.
 type ScreencastSettings struct {
 	FPS      int `json:"fps"`
 	Quality  int `json:"quality"`
 	MaxWidth int `json:"maxWidth"`
 }
 
-// BrowserSettings configures browser behavior.
 type BrowserSettings struct {
 	BlockImages  bool `json:"blockImages"`
 	BlockMedia   bool `json:"blockMedia"`
 	NoAnimations bool `json:"noAnimations"`
 }
 
-// Settings contains all dashboard settings.
 type Settings struct {
 	Screencast ScreencastSettings `json:"screencast"`
 	Stealth    string             `json:"stealth"` // light/medium/full
@@ -157,18 +145,15 @@ type Settings struct {
 	Agents     AgentSettings      `json:"agents"`
 }
 
-// AgentSettings controls agent reasoning output visibility.
 type AgentSettings struct {
 	ReasoningMode string `json:"reasoningMode"` // "tool_calls" (default), "progress", "both"
 }
 
-// MonitoringSettings controls dashboard monitoring features.
 type MonitoringSettings struct {
 	MemoryMetrics bool `json:"memoryMetrics"` // Enable per-tab memory aggregation (can be heavy)
 	PollInterval  int  `json:"pollInterval"`  // Poll interval in seconds (default 30)
 }
 
-// ServerInfo contains health/status information.
 type ServerInfo struct {
 	Version   string `json:"version"`
 	Uptime    int64  `json:"uptime"`
@@ -177,21 +162,18 @@ type ServerInfo struct {
 	Agents    int    `json:"agents"`
 }
 
-// CreateProfileRequest is the request body for creating a profile.
 type CreateProfileRequest struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
 	UseWhen     string `json:"useWhen,omitempty"`
 }
 
-// CreateProfileResponse is returned after creating a profile.
 type CreateProfileResponse struct {
 	Status string `json:"status"`
 	ID     string `json:"id"`
 	Name   string `json:"name"`
 }
 
-// InstanceTab represents a browser tab in an instance.
 type InstanceTab struct {
 	ID         string `json:"id"`
 	InstanceID string `json:"instanceId"`
@@ -199,7 +181,6 @@ type InstanceTab struct {
 	Title      string `json:"title"`
 }
 
-// InstanceMetrics represents memory metrics for an instance.
 type InstanceMetrics struct {
 	InstanceID    string  `json:"instanceId"`
 	ProfileName   string  `json:"profileName"`
@@ -211,7 +192,6 @@ type InstanceMetrics struct {
 	Listeners     int64   `json:"listeners"`
 }
 
-// LaunchInstanceRequest is the request body for launching an instance.
 type LaunchInstanceRequest struct {
 	ProfileID string `json:"profileId,omitempty"` // profile ID (prof_XXXXXXXX) or existing profile name
 	Mode      string `json:"mode,omitempty"`      // "headed" or empty for headless

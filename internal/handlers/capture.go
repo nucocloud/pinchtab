@@ -1,25 +1,15 @@
 package handlers
 
 import (
-	"context"
 	"encoding/base64"
-	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strconv"
-	"strings"
 	"time"
 
-	"github.com/pinchtab/pinchtab/internal/activity"
 	"github.com/pinchtab/pinchtab/internal/bridge"
-	"github.com/pinchtab/pinchtab/internal/browserops"
 	"github.com/pinchtab/pinchtab/internal/browsers"
-	"github.com/pinchtab/pinchtab/internal/config"
 	"github.com/pinchtab/pinchtab/internal/httpx"
-	"github.com/pinchtab/pinchtab/internal/session"
 )
 
 // HandleCapture returns a screenshot and an accessibility snapshot from the
@@ -49,76 +39,15 @@ func (h *Handlers) HandleCapture(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	tabID := q.Get("tabId")
 
-	// Browser resolution: request > session > instance > global default > chrome.
-	requestBrowser := strings.TrimSpace(q.Get("browser"))
-	var sessionBrowser string
-	if sess, ok := session.FromRequest(r); ok && sess != nil {
-		sessionBrowser = sess.Browser
-	}
-	if h.rejectBrowserConflictWithRunning(w, requestBrowser, sessionBrowser) {
-		return
-	}
-	var instanceBrowser string
-	if tabID != "" && h.Orchestrator != nil {
-		if inst, ok := h.Orchestrator.FindInstanceByTab(tabID); ok && inst != nil && inst.Browser != "" {
-			instanceBrowser = inst.Browser
-		}
-	}
-
-	browser := config.ResolveBrowser(requestBrowser, sessionBrowser, instanceBrowser, h.Config.DefaultBrowser, h.Config.BrowsersAvailable)
-	if browser != config.BrowserChrome {
-		if _, err := config.ParseBrowser(browser, h.Config.BrowsersAvailable); err != nil {
-			httpx.Error(w, http.StatusBadRequest, err)
-			return
-		}
-	}
-
 	// /capture pairs a screenshot with an accessibility snapshot from the same
 	// DOM epoch — a visual operation. The static (ghost-chrome) runtime cannot
 	// paint, so it skips ShapeVisual and we fall back to Chrome.
-	handleDecision, err := checkBrowserCanHandle(browser, browsers.RequestIntent{
-		Shape: browsers.ShapeVisual,
-	})
-	if err != nil {
-		httpx.Error(w, http.StatusBadRequest, err)
-		return
-	}
-	if handleDecision.Decision == browsers.DecisionSkip {
-		browser = config.BrowserChrome
-	}
-
-	effectiveCfg, err := h.resolveEffectiveConfig(browser)
-	if err != nil {
-		var ambErr *config.AmbiguousBrowserError
-		if errors.As(err, &ambErr) {
-			httpx.ErrorCode(w, http.StatusBadRequest, "browser_ambiguous", err.Error(), false, map[string]any{
-				"browser": ambErr.Browser,
-				"targets": ambErr.Targets,
-			})
-		} else {
-			httpx.Error(w, http.StatusBadRequest, err)
-		}
+	effectiveCfg, _, ok := h.resolveReadRouting(w, r, tabID, "capture", browsers.ShapeVisual)
+	if !ok {
 		return
 	}
 
-	h.recordReadRequest(r, "capture", tabID)
-
-	captureRoute := browserops.SingleBrowserRoute(browser)
-	captureRoute.Attempts = append(captureRoute.Attempts, browserops.RouteAttempt{
-		Browser:  browser,
-		Accepted: handleDecision.Decision == browsers.DecisionHandle,
-		Reason:   handleDecision.Reason,
-	})
-	if requestBrowser != "" {
-		captureRoute.RequestedBrowser = requestBrowser
-	}
-	h.recordActivity(r, activity.Update{Route: captureRoute})
-
-	if err := h.ensureBrowser(effectiveCfg); err != nil {
-		if h.writeBridgeUnavailable(w, err) {
-			return
-		}
-		httpx.Error(w, 500, fmt.Errorf("browser initialization: %w", err))
+	if !h.ensureBrowserOrRespond(w, effectiveCfg) {
 		return
 	}
 
@@ -180,18 +109,12 @@ func (h *Handlers) HandleCapture(w http.ResponseWriter, r *http.Request) {
 		ext = ".png"
 	}
 
-	ctx, resolvedTabID, err := h.tabContextWithHeader(w, r, tabID)
-	if err != nil {
-		WriteTabContextError(w, err, 404)
-		return
-	}
-	if _, ok := h.enforceCurrentTabDomainPolicy(w, r, ctx, resolvedTabID); !ok {
+	resolvedTabID, tCtx, cancel, ok := h.resolveReadContext(w, r, tabID, effectiveCfg.ActionTimeout)
+	if !ok {
 		return
 	}
 	defer h.armAutoCloseIfEnabled(resolvedTabID)
-	tCtx, tCancel := context.WithTimeout(ctx, effectiveCfg.ActionTimeout)
-	defer tCancel()
-	go httpx.CancelOnClientDone(r.Context(), tCancel)
+	defer cancel()
 
 	opts := bridge.CaptureOpts{
 		Image: bridge.ScreenshotOpts{
@@ -280,14 +203,8 @@ func (h *Handlers) HandleCapture(w http.ResponseWriter, r *http.Request) {
 
 	switch output {
 	case "file":
-		captureDir := filepath.Join(h.Config.StateDir, "captures")
-		if err := os.MkdirAll(captureDir, 0750); err != nil {
-			httpx.Error(w, 500, fmt.Errorf("create capture dir: %w", err))
-			return
-		}
-		ts := time.Now().Format("20060102-150405")
-		filePath := filepath.Join(captureDir, fmt.Sprintf("cap-%s%s", ts, ext))
-		if err := os.WriteFile(filePath, result.ImageBytes, 0600); err != nil {
+		filePath, _, err := saveBinaryToStateDir(h.Config.StateDir, "captures", "cap", ext, result.ImageBytes)
+		if err != nil {
 			httpx.Error(w, 500, fmt.Errorf("write capture: %w", err))
 			return
 		}
@@ -298,14 +215,7 @@ func (h *Handlers) HandleCapture(w http.ResponseWriter, r *http.Request) {
 		// Raw output skips the JSON envelope and returns image bytes only.
 		// The snapshot half is dropped; this mode is for clients that already
 		// have a separate /snapshot call. It exists mostly as a debug aid.
-		contentType := "image/jpeg"
-		if result.ImageFormat == "png" {
-			contentType = "image/png"
-		}
-		w.Header().Set("Content-Type", contentType)
-		if _, err := w.Write(result.ImageBytes); err != nil {
-			slog.Error("capture raw write", "err", err)
-		}
+		writeRawImage(w, result.ImageBytes, imageContentType(result.ImageFormat), "capture raw write")
 		return
 	default:
 		httpx.Error(w, 400, fmt.Errorf("unknown output %q (expected file|inline|raw)", output))
@@ -344,20 +254,7 @@ func (h *Handlers) HandleCapture(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, 200, resp)
 }
 
-// HandleTabCapture is the /tabs/{id}/capture variant — same handler, path-bound tab.
-//
 // @Endpoint GET /tabs/{id}/capture
 func (h *Handlers) HandleTabCapture(w http.ResponseWriter, r *http.Request) {
-	tabID := r.PathValue("id")
-	if tabID == "" {
-		httpx.Error(w, 400, fmt.Errorf("tab id required"))
-		return
-	}
-	q := r.URL.Query()
-	q.Set("tabId", tabID)
-	req := r.Clone(r.Context())
-	u := *r.URL
-	u.RawQuery = q.Encode()
-	req.URL = &u
-	h.HandleCapture(w, req)
+	h.withPathTabID(w, r, h.HandleCapture)
 }

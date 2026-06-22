@@ -7,7 +7,6 @@ import (
 	"github.com/pinchtab/pinchtab/internal/idpi"
 )
 
-// mockGuard implements idpi.Guard for testing.
 type mockGuard struct {
 	scanResult idpi.CheckResult
 	wrapResult string

@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -13,6 +14,7 @@ import (
 	"github.com/pinchtab/pinchtab/internal/config"
 	"github.com/pinchtab/pinchtab/internal/handlers"
 	"github.com/pinchtab/pinchtab/internal/httpx"
+	"github.com/pinchtab/pinchtab/internal/readiness"
 	"github.com/pinchtab/pinchtab/internal/session"
 )
 
@@ -41,8 +43,12 @@ func (o *Orchestrator) RouteForRequest(r *http.Request) (string, int, error) {
 
 	requestedBrowser := ExtractRequestedBrowser(r)
 	if requestedBrowser != "" {
-		if _, err := config.ParseBrowser(requestedBrowser, nil); err != nil {
-			return "", http.StatusBadRequest, fmt.Errorf("unknown browser %q", requestedBrowser)
+		var available []string
+		if o.runtimeCfg != nil {
+			available = o.runtimeCfg.BrowsersAvailable
+		}
+		if _, err := config.ParseBrowser(requestedBrowser, available); err != nil {
+			return "", http.StatusBadRequest, fmt.Errorf("unknown browser %q: %w", requestedBrowser, err)
 		}
 		if url := o.FirstRunningURLForBrowser(requestedBrowser); url != "" {
 			return url, 0, nil
@@ -88,29 +94,31 @@ func (o *Orchestrator) launchAndWaitForRequestRoute(profileName, requestedTarget
 func (o *Orchestrator) waitForRequestRouteReady(inst *InstanceInternal, timeout time.Duration) (string, error) {
 	url := inst.URL
 	healthURL := strings.TrimRight(url, "/") + "/health"
-	deadline := time.Now().Add(timeout)
 	client := o.client
 	if client == nil {
 		client = http.DefaultClient
 	}
 
-	for time.Now().Before(deadline) {
-		req, _ := http.NewRequest(http.MethodGet, healthURL, nil)
-		// Children inherit Server.Token and /health is auth-gated; an
-		// unauthenticated poll loops on 401 until the timeout and
-		// auto-launch can never succeed.
-		o.applyInstanceAuth(req, inst)
-		resp, err := client.Do(req)
-		if err == nil {
-			_ = resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				return url, nil
+	result, err := readiness.WaitUntil(context.Background(), timeout, routeInstanceReadyPollInterval,
+		func() (string, bool, error) {
+			req, _ := http.NewRequest(http.MethodGet, healthURL, nil)
+			// Children inherit Server.Token and /health is auth-gated; an
+			// unauthenticated poll loops on 401 until the timeout and
+			// auto-launch can never succeed.
+			o.applyInstanceAuth(req, inst)
+			resp, err := client.Do(req)
+			if err == nil {
+				_ = resp.Body.Close()
+				if resp.StatusCode == http.StatusOK {
+					return url, true, nil
+				}
 			}
-		}
-		time.Sleep(routeInstanceReadyPollInterval)
+			return "", false, nil
+		})
+	if err != nil {
+		return "", fmt.Errorf("instance launched but did not become ready in time")
 	}
-
-	return "", fmt.Errorf("instance launched but did not become ready in time")
+	return result, nil
 }
 
 func autoLaunchProfileName(target string) string {

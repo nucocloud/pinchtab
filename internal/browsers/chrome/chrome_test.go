@@ -100,8 +100,6 @@ func TestBinaryNamesReturnsExpectedNames(t *testing.T) {
 		}
 	}
 
-	// Verify defensive copy: mutating the returned slice must not affect
-	// subsequent calls.
 	names[0] = "MUTATED"
 	fresh := chrome.BinaryNames()
 	if fresh[0] == "MUTATED" {
@@ -164,8 +162,6 @@ func TestDiscoverBinaryReturnsValidResult(t *testing.T) {
 		t.Fatal("DiscoverBinary().Probed is empty; expected at least PATH probes")
 	}
 
-	// Verify the result is the correct type (compile-time check is enough,
-	// but let's also confirm the zero-value semantics).
 	_ = browsers.BinaryDiscovery(d)
 }
 
@@ -341,8 +337,6 @@ func TestBuildLaunchArgsNoSandbox(t *testing.T) {
 	}
 }
 
-// indexOf returns the index of the first arg whose value starts with prefix,
-// or -1 if no match is found.
 func indexOf(args []string, prefix string) int {
 	for i, a := range args {
 		if strings.HasPrefix(a, prefix) {
@@ -372,7 +366,6 @@ func TestBuildLaunchArgsParityWithRepresentativeConfigs(t *testing.T) {
 			t.Fatalf("expected nil env, got %v", env)
 		}
 
-		// Presence checks
 		mustContain := []string{
 			"--remote-debugging-port=9222",
 			"--disable-background-networking",
@@ -395,22 +388,18 @@ func TestBuildLaunchArgsParityWithRepresentativeConfigs(t *testing.T) {
 			}
 		}
 
-		// Window size pattern
 		if indexOf(args, "--window-size=") < 0 {
 			t.Error("missing --window-size= arg")
 		}
 
-		// First arg is debug port
 		if args[0] != "--remote-debugging-port=9222" {
 			t.Errorf("first arg = %q, want --remote-debugging-port=9222", args[0])
 		}
 
-		// Last arg is --no-sandbox
 		if args[len(args)-1] != "--no-sandbox" {
 			t.Errorf("last arg = %q, want --no-sandbox", args[len(args)-1])
 		}
 
-		// Flag ordering verification
 		order := []string{
 			"--remote-debugging-port=",
 			"--disable-background-networking",
@@ -445,7 +434,6 @@ func TestBuildLaunchArgsParityWithRepresentativeConfigs(t *testing.T) {
 			t.Fatalf("expected 25 args (23 base + disable-extensions + window-size), got %d", len(args))
 		}
 
-		// Must have base flags
 		if !slices.Contains(args, "--disable-background-networking") {
 			t.Error("missing base flag --disable-background-networking")
 		}
@@ -456,7 +444,6 @@ func TestBuildLaunchArgsParityWithRepresentativeConfigs(t *testing.T) {
 			t.Error("missing --window-size=")
 		}
 
-		// Must NOT have headless, debug port, profile, timezone, no-sandbox
 		mustNotContain := []string{
 			"--headless=new",
 			"--remote-debugging-port=",

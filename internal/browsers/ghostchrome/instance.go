@@ -15,8 +15,6 @@ type Instance struct {
 	*chrome.Instance
 }
 
-// NewInstance creates a Ghost-chrome RuntimeInstance backed by a Chrome
-// Instance.
 func NewInstance(browserCtx context.Context, headless bool) *Instance {
 	return &Instance{
 		Instance: chrome.NewInstance(browserCtx, headless),

@@ -68,6 +68,27 @@ func TestRouteManager_AddRemove_NoCDP(t *testing.T) {
 	}
 }
 
+// AddRule optimistically claims fetchEnabled under the lock to close the
+// concurrent-same-tab double-enable window; a failed fetch.Enable must roll
+// that claim back so a retry can still enable interception.
+func TestRouteManager_AddRule_FailedEnableRollsBackFetchEnabled(t *testing.T) {
+	rm := NewRouteManager(nil)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel() // force the fetch.Enable CDP call to fail promptly
+
+	err := rm.AddRule(ctx, "tab1", RouteRule{Pattern: "*", Action: RouteActionAbort})
+	if err == nil {
+		t.Fatal("expected fetch.enable to fail on a cancelled context")
+	}
+
+	rm.mu.Lock()
+	s := rm.perTab["tab1"]
+	rm.mu.Unlock()
+	if s != nil && s.fetchEnabled {
+		t.Error("fetchEnabled should be rolled back to false after a failed enable")
+	}
+}
+
 func TestRouteManager_Remove_TabNotRoutedReturnsSentinel(t *testing.T) {
 	rm := NewRouteManager(nil)
 	_, err := rm.Remove(t.Context(), "tab-never-routed", "*.png")

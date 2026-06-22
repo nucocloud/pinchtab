@@ -1,27 +1,23 @@
 package handlers
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 
 	"github.com/pinchtab/pinchtab/internal/activity"
 	"github.com/pinchtab/pinchtab/internal/bridge"
 	"github.com/pinchtab/pinchtab/internal/httpx"
+	"github.com/pinchtab/pinchtab/internal/routes"
 )
 
 func (h *Handlers) ensureCookiesEnabled(w http.ResponseWriter) bool {
 	if h.cookiesEnabled() {
 		return true
 	}
-	httpx.ErrorCode(w, http.StatusForbidden, "cookies_disabled", httpx.DisabledEndpointMessage("cookies", "security.allowCookies"), false, map[string]any{
-		"setting": "security.allowCookies",
-	})
+	h.writeCapabilityDisabled(w, routes.CapCookies)
 	return false
 }
 
@@ -99,21 +95,7 @@ func (h *Handlers) HandleGetCookies(w http.ResponseWriter, r *http.Request) {
 //
 // @Endpoint GET /tabs/{id}/cookies
 func (h *Handlers) HandleTabGetCookies(w http.ResponseWriter, r *http.Request) {
-	tabID := r.PathValue("id")
-	if tabID == "" {
-		httpx.Error(w, 400, fmt.Errorf("tab id required"))
-		return
-	}
-
-	q := r.URL.Query()
-	q.Set("tabId", tabID)
-
-	req := r.Clone(r.Context())
-	u := *r.URL
-	u.RawQuery = q.Encode()
-	req.URL = &u
-
-	h.HandleGetCookies(w, req)
+	h.withPathTabID(w, r, h.HandleGetCookies)
 }
 
 type cookieRequest struct {
@@ -254,35 +236,7 @@ func (h *Handlers) HandleSetCookies(w http.ResponseWriter, r *http.Request) {
 //
 // @Endpoint POST /tabs/{id}/cookies
 func (h *Handlers) HandleTabSetCookies(w http.ResponseWriter, r *http.Request) {
-	tabID := r.PathValue("id")
-	if tabID == "" {
-		httpx.Error(w, 400, fmt.Errorf("tab id required"))
-		return
-	}
-
-	reqBody := cookieRequest{}
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodySize))
-	if err := dec.Decode(&reqBody); err != nil && !errors.Is(err, io.EOF) {
-		httpx.Error(w, 400, fmt.Errorf("decode: %w", err))
-		return
-	}
-
-	if reqBody.TabID != "" && reqBody.TabID != tabID {
-		httpx.Error(w, 400, fmt.Errorf("tabId in body does not match path id"))
-		return
-	}
-	reqBody.TabID = tabID
-
-	payload, err := json.Marshal(reqBody)
-	if err != nil {
-		httpx.Error(w, 500, fmt.Errorf("encode: %w", err))
-		return
-	}
-
-	req := r.Clone(r.Context())
-	req.Body = io.NopCloser(bytes.NewReader(payload))
-	req.ContentLength = int64(len(payload))
-	req.Header = r.Header.Clone()
-	req.Header.Set("Content-Type", "application/json")
-	h.HandleSetCookies(w, req)
+	// Path id is canonical; reject a conflicting body tabId and forward to the
+	// root handler, which re-decodes the cookieRequest.
+	h.withPathTabIDBody(w, r, h.HandleSetCookies)
 }

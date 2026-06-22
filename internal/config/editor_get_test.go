@@ -8,7 +8,7 @@ func TestGetConfigValue_RoundTrip(t *testing.T) {
 	triples := []struct {
 		path  string
 		value string
-		want  string // what GetConfigValue should return
+		want  string
 	}{
 		{"server.port", "8080", "8080"},
 		{"server.bind", "0.0.0.0", "0.0.0.0"},

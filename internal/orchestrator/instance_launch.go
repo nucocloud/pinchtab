@@ -115,7 +115,6 @@ func (o *Orchestrator) LaunchWithOptions(name, port string, headless bool, opts 
 	requestedPolicy := cloneSecurityPolicy(opts.SecurityPolicy)
 	effectivePolicy := effectiveSecurityPolicy(o.runtimeCfg, requestedPolicy)
 
-	// Browser-aware launch: resolve the browser name to a target for config overrides.
 	effectiveCfg := o.runtimeCfg
 	targetPromoted := false
 	// A resolved target name is authoritative: re-deriving from the provider
@@ -130,22 +129,12 @@ func (o *Orchestrator) LaunchWithOptions(name, port string, headless bool, opts 
 		}
 	}
 	if browser := strings.TrimSpace(opts.Browser); !targetPromoted && browser != "" && o.runtimeCfg != nil && len(o.runtimeCfg.Targets) > 0 {
-		matches := config.TargetsForBrowser(o.runtimeCfg, browser)
-		if len(matches) == 1 {
-			resolved, err := config.ResolveExplicitBrowserTarget(o.runtimeCfg, matches[0])
-			if err == nil {
+		// Lenient: only promote a target when the provider maps to an unambiguous
+		// winner (single match, or the configured default among several); an
+		// ambiguous/zero match leaves the provider-derived config in place.
+		if target, _ := config.MatchBrowserToTarget(o.runtimeCfg, browser); target != "" {
+			if resolved, err := config.ResolveExplicitBrowserTarget(o.runtimeCfg, target); err == nil {
 				effectiveCfg = resolved.Config
-			}
-		} else if len(matches) > 1 {
-			dt := config.ResolveDefaultTarget(o.runtimeCfg)
-			for _, m := range matches {
-				if m == dt {
-					resolved, err := config.ResolveExplicitBrowserTarget(o.runtimeCfg, dt)
-					if err == nil {
-						effectiveCfg = resolved.Config
-					}
-					break
-				}
 			}
 		}
 	}

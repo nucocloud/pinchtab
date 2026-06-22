@@ -8,7 +8,6 @@ import (
 	"testing"
 )
 
-// stubBrowser is a minimal Browser implementation for testing.
 type stubBrowser struct {
 	id          string
 	displayName string
@@ -138,7 +137,6 @@ func TestHandleDecisionJSON(t *testing.T) {
 		t.Errorf("Reason = %q, want %q", got.Reason, "test")
 	}
 
-	// Verify omitempty: empty Reason should be omitted.
 	hdNoReason := HandleDecision{Decision: DecisionSkip}
 	data2, _ := json.Marshal(hdNoReason)
 	if strings.Contains(string(data2), "reason") {
@@ -152,7 +150,6 @@ func TestConcurrentRegisterAndGet(t *testing.T) {
 	const n = 100
 	var wg sync.WaitGroup
 
-	// Spawn writers.
 	wg.Add(n)
 	for i := range n {
 		go func(i int) {
@@ -166,7 +163,6 @@ func TestConcurrentRegisterAndGet(t *testing.T) {
 		}(i)
 	}
 
-	// Spawn readers concurrently with writers.
 	wg.Add(n)
 	for range n {
 		go func() {

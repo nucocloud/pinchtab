@@ -2,96 +2,29 @@ package handlers
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/pinchtab/pinchtab/internal/activity"
 	"github.com/pinchtab/pinchtab/internal/assets"
 	"github.com/pinchtab/pinchtab/internal/bridge"
 	"github.com/pinchtab/pinchtab/internal/bridge/observe"
 	"github.com/pinchtab/pinchtab/internal/browserops"
 	"github.com/pinchtab/pinchtab/internal/browsers"
-	"github.com/pinchtab/pinchtab/internal/config"
 	"github.com/pinchtab/pinchtab/internal/httpx"
-	"github.com/pinchtab/pinchtab/internal/session"
 )
 
-// HandleText extracts readable text from the current tab.
-//
 // @Endpoint GET /text
 func (h *Handlers) HandleText(w http.ResponseWriter, r *http.Request) {
-	// Browser resolution: request > session > instance > global default > chrome
-	requestBrowser := strings.TrimSpace(r.URL.Query().Get("browser"))
-	var sessionBrowser string
-	if sess, ok := session.FromRequest(r); ok && sess != nil {
-		sessionBrowser = sess.Browser
-	}
-	if h.rejectBrowserConflictWithRunning(w, requestBrowser, sessionBrowser) {
-		return
-	}
-	var instanceBrowser string
 	tabID := r.URL.Query().Get("tabId")
-	if tabID != "" && h.Orchestrator != nil {
-		if inst, ok := h.Orchestrator.FindInstanceByTab(tabID); ok && inst != nil && inst.Browser != "" {
-			instanceBrowser = inst.Browser
-		}
-	}
-
-	browser := config.ResolveBrowser(requestBrowser, sessionBrowser, instanceBrowser, h.Config.DefaultBrowser, h.Config.BrowsersAvailable)
-	if browser != config.BrowserChrome {
-		if _, err := config.ParseBrowser(browser, h.Config.BrowsersAvailable); err != nil {
-			httpx.Error(w, http.StatusBadRequest, err)
-			return
-		}
-	}
-
-	handleDecision, err := checkBrowserCanHandle(browser, browsers.RequestIntent{
-		Shape: browsers.ShapeRenderedRead,
-	})
-	if err != nil {
-		httpx.Error(w, http.StatusBadRequest, err)
-		return
-	}
-	if handleDecision.Decision == browsers.DecisionSkip {
-		browser = config.BrowserChrome
-	}
-
-	effectiveCfg, err := h.resolveEffectiveConfig(browser)
-	if err != nil {
-		var ambErr *config.AmbiguousBrowserError
-		if errors.As(err, &ambErr) {
-			httpx.ErrorCode(w, http.StatusBadRequest, "browser_ambiguous", err.Error(), false, map[string]any{
-				"browser": ambErr.Browser,
-				"targets": ambErr.Targets,
-			})
-		} else {
-			httpx.Error(w, http.StatusBadRequest, err)
-		}
+	effectiveCfg, textRoute, ok := h.resolveReadRouting(w, r, tabID, "text", browsers.ShapeRenderedRead)
+	if !ok {
 		return
 	}
 
-	h.recordReadRequest(r, "text", tabID)
-
-	textRoute := browserops.SingleBrowserRoute(browser)
-	textRoute.Attempts = append(textRoute.Attempts, browserops.RouteAttempt{
-		Browser:  browser,
-		Accepted: handleDecision.Decision == browsers.DecisionHandle,
-		Reason:   handleDecision.Reason,
-	})
-	if requestBrowser != "" {
-		textRoute.RequestedBrowser = requestBrowser
-	}
-	h.recordActivity(r, activity.Update{Route: textRoute})
-
-	if err := h.ensureBrowser(effectiveCfg); err != nil {
-		if h.writeBridgeUnavailable(w, err) {
-			return
-		}
-		httpx.Error(w, 500, fmt.Errorf("browser initialization: %w", err))
+	if !h.ensureBrowserOrRespond(w, effectiveCfg) {
 		return
 	}
 
@@ -104,29 +37,14 @@ func (h *Handlers) HandleText(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	ctx, resolvedTabID, err := h.tabContextWithHeader(w, r, tabID)
-	if err != nil {
-		WriteTabContextError(w, err, 404)
-		return
-	}
-	if _, ok := h.enforceCurrentTabDomainPolicy(w, r, ctx, resolvedTabID); !ok {
+	resolvedTabID, tCtx, cancel, ok := h.resolveReadContext(w, r, tabID, effectiveCfg.ActionTimeout)
+	if !ok {
 		return
 	}
 	defer h.armAutoCloseIfEnabled(resolvedTabID)
+	defer cancel()
 
-	tCtx, tCancel := context.WithTimeout(ctx, effectiveCfg.ActionTimeout)
-	defer tCancel()
-	go httpx.CancelOnClientDone(r.Context(), tCancel)
-
-	// Resolve the target frame. Explicit ?frameId= wins; otherwise fall back
-	// to the currently-scoped frame on this tab (as set by /frame). Empty
-	// means "top-level document" and preserves the prior behaviour.
-	targetFrameID := r.URL.Query().Get("frameId")
-	if targetFrameID == "" {
-		if scope, ok := h.currentFrameScope(resolvedTabID); ok {
-			targetFrameID = scope.FrameID
-		}
-	}
+	targetFrameID := h.resolveTargetFrameID(r, resolvedTabID)
 
 	// Auto-wait: if the document is still loading, wait for readyState to
 	// reach at least "interactive" before extracting text. Prevents empty or
@@ -136,44 +54,55 @@ func (h *Handlers) HandleText(w http.ResponseWriter, r *http.Request) {
 	selectorParam := r.URL.Query().Get("selector")
 	refParam := r.URL.Query().Get("ref")
 	if selectorParam != "" || refParam != "" {
-		text, err := h.extractElementText(tCtx, resolvedTabID, selectorParam, refParam)
-		if err != nil {
-			httpx.Error(w, 500, fmt.Errorf("element text extract: %w", err))
-			return
-		}
-		url, _ := h.Bridge.CurrentURL(tCtx)
-		title, _ := h.Bridge.CurrentTitle(tCtx)
-		h.recordResolvedURL(r, url)
-		httpx.JSON(w, 200, map[string]any{
-			"url":   url,
-			"title": title,
-			"text":  text,
-		})
+		h.writeElementText(w, r, tCtx, resolvedTabID, selectorParam, refParam)
 		return
 	}
 
+	text, err := h.extractDocumentText(tCtx, mode, targetFrameID)
+	if err != nil {
+		httpx.Error(w, 500, err)
+		return
+	}
+	h.writeTextResponse(w, r, tCtx, text, maxChars, format, textRoute)
+}
+
+// writeElementText extracts text for a single selector/ref-targeted element and
+// writes the {url,title,text} JSON response.
+func (h *Handlers) writeElementText(w http.ResponseWriter, r *http.Request, tCtx context.Context, resolvedTabID, selectorParam, refParam string) {
+	text, err := h.extractElementText(tCtx, resolvedTabID, selectorParam, refParam)
+	if err != nil {
+		httpx.Error(w, 500, fmt.Errorf("element text extract: %w", err))
+		return
+	}
+	url, _ := h.Bridge.CurrentURL(tCtx)
+	title, _ := h.Bridge.CurrentTitle(tCtx)
+	h.recordResolvedURL(r, url)
+	httpx.JSON(w, 200, map[string]any{
+		"url":   url,
+		"title": title,
+		"text":  text,
+	})
+}
+
+// extractDocumentText reads the document's text (readability unless mode=="raw")
+// across all reachable frames, or scoped to targetFrameID when set. The
+// cross-frame path silently skips cross-origin frames and never errors.
+func (h *Handlers) extractDocumentText(tCtx context.Context, mode, targetFrameID string) (string, error) {
 	script := `document.body.innerText`
 	if mode != "raw" {
 		script = assets.ReadabilityJS
 	}
-
-	var text string
 	if targetFrameID == "" {
-		// Cross-frame path: collect text from all reachable frames (same
-		// as snap, which auto-flattens same-origin iframes). Cross-origin
-		// frames are silently skipped because createIsolatedWorld fails.
-		text = h.extractTextAllFrames(tCtx, script)
-	} else {
-		// Frame-scoped path — evaluate in the frame's isolated world so the
-		// expression sees the iframe's `document`, not the parent's.
-		var err error
-		text, err = h.evalTextInFrame(tCtx, script, targetFrameID)
-		if err != nil {
-			httpx.Error(w, 500, err)
-			return
-		}
+		return h.extractTextAllFrames(tCtx, script), nil
 	}
+	// Frame-scoped path — evaluate in the frame's isolated world so the
+	// expression sees the iframe's `document`, not the parent's.
+	return h.evalTextInFrame(tCtx, script, targetFrameID)
+}
 
+// writeTextResponse truncates, IDPI-scans, and writes the document text as
+// plain text (format text/plain) or the JSON envelope.
+func (h *Handlers) writeTextResponse(w http.ResponseWriter, r *http.Request, tCtx context.Context, text string, maxChars int, format string, route *browserops.RouteMetadata) {
 	truncated := false
 	if maxChars > -1 && len(text) > maxChars {
 		text = text[:maxChars]
@@ -205,7 +134,7 @@ func (h *Handlers) HandleText(w http.ResponseWriter, r *http.Request) {
 		"title":     title,
 		"text":      text,
 		"truncated": truncated,
-		"route":     textRoute,
+		"route":     route,
 	}
 	if result.Warning != "" {
 		resp["idpiWarning"] = result.Warning
@@ -213,25 +142,9 @@ func (h *Handlers) HandleText(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, 200, resp)
 }
 
-// HandleTabText extracts text for a tab identified by path ID.
-//
 // @Endpoint GET /tabs/{id}/text
 func (h *Handlers) HandleTabText(w http.ResponseWriter, r *http.Request) {
-	tabID := r.PathValue("id")
-	if tabID == "" {
-		httpx.Error(w, 400, fmt.Errorf("tab id required"))
-		return
-	}
-
-	q := r.URL.Query()
-	q.Set("tabId", tabID)
-
-	req := r.Clone(r.Context())
-	u := *r.URL
-	u.RawQuery = q.Encode()
-	req.URL = &u
-
-	h.HandleText(w, req)
+	h.withPathTabID(w, r, h.HandleText)
 }
 
 // extractTextAllFrames evaluates the text script in every reachable frame and
@@ -332,27 +245,15 @@ func (h *Handlers) extractElementText(ctx context.Context, tabID, selector, ref 
 }
 
 func (h *Handlers) waitForReadyState(ctx context.Context) {
-	var state string
-	if err := h.Bridge.Evaluate(ctx, `document.readyState`, &state, bridge.EvalOpts{}); err != nil {
-		return
-	}
-	if state != "loading" {
-		return
-	}
-	deadline := time.After(5 * time.Second)
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-deadline:
-			return
-		case <-time.After(100 * time.Millisecond):
-			if err := h.Bridge.Evaluate(ctx, `document.readyState`, &state, bridge.EvalOpts{}); err != nil {
-				return
-			}
-			if state != "loading" {
-				return
-			}
+	wctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	// An eval error or a non-loading state both stop the wait, matching the
+	// original loop which returned (silently) on either condition.
+	_ = pollUntil(wctx, 100*time.Millisecond, func() (bool, error) {
+		var state string
+		if err := h.Bridge.Evaluate(wctx, `document.readyState`, &state, bridge.EvalOpts{}); err != nil {
+			return true, nil
 		}
-	}
+		return state != "loading", nil
+	})
 }

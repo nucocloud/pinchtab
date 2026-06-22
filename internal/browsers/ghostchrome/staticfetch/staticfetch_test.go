@@ -75,7 +75,6 @@ func TestStaticBrowser_Snapshot_All(t *testing.T) {
 		t.Fatal("expected nodes in snapshot")
 	}
 
-	// Verify roles are assigned
 	roleSet := make(map[string]bool)
 	for _, n := range result.Nodes {
 		roleSet[n.Role] = true
@@ -189,13 +188,11 @@ func TestStaticBrowser_RefNotFound(t *testing.T) {
 	lite := NewBrowser()
 	defer func() { _ = lite.Close() }()
 
-	// No page loaded
 	_, err := lite.Snapshot(context.Background(), "", "all")
 	if err == nil {
 		t.Error("expected error for snapshot without navigate")
 	}
 
-	// After navigate, bad ref
 	ts := newTestServer(testPage)
 	defer ts.Close()
 
@@ -352,7 +349,6 @@ func TestStaticBrowser_MultiTab(t *testing.T) {
 		t.Error("tab IDs should be different")
 	}
 
-	// Current tab is the most recent (page2)
 	result, _ := lite.Text(context.Background(), "")
 	if !strings.Contains(result.Text, "Second") {
 		t.Errorf("expected page 2 text, got: %s", result.Text)
@@ -375,7 +371,6 @@ func TestStaticBrowser_Close(t *testing.T) {
 		t.Errorf("Close: %v", err)
 	}
 
-	// After close, operations should fail
 	_, err := lite.Snapshot(context.Background(), "", "all")
 	if err == nil {
 		t.Error("expected error after close")

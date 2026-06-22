@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -17,6 +18,7 @@ type scriptedOutcome struct {
 	succeed     bool
 	failReason  LaunchFailureReason
 	errOnLaunch error
+	errOnWait   error
 }
 
 type fakeLauncher struct {
@@ -93,6 +95,10 @@ func (fl *fakeLauncher) WaitForLaunchOutcome(instanceID string, timeout time.Dur
 	fl.mu.Unlock()
 	if !ok {
 		return LaunchOutcome{}, fmt.Errorf("unknown instance %q", instanceID)
+	}
+
+	if step.errOnWait != nil {
+		return LaunchOutcome{}, step.errOnWait
 	}
 
 	if step.succeed {
@@ -332,6 +338,120 @@ func TestLaunchWithFallback_NonRecoverableAbortsImmediately(t *testing.T) {
 	}
 	if len(fl.calls) != 1 {
 		t.Errorf("expected exactly 1 launch attempt, got %d", len(fl.calls))
+	}
+}
+
+// A recoverable error while WAITING for the launch outcome (e.g. a startup
+// deadline) must advance to the next candidate, not abort the whole chain.
+func TestLaunchWithFallback_RecoverableWaitErrorContinues(t *testing.T) {
+	fastPolling(t)
+	fl := fakeLauncherFor([]scriptedOutcome{
+		{target: "chrome", errOnWait: fmt.Errorf("wait for chrome: %w", context.DeadlineExceeded)},
+		{target: "cloak", succeed: true},
+	})
+
+	planned, err := launchWithFallbackForTest(fl, []string{"chrome", "cloak"})
+	if err != nil {
+		t.Fatalf("recoverable wait error should fall through to next candidate, got: %v", err)
+	}
+	if planned.Instance == nil || planned.Instance.Browser != config.BrowserCloak {
+		t.Fatalf("expected cloak fallback instance, got %+v", planned.Instance)
+	}
+	if planned.FallbackFrom != "chrome" {
+		t.Errorf("FallbackFrom = %q, want chrome", planned.FallbackFrom)
+	}
+	if planned.FallbackReason != ReasonStartupTimeout {
+		t.Errorf("FallbackReason = %q, want %q", planned.FallbackReason, ReasonStartupTimeout)
+	}
+	if len(fl.calls) != 2 {
+		t.Errorf("expected 2 launch calls, got %d", len(fl.calls))
+	}
+	if len(fl.tornDown) != 1 || fl.tornDown[0] != fl.createdIDs[0] {
+		t.Errorf("failed attempt teardown = %v, want [%s]", fl.tornDown, fl.createdIDs[0])
+	}
+}
+
+// A non-recoverable wait error (instance vanished -> ReasonUnknown) must still
+// abort after one attempt rather than silently retrying.
+func TestLaunchWithFallback_NonRecoverableWaitErrorAborts(t *testing.T) {
+	fastPolling(t)
+	waitErr := errors.New("instance \"inst_fake_01\" disappeared from orchestrator map")
+	fl := fakeLauncherFor([]scriptedOutcome{
+		{target: "chrome", errOnWait: waitErr},
+		// No second entry: a continue would trip "unexpected extra call".
+	})
+
+	_, err := launchWithFallbackForTest(fl, []string{"chrome", "cloak"})
+	if err == nil {
+		t.Fatal("expected non-recoverable wait error to surface as error")
+	}
+	if !errors.Is(err, waitErr) {
+		t.Errorf("exhaustion cause should wrap the wait error: %v", err)
+	}
+	var exhausted *FallbackExhaustedError
+	if !errors.As(err, &exhausted) {
+		t.Fatalf("expected *FallbackExhaustedError, got %T", err)
+	}
+	if len(exhausted.Attempts) != 1 || exhausted.Attempts[0].Target != "chrome" || exhausted.Attempts[0].Reason != ReasonUnknown {
+		t.Fatalf("attempt metadata wrong: %+v", exhausted.Attempts)
+	}
+	if len(fl.calls) != 1 {
+		t.Errorf("expected exactly 1 launch attempt, got %d", len(fl.calls))
+	}
+	if len(fl.tornDown) != 1 {
+		t.Errorf("expected failed attempt to be torn down once, got %d", len(fl.tornDown))
+	}
+}
+
+// A fallback supplied as a provider name (e.g. "cloak") that is NOT itself a
+// target name must resolve through the two-step logic to its target, not 400
+// and abort the chain. The target is deliberately named differently from the
+// provider so explicit-target-only resolution would fail.
+func TestLaunchWithTargetSelection_ResolvesProviderNameFallback(t *testing.T) {
+	fastPolling(t)
+	o := newFallbackTestOrch(t)
+	o.runtimeCfg.Targets = config.BrowserTargetsConfig{
+		"chrome":        config.BrowserTargetConfig{Provider: config.BrowserChrome},
+		"cloak-primary": config.BrowserTargetConfig{Provider: config.BrowserCloak},
+	}
+	o.runtimeCfg.DefaultTarget = "chrome"
+	fl := fakeLauncherForOrch(t, o, []scriptedOutcome{
+		{target: "chrome", failReason: ReasonBinaryMissing},
+		{target: "cloak-primary", succeed: true},
+	})
+
+	inst, err := o.LaunchWithTargetSelection("prof", "9000", true, "chrome", []string{"cloak"}, LaunchOptions{})
+	if err != nil {
+		t.Fatalf("provider-name fallback should resolve to a target, got: %v", err)
+	}
+	if inst.Browser != config.BrowserCloak {
+		t.Fatalf("fallback Browser = %q, want cloak", inst.Browser)
+	}
+	if len(fl.calls) != 2 {
+		t.Fatalf("expected 2 launch calls (primary + resolved fallback), got %d", len(fl.calls))
+	}
+	if fl.calls[1].TargetName != "cloak-primary" {
+		t.Fatalf("resolved fallback target = %q, want cloak-primary", fl.calls[1].TargetName)
+	}
+}
+
+// A genuinely unknown fallback name must fail fast with *UnknownBrowserError
+// before any launch is attempted, not silently drop the fallback.
+func TestLaunchWithTargetSelection_UnknownFallbackIsHardError(t *testing.T) {
+	fastPolling(t)
+	o := newFallbackTestOrch(t)
+	fl := fakeLauncherForOrch(t, o, []scriptedOutcome{})
+
+	_, err := o.LaunchWithTargetSelection("prof", "9000", true, "chrome", []string{"does-not-exist"}, LaunchOptions{})
+	if err == nil {
+		t.Fatal("expected unknown fallback to surface as error")
+	}
+	var unknown *UnknownBrowserError
+	if !errors.As(err, &unknown) {
+		t.Fatalf("expected *UnknownBrowserError, got %T: %v", err, err)
+	}
+	if len(fl.calls) != 0 {
+		t.Errorf("expected no launch attempts when fallback resolution fails, got %d", len(fl.calls))
 	}
 }
 

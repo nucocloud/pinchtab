@@ -34,7 +34,6 @@ func Text(client *http.Client, base, token string, cmd *cobra.Command, args []st
 		params.Set("frameId", v)
 	}
 
-	// Positional arg takes precedence over --selector flag.
 	selectorStr := ""
 	if len(args) > 0 {
 		selectorStr = args[0]

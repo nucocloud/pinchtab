@@ -1,6 +1,7 @@
 package navguard
 
 import (
+	"log/slog"
 	"net"
 	"strings"
 )
@@ -33,14 +34,16 @@ func BuildTrustedProxyCIDRs(trustLoopback bool, configuredCIDRs []string) []*net
 
 // ParseCIDRs parses a list of CIDR notation strings and bare IPs into IPNets.
 // Bare IPs are treated as /32 (IPv4) or /128 (IPv6). Empty/blank entries are
-// skipped; unparseable entries are silently dropped.
+// skipped; unparseable entries (e.g. a hostname or junk string) are dropped
+// with a warning so the misconfiguration is visible.
 func ParseCIDRs(raw []string) []*net.IPNet {
 	var nets []*net.IPNet
 	for _, s := range raw {
-		s = strings.TrimSpace(s)
-		if s == "" {
+		original := strings.TrimSpace(s)
+		if original == "" {
 			continue
 		}
+		s = original
 		if !strings.Contains(s, "/") {
 			if ip := net.ParseIP(s); ip != nil {
 				if ip.To4() != nil {
@@ -54,6 +57,8 @@ func ParseCIDRs(raw []string) []*net.IPNet {
 		}
 		if _, cidr, err := net.ParseCIDR(s); err == nil {
 			nets = append(nets, cidr)
+		} else {
+			slog.Warn("navguard: dropping unparseable trusted CIDR/IP entry", "entry", original)
 		}
 	}
 	return nets

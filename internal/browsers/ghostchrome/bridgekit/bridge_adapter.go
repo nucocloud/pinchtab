@@ -32,8 +32,8 @@ type chromeActionAdapter struct {
 	bridge.BridgeAPI
 }
 
-// TabContext adapts the BridgeAPI.TabContext (which returns *bridge.TabHandle)
-// to the ghostchrome.ChromeBridge interface (which returns context.Context).
+// TabContext adapts BridgeAPI.TabContext (*bridge.TabHandle) to the
+// ghostchrome.ChromeBridge interface (context.Context).
 func (a *chromeActionAdapter) TabContext(tabID string) (context.Context, string, error) {
 	return a.BridgeAPI.TabContext(tabID)
 }
@@ -48,19 +48,12 @@ func (a *chromeActionAdapter) ExecuteAction(ctx context.Context, kind string, re
 	})
 }
 
-// BridgeAdapter wraps bridge.BridgeAPI and delegates TabContext,
-// ExecuteAction, and AvailableActions to the ghost-chrome BridgeProxy.
-// All other methods pass through to the embedded BridgeAPI unchanged.
 type BridgeAdapter struct {
 	bridge.BridgeAPI // embedded Chrome bridge — all unoverridden methods pass through
 	proxy            *ghostchrome.BridgeProxy
 	cfg              *config.RuntimeConfig
 }
 
-// NewBridgeAdapter creates a BridgeAdapter that encapsulates all
-// ghost-chrome static-vs-Chrome routing logic. The returned adapter
-// satisfies bridge.BridgeAPI and transparently delegates to the
-// underlying Chrome bridge for methods not intercepted by the proxy.
 func NewBridgeAdapter(chromeBridge bridge.BridgeAPI, cfg *config.RuntimeConfig) *BridgeAdapter {
 	lite := staticfetch.NewBrowser()
 	chromeAdapter := &chromeActionAdapter{BridgeAPI: chromeBridge}
@@ -131,8 +124,6 @@ func (a *BridgeAdapter) ExecuteAction(ctx context.Context, kind string, req brid
 	})
 }
 
-// StaticBrowser returns the underlying static fetch browser.
-// Returns nil if no lite browser is configured.
 func (a *BridgeAdapter) StaticBrowser() *staticfetch.Browser {
 	rt := a.proxy.StaticBrowser()
 	if rt == nil {

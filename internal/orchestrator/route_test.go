@@ -105,6 +105,31 @@ func TestRouteForRequest_RejectsUnknownBrowser(t *testing.T) {
 	}
 }
 
+// A browser name the operator added to browsers.available (but which is not a
+// built-in) must pass RouteForRequest's parse gate, matching the launch path
+// (instance_launch.go threads the same configured list). With the old
+// nil-list call it was rejected. The routing then resolves via the normal
+// (NormalizeBrowser) path to a running instance.
+func TestRouteForRequest_AcceptsOperatorConfiguredBrowser(t *testing.T) {
+	alwaysAlive(t)
+	o := NewOrchestrator(t.TempDir())
+	o.ApplyRuntimeConfig(&config.RuntimeConfig{
+		BrowsersAvailable: []string{"chrome", "custombrowser"},
+	})
+	newBackendInstance(t, o, "inst_chrome")
+	o.instances["inst_chrome"].Browser = config.BrowserChrome
+	o.syncInstanceToManager(&o.instances["inst_chrome"].Instance)
+
+	req := httptest.NewRequest(http.MethodPost, "/navigate?browser=custombrowser", nil)
+	target, status, err := o.RouteForRequest(req)
+	if err != nil {
+		t.Fatalf("operator-configured browser should pass the parse gate, got status=%d err=%v", status, err)
+	}
+	if target == "" {
+		t.Fatal("expected non-empty target URL for operator-configured browser")
+	}
+}
+
 func TestRouteForRequest_AcceptsValidBrowsers(t *testing.T) {
 	alwaysAlive(t)
 	for _, browser := range []string{"chrome", "cloak", "ghost-chrome"} {

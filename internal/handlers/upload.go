@@ -13,6 +13,7 @@ import (
 
 	"github.com/pinchtab/pinchtab/internal/activity"
 	"github.com/pinchtab/pinchtab/internal/httpx"
+	"github.com/pinchtab/pinchtab/internal/routes"
 )
 
 type uploadRequest struct {
@@ -62,9 +63,7 @@ var (
 // staging dirs are retained briefly for lazy browser reads, then cleaned.
 func (h *Handlers) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	if !h.Config.AllowUpload {
-		httpx.ErrorCode(w, 403, "upload_disabled", httpx.DisabledEndpointMessage("upload", "security.allowUpload"), false, map[string]any{
-			"setting": "security.allowUpload",
-		})
+		h.writeCapabilityDisabled(w, routes.CapUpload)
 		return
 	}
 	tabID := r.URL.Query().Get("tabId")
@@ -191,7 +190,10 @@ func (h *Handlers) HandleUpload(w http.ResponseWriter, r *http.Request) {
 
 	nodeID, err := h.Bridge.ResolveSelectorToNodeID(tCtx, req.Selector)
 	if err != nil {
-		httpx.Error(w, 500, fmt.Errorf("upload: selector %q: %w", req.Selector, err))
+		// A selector that doesn't resolve is a client error, not a server fault —
+		// match the element-targeting handlers' 4xx convention.
+		err = fmt.Errorf("%w: upload selector %q: %v", ErrElementNotFound, req.Selector, err)
+		httpx.Error(w, statusForElementErr(err), err)
 		return
 	}
 
@@ -215,25 +217,9 @@ func (h *Handlers) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// HandleTabUpload uploads files for a tab identified by path ID.
-//
 // @Endpoint POST /tabs/{id}/upload
 func (h *Handlers) HandleTabUpload(w http.ResponseWriter, r *http.Request) {
-	tabID := r.PathValue("id")
-	if tabID == "" {
-		httpx.Error(w, 400, fmt.Errorf("tab id required"))
-		return
-	}
-
-	q := r.URL.Query()
-	q.Set("tabId", tabID)
-
-	req := r.Clone(r.Context())
-	u := *r.URL
-	u.RawQuery = q.Encode()
-	req.URL = &u
-
-	h.HandleUpload(w, req)
+	h.withPathTabID(w, r, h.HandleUpload)
 }
 
 func validateUploadSandboxPath(baseDir, rawPath string, maxFileBytes int) (string, int64, error) {
@@ -296,7 +282,6 @@ func decodeFileData(input string) ([]byte, string, error) {
 	var b64 string
 
 	if strings.HasPrefix(input, "data:") {
-		// data:image/png;base64,iVBOR...
 		parts := strings.SplitN(input, ",", 2)
 		if len(parts) != 2 {
 			return nil, "", fmt.Errorf("invalid data URL")

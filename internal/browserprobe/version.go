@@ -7,8 +7,6 @@ import (
 	"time"
 )
 
-// RunVersion executes "binary --version" and returns the first non-empty line
-// of combined output, or an error if the command fails.
 func RunVersion(ctx context.Context, binary string) (string, error) {
 	cctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -23,7 +21,6 @@ func RunVersion(ctx context.Context, binary string) (string, error) {
 	return line, nil
 }
 
-// parseFirstLine returns the first non-empty line in s.
 func parseFirstLine(s string) string {
 	for _, line := range strings.Split(s, "\n") {
 		if t := strings.TrimSpace(line); t != "" {
@@ -33,7 +30,6 @@ func parseFirstLine(s string) string {
 	return ""
 }
 
-// ExtractVersionToken returns the first dotted numeric token in s, or "".
 func ExtractVersionToken(s string) string {
 	fields := strings.Fields(s)
 	for _, f := range fields {

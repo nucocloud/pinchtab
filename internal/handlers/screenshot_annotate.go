@@ -24,7 +24,7 @@ func (h *Handlers) collectScreenshotAnnotations(
 	if err != nil {
 		return nil, nil, fmt.Errorf("a11y tree: %w", err)
 	}
-	rawNodes = h.scopeSnapshotNodesByFrame(rawNodes, h.selectorFrameID(tabID))
+	rawNodes = bridge.FilterAXNodesByFrame(rawNodes, h.selectorFrameID(tabID))
 
 	// Selector narrows both the screenshot clip (handled by caller) and the
 	// candidate set. Resolve the target node and constrain the AX subtree to

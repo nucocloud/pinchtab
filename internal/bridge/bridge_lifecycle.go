@@ -18,7 +18,6 @@ import (
 	"github.com/pinchtab/pinchtab/internal/browsers"
 	"github.com/pinchtab/pinchtab/internal/browsers/chrome"
 	"github.com/pinchtab/pinchtab/internal/config"
-	"github.com/pinchtab/pinchtab/internal/ids"
 	"github.com/pinchtab/pinchtab/internal/stealth"
 )
 
@@ -101,7 +100,7 @@ func (b *Bridge) tabSetup(ctx context.Context, tabID string) {
 		b.installWorkerStealthParity(ctx)
 	}
 	b.injectStealth(ctx)
-	if b.Config.NoAnimations {
+	if b.Config != nil && b.Config.NoAnimations {
 		if err := b.InjectNoAnimations(ctx); err != nil {
 			slog.Warn("no-animations injection failed", "err", err)
 		}
@@ -136,8 +135,6 @@ func (b *Bridge) StealthStatus() *stealth.Status {
 	return stealth.StatusFromBundle(b.StealthBundle, b.Config, b.stealthLaunchMode)
 }
 
-// RunningBrowser reports the provider of the live browser process, or
-// ("", false) when no browser is initialized (or its context died).
 func (b *Bridge) RunningBrowser() (string, bool) {
 	b.initMu.Lock()
 	defer b.initMu.Unlock()
@@ -238,19 +235,7 @@ func (b *Bridge) EnsureBrowser(cfg *config.RuntimeConfig) error {
 	}
 
 	if b.Config != nil && b.TabManager == nil {
-		if b.IdMgr == nil {
-			b.IdMgr = ids.NewManager()
-		}
-		if b.LogStore == nil {
-			b.LogStore = NewConsoleLogStore(1000)
-		}
-		b.TabManager = NewTabManager(browserCtx, b.Config, b.IdMgr, b.LogStore, b.tabSetup)
-		b.SetOnAfterClose(func() { go b.SaveState() })
-		b.SetDialogManager(b.Dialogs)
-		b.SetNetworkMonitor(b.netMonitor)
-		if !b.quietStealthObservers() {
-			b.StartBrowserGuards()
-		}
+		b.reinitWiring(browserCtx, reinitWiringOpts{startBrowserGuards: true})
 	}
 
 	if b.Actions == nil {
@@ -413,6 +398,11 @@ func (b *Bridge) Cleanup() {
 				slog.Warn("chromedp.Cancel during cleanup failed", "err", err)
 			}
 			cancel()
+			// Ensure the direct-launch fallback's killAndReap runs (its
+			// BrowserCancel bundles it); idempotent for allocator-owned browsers.
+			if b.BrowserCancel != nil {
+				b.BrowserCancel()
+			}
 			slog.Debug("chrome closed via chromedp.Cancel (Browser.close)")
 		} else if b.BrowserCancel != nil {
 			b.BrowserCancel()
@@ -491,16 +481,7 @@ func (b *Bridge) SetBrowserContexts(allocCtx context.Context, allocCancel contex
 	b.stealthLaunchMode = stealth.LaunchModeAttached
 
 	if b.Config != nil && b.TabManager == nil {
-		if b.IdMgr == nil {
-			b.IdMgr = ids.NewManager()
-		}
-		if b.LogStore == nil {
-			b.LogStore = NewConsoleLogStore(1000)
-		}
-		b.TabManager = NewTabManager(browserCtx, b.Config, b.IdMgr, b.LogStore, b.tabSetup)
-		b.SetOnAfterClose(func() { go b.SaveState() })
-		b.SetDialogManager(b.Dialogs)
-		b.SetNetworkMonitor(b.netMonitor)
+		b.reinitWiring(browserCtx, reinitWiringOpts{})
 	}
 }
 

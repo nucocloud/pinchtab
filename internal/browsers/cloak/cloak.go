@@ -18,8 +18,6 @@ import (
 	"github.com/pinchtab/pinchtab/internal/browsers/chrome"
 )
 
-// binaryNames lists the executable names that may represent a CloakBrowser
-// install on any platform.
 var binaryNames = []string{
 	"cloakbrowser",
 }

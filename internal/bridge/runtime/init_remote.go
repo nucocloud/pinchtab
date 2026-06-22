@@ -21,7 +21,7 @@ func InitRemoteCDP(ctx context.Context, cfg *config.RuntimeConfig, cdpURL string
 		return nil, nil, nil, nil, stealth.LaunchModeUninitialized, fmt.Errorf("runtime config is required")
 	}
 
-	normalized, err := NormalizeCDPURLWithAllowlist(cdpURL, cfg.AttachAllowHosts, cfg.AttachAllowSchemes)
+	normalized, err := normalizeAttachURL(cdpURL, cfg)
 	if err != nil {
 		return nil, nil, nil, nil, stealth.LaunchModeUninitialized, fmt.Errorf("normalize cdpUrl: %w", err)
 	}

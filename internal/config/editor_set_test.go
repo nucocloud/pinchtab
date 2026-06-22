@@ -344,7 +344,6 @@ func TestSetConfigValue_InvalidPaths(t *testing.T) {
 	}
 }
 
-// L6: editor coverage for the browser-targets feature surfaces.
 func TestSetGetBrowserTargetAndProxyFields(t *testing.T) {
 	fc := &FileConfig{}
 	sets := map[string]string{

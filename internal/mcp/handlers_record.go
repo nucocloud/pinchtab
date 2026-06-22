@@ -7,9 +7,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/pinchtab/pinchtab/internal/readiness"
 )
 
 // maxRecordFileBytes caps the output file written by record_stop to prevent
@@ -112,37 +112,13 @@ func handleRecordStop(c *Client) func(context.Context, mcp.CallToolRequest) (*mc
 	}
 }
 
-// pollRecordingFinished polls /record/status until state is "finished" or "idle".
+// pollRecordingFinished polls /record/status until the encode reaches a
+// terminal state, sharing the timeout/terminal-state contract with the CLI.
 func pollRecordingFinished(ctx context.Context, c *Client) error {
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-			body, _, err := c.Get(ctx, "/record/status", nil)
-			if err != nil {
-				continue
-			}
-			var status struct {
-				State string `json:"state"`
-				Error string `json:"error"`
-			}
-			if json.Unmarshal(body, &status) != nil {
-				continue
-			}
-			switch status.State {
-			case "finished":
-				if status.Error != "" {
-					return fmt.Errorf("encode failed: %s", status.Error)
-				}
-				return nil
-			case "idle":
-				return nil
-			}
-		}
-	}
+	return readiness.WaitForRecordEncode(ctx, func() ([]byte, error) {
+		body, _, err := c.Get(ctx, "/record/status", nil)
+		return body, err
+	})
 }
 
 // moveFile moves src to dst using rename (fast, same filesystem) or

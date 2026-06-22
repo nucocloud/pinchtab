@@ -25,7 +25,6 @@ func (o *Orchestrator) ResolveRequestedBrowser(requested string) (targetName, pr
 		return resolved.Name, resolved.Provider, nil
 	}
 
-	// Try as explicit target name first.
 	if o.runtimeCfg != nil && len(o.runtimeCfg.Targets) > 0 {
 		resolved, explicitErr := config.ResolveExplicitBrowserTarget(o.runtimeCfg, requested)
 		if explicitErr == nil && resolved != nil && !resolved.Legacy {
@@ -33,27 +32,19 @@ func (o *Orchestrator) ResolveRequestedBrowser(requested string) (targetName, pr
 		}
 	}
 
-	// Fall back to browser (provider) name resolution.
 	if o.runtimeCfg != nil && len(o.runtimeCfg.Targets) > 0 {
-		matches := config.TargetsForBrowser(o.runtimeCfg, requested)
-		switch len(matches) {
-		case 1:
-			resolved, resolveErr := config.ResolveExplicitBrowserTarget(o.runtimeCfg, matches[0])
+		target, matches := config.MatchBrowserToTarget(o.runtimeCfg, requested)
+		switch {
+		case target != "":
+			resolved, resolveErr := config.ResolveExplicitBrowserTarget(o.runtimeCfg, target)
 			if resolveErr == nil && resolved != nil {
 				return resolved.Name, resolved.Provider, nil
 			}
-		case 0:
+			// A configured target name failing to resolve is unreachable in
+			// practice; fall through to the legacy parse below if it ever does.
+		case len(matches) == 0:
 			return "", "", &UnknownBrowserError{Target: requested, Err: fmt.Errorf("no browser target configured for browser %q", requested)}
 		default:
-			dt := config.ResolveDefaultTarget(o.runtimeCfg)
-			for _, m := range matches {
-				if m == dt {
-					resolved, resolveErr := config.ResolveExplicitBrowserTarget(o.runtimeCfg, dt)
-					if resolveErr == nil && resolved != nil {
-						return resolved.Name, resolved.Provider, nil
-					}
-				}
-			}
 			return "", "", &config.AmbiguousBrowserError{Browser: requested, Targets: matches}
 		}
 	}
@@ -89,10 +80,13 @@ func (o *Orchestrator) LaunchWithTargetSelection(
 	opts.Browser = resolvedProvider
 	opts.TargetName = resolvedTarget
 
-	// Fallback policy: request-supplied fallbackTargets are always honored
-	// verbatim. The config-level fallbackOrder applies only to IMPLICIT
-	// launches — an explicit browser/target request must never silently
-	// change provider via operator-configured fallback.
+	// Fallback policy: request-supplied fallbackTargets are always honored.
+	// The config-level fallbackOrder applies only to IMPLICIT launches — an
+	// explicit browser/target request must never silently change provider via
+	// operator-configured fallback. Fallback entries may be provider names
+	// (e.g. "cloak") or target names (e.g. "cloak-1"); each is resolved through
+	// the same two-step logic as the primary request, so a provider-name
+	// fallback no longer 400s and aborts the chain.
 	var fallbacks []string
 	if len(fallbackTargets) > 0 {
 		fallbacks = fallbackTargets
@@ -104,6 +98,32 @@ func (o *Orchestrator) LaunchWithTargetSelection(
 		return o.LaunchWithOptions(name, port, headless, opts)
 	}
 
-	candidates := append([]string{resolvedTarget}, fallbacks...)
+	candidates := []string{resolvedTarget}
+	for _, fb := range fallbacks {
+		fb = strings.TrimSpace(fb)
+		if fb == "" {
+			continue
+		}
+		// Reject a fallback that is neither a configured target nor a known
+		// provider before resolving: the two-step resolver's NormalizeBrowser
+		// default would otherwise silently coerce a typo'd name to chrome.
+		if o.runtimeCfg == nil || o.runtimeCfg.Targets[fb].Provider == "" {
+			var available []string
+			if o.runtimeCfg != nil {
+				available = o.runtimeCfg.BrowsersAvailable
+			}
+			if _, perr := config.ParseBrowser(fb, available); perr != nil {
+				return nil, &UnknownBrowserError{Target: fb, Err: perr}
+			}
+		}
+		fbTarget, _, fbErr := o.ResolveRequestedBrowser(fb)
+		if fbErr != nil {
+			return nil, fbErr
+		}
+		if fbTarget == "" {
+			continue
+		}
+		candidates = append(candidates, fbTarget)
+	}
 	return o.LaunchWithFallback(name, port, headless, candidates, opts)
 }

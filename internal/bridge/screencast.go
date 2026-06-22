@@ -13,6 +13,7 @@ import (
 	"github.com/pinchtab/pinchtab/internal/browsers"
 	"github.com/pinchtab/pinchtab/internal/cdptk"
 	"github.com/pinchtab/pinchtab/internal/config"
+	"github.com/pinchtab/pinchtab/internal/runtimetypes"
 )
 
 // StartScreencast begins streaming screencast frames. The caller must call
@@ -41,7 +42,6 @@ func (b *Bridge) shouldUsePollingScreencast() bool {
 	return false
 }
 
-// startScreencastEventDriven uses CDP Page.startScreencast for headed browsers.
 func (b *Bridge) startScreencastEventDriven(ctx context.Context, opts ScreencastOpts) (*ScreencastStream, error) {
 	fps := opts.FPS
 	if fps <= 0 {
@@ -70,7 +70,6 @@ func (b *Bridge) startScreencastEventDriven(ctx context.Context, opts Screencast
 		}
 	}()
 
-	// Listen for screencast frames with rate limiting
 	var lastFrame time.Time
 	chromedp.ListenTarget(ctx, func(ev interface{}) {
 		switch e := ev.(type) {
@@ -128,22 +127,17 @@ func (b *Bridge) startScreencastEventDriven(ctx context.Context, opts Screencast
 
 	stopRepaintLoop := cdptk.StartRepaintLoop(ctx)
 
-	stream := &ScreencastStream{
-		Frames: frameCh,
-		done:   done,
-		closer: func() {
-			stopRepaintLoop()
-			_ = chromedp.Run(ctx,
-				chromedp.ActionFunc(func(c context.Context) error {
-					return page.StopScreencast().Do(c)
-				}),
-			)
-		},
-	}
+	stream := runtimetypes.NewScreencastStreamWithDone(frameCh, done, func() {
+		stopRepaintLoop()
+		_ = chromedp.Run(ctx,
+			chromedp.ActionFunc(func(c context.Context) error {
+				return page.StopScreencast().Do(c)
+			}),
+		)
+	})
 	return stream, nil
 }
 
-// startScreencastPolling uses CaptureScreenshot on a ticker for headless browsers.
 func (b *Bridge) startScreencastPolling(ctx context.Context, opts ScreencastOpts) (*ScreencastStream, error) {
 	fps := opts.FPS
 	if fps <= 0 {
@@ -213,9 +207,6 @@ func (b *Bridge) startScreencastPolling(ctx context.Context, opts ScreencastOpts
 		}
 	}()
 
-	stream := &ScreencastStream{
-		Frames: frameCh,
-		done:   done,
-	}
+	stream := runtimetypes.NewScreencastStreamWithDone(frameCh, done, nil)
 	return stream, nil
 }

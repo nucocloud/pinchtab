@@ -30,14 +30,13 @@ func initBrowserFromExistingCDP(cfg *config.RuntimeConfig, bundle *stealth.Bundl
 	// loopback endpoints always pass; non-loopback hosts must be listed in
 	// security.attach.allowHosts. The returned URL is host-pinned to the
 	// resolved IP so the dial can't be re-routed by a second DNS answer.
-	wsURL, err := NormalizeCDPURLWithAllowlist(cfg.CDPAttachURL, cfg.AttachAllowHosts, cfg.AttachAllowSchemes)
+	wsURL, err := normalizeAttachURL(cfg.CDPAttachURL, cfg)
 	if err != nil {
 		return nil, nil, nil, nil, stealth.LaunchModeUninitialized, fmt.Errorf("normalize cdpAttachUrl: %w", err)
 	}
 	slog.Info("attaching to existing browser via CDP", "cdpUrl", wsURL)
 
-	remoteAllocCtx, remoteAllocCancel := chromedp.NewRemoteAllocator(context.Background(), wsURL)
-	browserCtx, browserCancel := chromedp.NewContext(remoteAllocCtx)
+	remoteAllocCtx, remoteAllocCancel, browserCtx, browserCancel := newRemoteCDPContexts(context.Background(), wsURL)
 
 	// Touch the browser so we fail fast if the CDP URL is unreachable. We
 	// intentionally do NOT inject the stealth/UA script here — the user's

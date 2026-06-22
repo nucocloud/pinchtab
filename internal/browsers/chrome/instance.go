@@ -14,11 +14,11 @@ import (
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
+	"github.com/pinchtab/pinchtab/internal/bridge/cdpops"
 	"github.com/pinchtab/pinchtab/internal/browsers"
 	"github.com/pinchtab/pinchtab/internal/cdptk"
 )
 
-// Instance implements browsers.RuntimeInstance for Google Chrome.
 type Instance struct {
 	browserCtx context.Context
 	headless   bool
@@ -32,7 +32,6 @@ func NewInstance(browserCtx context.Context, headless bool) *Instance {
 
 var _ browsers.RuntimeInstance = (*Instance)(nil)
 
-// CaptureScreenshot captures a screenshot of the current page.
 func (i *Instance) CaptureScreenshot(ctx context.Context, format string, quality int, clip *cdptk.ScreenshotClip) ([]byte, error) {
 	var buf []byte
 	err := chromedp.Run(ctx, chromedp.ActionFunc(func(c context.Context) error {
@@ -81,7 +80,6 @@ func (i *Instance) CaptureScreenshot(ctx context.Context, format string, quality
 	return buf, nil
 }
 
-// Evaluate evaluates a JavaScript expression in the page context.
 func (i *Instance) Evaluate(ctx context.Context, expression string, result any, opts browsers.EvalOpts) error {
 	var chromedpOpts []chromedp.EvaluateOption
 	if opts.AwaitPromise {
@@ -142,98 +140,11 @@ func (i *Instance) EvaluateInFrame(ctx context.Context, frameID string, expressi
 // CallFunctionOnNode resolves a backend node ID to a Runtime object, then
 // calls the given JavaScript function on it.
 func (i *Instance) CallFunctionOnNode(ctx context.Context, backendNodeID int64, functionDecl string, args []map[string]any, result any) error {
-	return chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
-		var resolveResult json.RawMessage
-		if err := chromedp.FromContext(ctx).Target.Execute(ctx, "DOM.resolveNode", map[string]any{
-			"backendNodeId": backendNodeID,
-		}, &resolveResult); err != nil {
-			return fmt.Errorf("resolve node: %w", err)
-		}
-
-		var resolved struct {
-			Object struct {
-				ObjectID string `json:"objectId"`
-			} `json:"object"`
-		}
-		if err := json.Unmarshal(resolveResult, &resolved); err != nil {
-			return fmt.Errorf("parse resolved node: %w", err)
-		}
-		if resolved.Object.ObjectID == "" {
-			return fmt.Errorf("element not found in DOM (backendNodeId=%d)", backendNodeID)
-		}
-
-		params := map[string]any{
-			"functionDeclaration": functionDecl,
-			"objectId":            resolved.Object.ObjectID,
-			"returnByValue":       true,
-		}
-		if len(args) > 0 {
-			params["arguments"] = args
-		}
-
-		var callResult json.RawMessage
-		if err := chromedp.FromContext(ctx).Target.Execute(ctx, "Runtime.callFunctionOn", params, &callResult); err != nil {
-			return fmt.Errorf("call function on node: %w", err)
-		}
-
-		var callParsed struct {
-			Result struct {
-				Type  string          `json:"type"`
-				Value json.RawMessage `json:"value"`
-			} `json:"result"`
-			ExceptionDetails *struct {
-				Text string `json:"text"`
-			} `json:"exceptionDetails,omitempty"`
-		}
-		if err := json.Unmarshal(callResult, &callParsed); err != nil {
-			return fmt.Errorf("parse call result: %w", err)
-		}
-		if callParsed.ExceptionDetails != nil && callParsed.ExceptionDetails.Text != "" {
-			return fmt.Errorf("call function on node: %s", callParsed.ExceptionDetails.Text)
-		}
-
-		if result == nil || len(callParsed.Result.Value) == 0 {
-			return nil
-		}
-		return json.Unmarshal(callParsed.Result.Value, result)
-	}))
+	return cdpops.CallFunctionOnNode(ctx, backendNodeID, functionDecl, args, result)
 }
 
-// DescribeNode returns DOM structural info for a backend node ID.
 func (i *Instance) DescribeNode(ctx context.Context, backendNodeID int64) (*browsers.NodeInfo, error) {
-	var info browsers.NodeInfo
-	err := chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
-		var result json.RawMessage
-		if err := chromedp.FromContext(ctx).Target.Execute(ctx, "DOM.describeNode", map[string]any{
-			"backendNodeId": backendNodeID,
-		}, &result); err != nil {
-			return fmt.Errorf("describe node: %w", err)
-		}
-
-		var parsed struct {
-			Node struct {
-				LocalName      string   `json:"localName"`
-				NodeName       string   `json:"nodeName"`
-				Attributes     []string `json:"attributes"`
-				ChildNodeCount int      `json:"childNodeCount"`
-			} `json:"node"`
-		}
-		if err := json.Unmarshal(result, &parsed); err != nil {
-			return fmt.Errorf("parse describe node: %w", err)
-		}
-
-		info.LocalName = parsed.Node.LocalName
-		if info.LocalName == "" {
-			info.LocalName = parsed.Node.NodeName
-		}
-		info.Attributes = parsed.Node.Attributes
-		info.ChildNodeCount = parsed.Node.ChildNodeCount
-		return nil
-	}))
-	if err != nil {
-		return nil, err
-	}
-	return &info, nil
+	return cdpops.DescribeNode(ctx, backendNodeID)
 }
 
 // ResolveSelectorToNodeID finds a DOM node by a unified selector string and
@@ -275,14 +186,12 @@ func (i *Instance) ResolveSelectorToNodeID(ctx context.Context, selector string)
 	return nodeID, err
 }
 
-// SetFileInputFiles sets files on a file input element identified by its node ID.
 func (i *Instance) SetFileInputFiles(ctx context.Context, nodeID int64, paths []string) error {
 	return chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		return dom.SetFileInputFiles(paths).WithNodeID(cdp.NodeID(nodeID)).Do(ctx)
 	}))
 }
 
-// GetCookies retrieves cookies for the given URLs via CDP.
 func (i *Instance) GetCookies(ctx context.Context, urls []string) ([]browsers.CookieData, error) {
 	var cookies []*network.Cookie
 	err := chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
@@ -310,7 +219,6 @@ func (i *Instance) GetCookies(ctx context.Context, urls []string) ([]browsers.Co
 	return result, nil
 }
 
-// SetCookie sets a single cookie via CDP.
 func (i *Instance) SetCookie(ctx context.Context, params browsers.SetCookieParams) error {
 	return chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		p := network.SetCookie(params.Name, params.Value).
@@ -347,7 +255,6 @@ func (i *Instance) SetCookie(ctx context.Context, params browsers.SetCookieParam
 	}))
 }
 
-// SetViewport overrides device metrics for the page.
 func (i *Instance) SetViewport(ctx context.Context, params browsers.ViewportParams) error {
 	return chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		return emulation.SetDeviceMetricsOverride(params.Width, params.Height, params.DeviceScaleFactor, params.Mobile).
@@ -355,21 +262,18 @@ func (i *Instance) SetViewport(ctx context.Context, params browsers.ViewportPara
 	}))
 }
 
-// SetGeolocation overrides the browser geolocation.
 func (i *Instance) SetGeolocation(ctx context.Context, lat, lng, accuracy float64) error {
 	return chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		return emulation.SetGeolocationOverride().WithLatitude(lat).WithLongitude(lng).WithAccuracy(accuracy).Do(ctx)
 	}))
 }
 
-// SetEmulatedMedia sets an emulated media feature.
 func (i *Instance) SetEmulatedMedia(ctx context.Context, feature, value string) error {
 	return chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		return emulation.SetEmulatedMedia().WithFeatures([]*emulation.MediaFeature{{Name: feature, Value: value}}).Do(ctx)
 	}))
 }
 
-// SetNetworkConditions emulates network conditions via CDP.
 func (i *Instance) SetNetworkConditions(ctx context.Context, params browsers.NetworkConditions) error {
 	return chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		return network.OverrideNetworkState(params.Offline, params.Latency, params.DownloadThroughput, params.UploadThroughput).
@@ -377,7 +281,6 @@ func (i *Instance) SetNetworkConditions(ctx context.Context, params browsers.Net
 	}))
 }
 
-// SetExtraHTTPHeaders sets extra HTTP headers sent with every request.
 func (i *Instance) SetExtraHTTPHeaders(ctx context.Context, headers map[string]string) error {
 	hdrs := make(network.Headers, len(headers))
 	for k, v := range headers {
@@ -388,21 +291,18 @@ func (i *Instance) SetExtraHTTPHeaders(ctx context.Context, headers map[string]s
 	}))
 }
 
-// CurrentURL returns the current page URL.
 func (i *Instance) CurrentURL(ctx context.Context) (string, error) {
 	var url string
 	err := chromedp.Run(ctx, chromedp.Location(&url))
 	return url, err
 }
 
-// CurrentTitle returns the current page title.
 func (i *Instance) CurrentTitle(ctx context.Context) (string, error) {
 	var title string
 	err := chromedp.Run(ctx, chromedp.Title(&title))
 	return title, err
 }
 
-// PrintToPDF generates a PDF of the current page via CDP.
 func (i *Instance) PrintToPDF(ctx context.Context, params browsers.PDFParams) ([]byte, error) {
 	var buf []byte
 	err := chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
@@ -442,34 +342,9 @@ func (i *Instance) PrintToPDF(ctx context.Context, params browsers.PDFParams) ([
 // in the given frame's document. Returns (0, nil) when frameID is empty so
 // callers can fall back to the default top-level context without branching.
 func frameExecutionContextID(ctx context.Context, frameID string) (int64, error) {
-	if frameID == "" {
-		return 0, nil
-	}
-
-	var worldResult json.RawMessage
-	err := chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
-		return chromedp.FromContext(ctx).Target.Execute(ctx, "Page.createIsolatedWorld", map[string]any{
-			"frameId":   frameID,
-			"worldName": "pinchtab-frame-scope",
-		}, &worldResult)
-	}))
-	if err != nil {
-		return 0, fmt.Errorf("create isolated world for frame %q: %w", frameID, err)
-	}
-
-	var resp struct {
-		ExecutionContextID int64 `json:"executionContextId"`
-	}
-	if err := json.Unmarshal(worldResult, &resp); err != nil {
-		return 0, err
-	}
-	if resp.ExecutionContextID == 0 {
-		return 0, fmt.Errorf("frame %q has no execution context", frameID)
-	}
-	return resp.ExecutionContextID, nil
+	return cdpops.FrameExecutionContextID(ctx, frameID)
 }
 
-// isContextCanceled reports whether the error is a context cancellation.
 func isContextCanceled(err error) bool {
 	return err != nil && (strings.Contains(err.Error(), "context canceled") || strings.Contains(err.Error(), context.Canceled.Error()))
 }

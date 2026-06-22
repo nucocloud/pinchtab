@@ -8,7 +8,6 @@ import (
 	"strings"
 )
 
-// ActionFunc is the type for action handlers.
 type ActionFunc func(ctx context.Context, req ActionRequest) (map[string]any, error)
 
 // ActionRequest defines the parameters for a browser action.

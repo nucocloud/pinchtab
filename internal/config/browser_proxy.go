@@ -24,7 +24,7 @@ type BrowserProxyConfig struct {
 	Geo        *BrowserProxyGeoConfig `json:"geo,omitempty"`
 }
 
-// BrowserProxyGeoConfig is explicit geo-alignment data; zero-value fields mean "no opinion".
+// Zero-value fields mean "no opinion".
 type BrowserProxyGeoConfig struct {
 	Timezone   string `json:"timezone,omitempty"`
 	Locale     string `json:"locale,omitempty"`
@@ -47,7 +47,7 @@ func (p BrowserProxyConfig) IsZero() bool {
 	return strings.TrimSpace(p.Server) == ""
 }
 
-// Redacted masks Password to "***" when set; empty Password stays empty so callers can distinguish absent vs hidden.
+// Redacted keeps empty Password empty so callers can distinguish absent vs hidden.
 func (p BrowserProxyConfig) Redacted() BrowserProxyConfig {
 	out := BrowserProxyConfig{
 		Server:   p.Server,
@@ -122,7 +122,7 @@ func ParseProxyServer(server string) (scheme, host string, port int, err error) 
 	return scheme, h, portNum, nil
 }
 
-// ValidateBrowserProxy returns nil when disabled (empty Server); otherwise validates server, bypass, and credential pairing.
+// ValidateBrowserProxy returns nil when disabled (empty Server).
 func ValidateBrowserProxy(field string, p BrowserProxyConfig) []error {
 	if p.IsZero() {
 		return nil
@@ -180,7 +180,7 @@ func ValidateBrowserProxy(field string, p BrowserProxyConfig) []error {
 	return errs
 }
 
-// BrowserProxyFlags returns credential-free --proxy-server/--proxy-bypass-list flags; auth is delivered via CDP.
+// BrowserProxyFlags returns credential-free flags; auth is delivered via CDP.
 // A malformed server is a hard error: launching without the configured proxy
 // would silently egress traffic from the real IP — the worst failure mode for
 // users who configured a proxy for anonymity.

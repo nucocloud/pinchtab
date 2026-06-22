@@ -69,14 +69,11 @@ func ResolveBrowser(request, session, instance, globalDefault string, configured
 	return BrowserChrome
 }
 
-// IsCloakBrowser gates Cloak-specific fingerprint behavior in
-// stealth and runtime paths.
 func IsCloakBrowser(provider string) bool {
 	return NormalizeBrowser(provider) == BrowserCloak
 }
 
-// CloakBrowserActive reports whether the configured browser is Cloak. It
-// deliberately does not mean PinchTab's stealth layer should be disabled.
+// Being active does not mean PinchTab's stealth layer should be disabled.
 func CloakBrowserActive(cfg *RuntimeConfig) bool {
 	if cfg == nil || !IsCloakBrowser(cfg.DefaultBrowser) {
 		return false
@@ -84,8 +81,6 @@ func CloakBrowserActive(cfg *RuntimeConfig) bool {
 	return true
 }
 
-// PinchTabStealthDefaultsDisabled is the explicit opt-out from PinchTab's JS
-// stealth overlays and automation-hiding launch flags.
 func PinchTabStealthDefaultsDisabled(cfg *RuntimeConfig) bool {
 	if !CloakBrowserActive(cfg) {
 		return false

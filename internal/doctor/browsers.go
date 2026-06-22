@@ -8,8 +8,6 @@ import (
 	"github.com/pinchtab/pinchtab/internal/config"
 )
 
-// BrowserInfo describes a single browser's registration, configuration, and
-// capabilities in the context of a browsers report.
 type BrowserInfo struct {
 	Name         string        `json:"name"`
 	Registered   bool          `json:"registered"`
@@ -22,7 +20,6 @@ type BrowserInfo struct {
 	SkipsOrFails []string      `json:"skipsOrFails,omitempty"`
 }
 
-// BrowsersReport is the structured output of ReportBrowsers.
 type BrowsersReport struct {
 	ConfiguredBrowsers []string      `json:"configuredBrowsers"`
 	DefaultBrowser     string        `json:"defaultBrowser"`
@@ -30,8 +27,6 @@ type BrowsersReport struct {
 	Browsers           []BrowserInfo `json:"browsers"`
 }
 
-// allShapes lists every Shape constant in browsers/config.go for capability
-// probing.
 var allShapes = []string{
 	browsers.ShapeStaticRead,
 	browsers.ShapeStaticSnapshot,
@@ -84,14 +79,7 @@ func ReportBrowsers(ctx context.Context, cfg *config.RuntimeConfig) BrowsersRepo
 
 			env := doctorEnvForBrowser(cfg, id)
 			for _, dc := range b.DoctorChecks(browsers.TargetConfig{Provider: id}) {
-				r := dc.Fn(ctx, env)
-				info.Checks = append(info.Checks, CheckResult{
-					Name:   dc.ID,
-					Status: mapDoctorStatus(r.Status),
-					Detail: r.Detail,
-					Err:    r.Err,
-					ErrMsg: errMsg(r.Err),
-				})
+				info.Checks = append(info.Checks, browserCheckResult(ctx, dc, env))
 			}
 
 			for _, shape := range allShapes {
@@ -116,8 +104,6 @@ func ReportBrowsers(ctx context.Context, cfg *config.RuntimeConfig) BrowsersRepo
 	}
 }
 
-// deriveBrowserStatus sets the Status and StatusDetail fields on a BrowserInfo
-// based on registration state and check results.
 func deriveBrowserStatus(info *BrowserInfo) {
 	if !info.Registered {
 		info.Status = "missing"
@@ -168,10 +154,7 @@ func cfgBrowsersAvailable(cfg *config.RuntimeConfig) []string {
 }
 
 func cfgDefaultBrowser(cfg *config.RuntimeConfig) string {
-	if cfg == nil {
-		return ""
-	}
-	return cfg.DefaultBrowser
+	return defaultBrowserForDoctor(cfg)
 }
 
 func contains(ss []string, s string) bool {

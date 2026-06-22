@@ -58,6 +58,16 @@ func (h *Handlers) HandleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) HandleEnsureBrowser(w http.ResponseWriter, r *http.Request) {
+	h.ensureBrowserWithStatus(w, "browser_ready")
+}
+
+// HandleEnsureChrome serves the pre-rename /ensure-chrome alias and keeps the
+// legacy "chrome_ready" status for version-skewed orchestrators that match it.
+func (h *Handlers) HandleEnsureChrome(w http.ResponseWriter, r *http.Request) {
+	h.ensureBrowserWithStatus(w, "chrome_ready")
+}
+
+func (h *Handlers) ensureBrowserWithStatus(w http.ResponseWriter, status string) {
 	if err := h.ensureBrowser(h.Config); err != nil {
 		if h.writeBridgeUnavailable(w, err) {
 			return
@@ -65,7 +75,7 @@ func (h *Handlers) HandleEnsureBrowser(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, 500, fmt.Errorf("browser initialization failed: %w", err))
 		return
 	}
-	httpx.JSON(w, 200, map[string]string{"status": "browser_ready"})
+	httpx.JSON(w, 200, map[string]string{"status": status})
 }
 
 func (h *Handlers) HandleBrowserRestart(w http.ResponseWriter, r *http.Request) {

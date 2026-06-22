@@ -245,6 +245,10 @@ func TestHandleScreenshot(t *testing.T) {
 	if !strings.Contains(text, `"beyondViewport"`) {
 		t.Errorf("expected beyondViewport query param, got %s", text)
 	}
+	// Inline output is requested explicitly, not left to the server default.
+	if !strings.Contains(text, `"output"`) || !strings.Contains(text, "inline") {
+		t.Errorf("expected output=inline query param, got %s", text)
+	}
 }
 
 func TestHandleScreenshotEnvelopeReturnsImage(t *testing.T) {

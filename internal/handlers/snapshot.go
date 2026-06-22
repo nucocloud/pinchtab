@@ -1,9 +1,7 @@
 package handlers
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -12,13 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pinchtab/pinchtab/internal/activity"
 	"github.com/pinchtab/pinchtab/internal/bridge"
-	"github.com/pinchtab/pinchtab/internal/browserops"
 	"github.com/pinchtab/pinchtab/internal/browsers"
-	"github.com/pinchtab/pinchtab/internal/config"
 	"github.com/pinchtab/pinchtab/internal/httpx"
-	"github.com/pinchtab/pinchtab/internal/session"
 	"gopkg.in/yaml.v3"
 )
 
@@ -65,74 +59,13 @@ import (
 func (h *Handlers) HandleSnapshot(w http.ResponseWriter, r *http.Request) {
 	filter := r.URL.Query().Get("filter")
 
-	// Browser resolution: request > session > instance > global default > chrome
-	requestBrowser := strings.TrimSpace(r.URL.Query().Get("browser"))
-	var sessionBrowser string
-	if sess, ok := session.FromRequest(r); ok && sess != nil {
-		sessionBrowser = sess.Browser
-	}
-	if h.rejectBrowserConflictWithRunning(w, requestBrowser, sessionBrowser) {
-		return
-	}
-	var instanceBrowser string
 	tabID := r.URL.Query().Get("tabId")
-	if tabID != "" && h.Orchestrator != nil {
-		if inst, ok := h.Orchestrator.FindInstanceByTab(tabID); ok && inst != nil && inst.Browser != "" {
-			instanceBrowser = inst.Browser
-		}
-	}
-
-	browser := config.ResolveBrowser(requestBrowser, sessionBrowser, instanceBrowser, h.Config.DefaultBrowser, h.Config.BrowsersAvailable)
-	if browser != config.BrowserChrome {
-		if _, err := config.ParseBrowser(browser, h.Config.BrowsersAvailable); err != nil {
-			httpx.Error(w, http.StatusBadRequest, err)
-			return
-		}
-	}
-
-	handleDecision, err := checkBrowserCanHandle(browser, browsers.RequestIntent{
-		Shape: browsers.ShapeStaticSnapshot,
-	})
-	if err != nil {
-		httpx.Error(w, http.StatusBadRequest, err)
-		return
-	}
-	if handleDecision.Decision == browsers.DecisionSkip {
-		browser = config.BrowserChrome
-	}
-
-	effectiveCfg, err := h.resolveEffectiveConfig(browser)
-	if err != nil {
-		var ambErr *config.AmbiguousBrowserError
-		if errors.As(err, &ambErr) {
-			httpx.ErrorCode(w, http.StatusBadRequest, "browser_ambiguous", err.Error(), false, map[string]any{
-				"browser": ambErr.Browser,
-				"targets": ambErr.Targets,
-			})
-		} else {
-			httpx.Error(w, http.StatusBadRequest, err)
-		}
+	effectiveCfg, snapChromeRoute, ok := h.resolveReadRouting(w, r, tabID, "snapshot", browsers.ShapeStaticSnapshot)
+	if !ok {
 		return
 	}
 
-	h.recordReadRequest(r, "snapshot", tabID)
-
-	snapChromeRoute := browserops.SingleBrowserRoute(browser)
-	snapChromeRoute.Attempts = append(snapChromeRoute.Attempts, browserops.RouteAttempt{
-		Browser:  browser,
-		Accepted: handleDecision.Decision == browsers.DecisionHandle,
-		Reason:   handleDecision.Reason,
-	})
-	if requestBrowser != "" {
-		snapChromeRoute.RequestedBrowser = requestBrowser
-	}
-	h.recordActivity(r, activity.Update{Route: snapChromeRoute})
-
-	if err := h.ensureBrowser(effectiveCfg); err != nil {
-		if h.writeBridgeUnavailable(w, err) {
-			return
-		}
-		httpx.Error(w, 500, fmt.Errorf("browser initialization: %w", err))
+	if !h.ensureBrowserOrRespond(w, effectiveCfg) {
 		return
 	}
 
@@ -157,18 +90,12 @@ func (h *Handlers) HandleSnapshot(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	ctx, resolvedTabID, err := h.tabContextWithHeader(w, r, tabID)
-	if err != nil {
-		WriteTabContextError(w, err, 404)
-		return
-	}
-	if _, ok := h.enforceCurrentTabDomainPolicy(w, r, ctx, resolvedTabID); !ok {
+	resolvedTabID, tCtx, cancel, ok := h.resolveReadContext(w, r, tabID, effectiveCfg.ActionTimeout)
+	if !ok {
 		return
 	}
 	defer h.armAutoCloseIfEnabled(resolvedTabID)
-	tCtx, tCancel := context.WithTimeout(ctx, effectiveCfg.ActionTimeout)
-	defer tCancel()
-	go httpx.CancelOnClientDone(r.Context(), tCancel)
+	defer cancel()
 
 	if reqNoAnim && !h.Config.NoAnimations {
 		if err := bridge.DisableAnimationsOnce(tCtx); err != nil {
@@ -190,7 +117,7 @@ func (h *Handlers) HandleSnapshot(w http.ResponseWriter, r *http.Request) {
 			httpx.Error(w, 500, fmt.Errorf("a11y tree: %w", err))
 			return
 		}
-		rawNodes = h.scopeSnapshotNodesByFrame(rawNodes, frameScope)
+		rawNodes = bridge.FilterAXNodesByFrame(rawNodes, frameScope)
 
 		if selector != "" {
 			var scopeErr error
@@ -505,23 +432,7 @@ func (h *Handlers) HandleSnapshot(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// HandleTabSnapshot returns snapshot for a tab identified by path ID.
-//
 // @Endpoint GET /tabs/{id}/snapshot
 func (h *Handlers) HandleTabSnapshot(w http.ResponseWriter, r *http.Request) {
-	tabID := r.PathValue("id")
-	if tabID == "" {
-		httpx.Error(w, 400, fmt.Errorf("tab id required"))
-		return
-	}
-
-	q := r.URL.Query()
-	q.Set("tabId", tabID)
-
-	req := r.Clone(r.Context())
-	u := *r.URL
-	u.RawQuery = q.Encode()
-	req.URL = &u
-
-	h.HandleSnapshot(w, req)
+	h.withPathTabID(w, r, h.HandleSnapshot)
 }

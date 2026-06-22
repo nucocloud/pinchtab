@@ -15,10 +15,15 @@ import (
 	"github.com/pinchtab/pinchtab/internal/httpx"
 )
 
-// credentialPair holds HTTP basic auth credentials for a tab.
 type credentialPair struct {
 	Username string
 	Password string
+}
+
+// tabRemovalNotifier lets the bridge notify handlers when a tab is removed, so
+// per-tab state (credential bookkeeping) can be reclaimed on any removal path.
+type tabRemovalNotifier interface {
+	AddTabRemovedHook(fn func(tabID string))
 }
 
 // credentialStore provides thread-safe per-tab credential storage and tracks
@@ -43,11 +48,16 @@ func (cs *credentialStore) Set(tabID string, cred *credentialPair) {
 	cs.credentials[tabID] = cred
 }
 
-func (cs *credentialStore) Get(tabID string) (*credentialPair, bool) {
+// Get returns a copy of the stored credentials so callers cannot mutate
+// store-owned state outside the lock.
+func (cs *credentialStore) Get(tabID string) (credentialPair, bool) {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
 	cred, ok := cs.credentials[tabID]
-	return cred, ok
+	if !ok {
+		return credentialPair{}, false
+	}
+	return *cred, true
 }
 
 func (cs *credentialStore) Delete(tabID string) {
@@ -57,6 +67,17 @@ func (cs *credentialStore) Delete(tabID string) {
 	// Keep listeners[tabID] — the bridge listener is bound to the tab's
 	// context and survives across clear/re-set cycles. Clearing the flag
 	// here would cause a second listener to be installed on re-set.
+}
+
+// RemoveTab drops all per-tab bookkeeping when a tab is gone. Unlike Delete,
+// this also clears listeners[tabID]: the tab's listener context is cancelled on
+// removal, so the dedup flag is meaningless and would otherwise leak. Wired into
+// the bridge tab-removal lifecycle so dead tab IDs do not accumulate.
+func (cs *credentialStore) RemoveTab(tabID string) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	delete(cs.credentials, tabID)
+	delete(cs.listeners, tabID)
 }
 
 // MarkListenerIfAbsent atomically marks a listener as installed for tabID.
@@ -77,7 +98,7 @@ type credentialsRequest struct {
 	Password string  `json:"password"`
 }
 
-// HandleSetCredentials sets HTTP auth credentials via CDP Fetch domain.
+// HandleSetCredentials sets HTTP auth credentials via the CDP Fetch domain.
 // POST /emulation/credentials
 func (h *Handlers) HandleSetCredentials(w http.ResponseWriter, r *http.Request) {
 	var req credentialsRequest
@@ -151,7 +172,7 @@ func (h *Handlers) setCredentials(w http.ResponseWriter, r *http.Request, req cr
 			httpx.Error(w, 500, fmt.Errorf("CDP fetch disable: %w", err))
 			return
 		}
-		h.setFetchPauseSuppressed(resolvedTabID, false)
+		h.Bridge.SetFetchPauseSuppressed(resolvedTabID, false)
 
 		h.recordActivity(r, activity.Update{Action: "emulation.credentials", TabID: resolvedTabID})
 
@@ -161,7 +182,6 @@ func (h *Handlers) setCredentials(w http.ResponseWriter, r *http.Request, req cr
 		return
 	}
 
-	// Store credentials for the event listener to reference.
 	h.credentialStore.Set(resolvedTabID, &credentialPair{
 		Username: username,
 		Password: req.Password,
@@ -176,7 +196,7 @@ func (h *Handlers) setCredentials(w http.ResponseWriter, r *http.Request, req cr
 	// Precedence on auth challenges is racy by design: the proxy-auth
 	// listener answers proxy-source challenges, this listener answers via
 	// stored credentials; a double answer logs a debug error harmlessly.
-	h.setFetchPauseSuppressed(resolvedTabID, true)
+	h.Bridge.SetFetchPauseSuppressed(resolvedTabID, true)
 
 	// Install event listener only once per tab. The listener reads credentials
 	// from the store dynamically, so updating creds doesn't need a new listener.
@@ -208,21 +228,6 @@ func (h *Handlers) setCredentials(w http.ResponseWriter, r *http.Request, req cr
 		"username": username,
 		"status":   "applied",
 	})
-}
-
-// fetchPauseSuppressor is probed on the bridge for Fetch-domain coordination
-// with the proxy-auth listener. The ghost-chrome adapter does not promote
-// this method (interface-embedded *Bridge), so suppression is skipped there —
-// acceptable: routes/credentials + proxy auth on ghost-chrome is an edge of
-// an edge, and the failure mode is a raced duplicate continue, not a hang.
-type fetchPauseSuppressor interface {
-	SetFetchPauseSuppressed(tabID string, v bool)
-}
-
-func (h *Handlers) setFetchPauseSuppressed(tabID string, v bool) {
-	if sup, ok := h.Bridge.(fetchPauseSuppressor); ok {
-		sup.SetFetchPauseSuppressed(tabID, v)
-	}
 }
 
 func proxyAuthConfigured(cfg *config.RuntimeConfig) bool {

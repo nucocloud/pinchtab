@@ -102,6 +102,10 @@ func Save(stateDir string, sf *StateFile, encryptionKey string) (string, error) 
 		sf.Name = fmt.Sprintf("state-%d", time.Now().Unix())
 	}
 
+	// Set Encrypted before marshaling so the flag is actually persisted into
+	// the (then-encrypted) payload; otherwise Load+decrypt always reports false.
+	sf.Encrypted = encryptionKey != ""
+
 	data, err := json.MarshalIndent(sf, "", "  ")
 	if err != nil {
 		return "", fmt.Errorf("marshal state: %w", err)
@@ -113,7 +117,6 @@ func Save(stateDir string, sf *StateFile, encryptionKey string) (string, error) 
 			return "", fmt.Errorf("encrypt state: %w", encErr)
 		}
 		data = encrypted
-		sf.Encrypted = true
 	}
 
 	ext := fileExtension(encryptionKey != "")
@@ -189,23 +192,29 @@ func List(stateDir string) ([]StateEntry, error) {
 		}
 
 		path := filepath.Join(dir, entry.Name())
+		encrypted := strings.HasSuffix(entry.Name(), ".json.enc")
 		se := StateEntry{
 			Name:      trimStateExt(entry.Name()),
 			SizeBytes: info.Size(),
+			Encrypted: encrypted,
 		}
 
-		// Try to read metadata without full decryption
-		data, readErr := os.ReadFile(path)
-		if readErr == nil {
-			var probe struct {
-				SavedAt   time.Time `json:"savedAt"`
-				Origins   []string  `json:"origins"`
-				Encrypted bool      `json:"encrypted"`
-			}
-			if json.Unmarshal(data, &probe) == nil {
-				se.SavedAt = probe.SavedAt
-				se.Origins = probe.Origins
-				se.Encrypted = probe.Encrypted
+		// Only plaintext files expose JSON metadata; encrypted (.json.enc)
+		// payloads are ciphertext, so probing them with json.Unmarshal always
+		// fails and would silently drop SavedAt/Origins. List has no decryption
+		// key, so encrypted entries legitimately list with empty SavedAt/Origins
+		// but a correct Encrypted flag (derived from the extension above).
+		if !encrypted {
+			data, readErr := os.ReadFile(path)
+			if readErr == nil {
+				var probe struct {
+					SavedAt time.Time `json:"savedAt"`
+					Origins []string  `json:"origins"`
+				}
+				if json.Unmarshal(data, &probe) == nil {
+					se.SavedAt = probe.SavedAt
+					se.Origins = probe.Origins
+				}
 			}
 		}
 

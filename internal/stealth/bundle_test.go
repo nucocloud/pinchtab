@@ -196,6 +196,14 @@ func TestNewBundleNativeCloakDisablesPinchTabStealthOverlays(t *testing.T) {
 	if !status.Capabilities["sourceLevelFingerprinting"] {
 		t.Fatalf("status capabilities = %v, want sourceLevelFingerprinting", status.Capabilities)
 	}
+	// The PinchTab worker-UA-parity script is disabled for native cloak, so the
+	// status must not advertise PinchTab-provided worker UA parity.
+	if status.Capabilities["workerUserAgentConsistency"] {
+		t.Errorf("native cloak should not advertise workerUserAgentConsistency (PinchTab worker script disabled)")
+	}
+	if status.Capabilities["serviceWorkerUserAgentConsistency"] {
+		t.Errorf("native cloak should not advertise serviceWorkerUserAgentConsistency (PinchTab worker script disabled)")
+	}
 }
 
 func TestNewBundleCloakProviderCanKeepPinchTabStealthOverlays(t *testing.T) {

@@ -633,4 +633,8 @@ func TestEnsureChromeAliasServes(t *testing.T) {
 	if w.Code == http.StatusNotFound {
 		t.Fatal("/ensure-chrome back-compat alias must not 404")
 	}
+	// The alias must keep the legacy status string for version-skewed orchestrators.
+	if w.Code == http.StatusOK && !strings.Contains(w.Body.String(), "chrome_ready") {
+		t.Errorf("/ensure-chrome should return legacy chrome_ready status, got %s", w.Body.String())
+	}
 }

@@ -18,25 +18,25 @@ import (
 type TabSetupFunc func(ctx context.Context, tabID string)
 
 type TabManager struct {
-	browserCtx   context.Context
-	config       *config.RuntimeConfig
-	idMgr        *ids.Manager
-	tabs         map[string]*TabEntry
-	accessed     map[string]bool
-	snapshots    map[string]*RefCache
-	frameScope   map[string]FrameScope
-	onTabSetup   TabSetupFunc
-	onAfterClose func() // optional: invoked after any successful CloseTab
-	dialogMgr    *DialogManager
-	logStore     *ConsoleLogStore
-	routeMgr     *RouteManager
-	onTabRemoved func(tabID string)
-	netMonitor   *NetworkMonitor
-	currentTab   string // ID of the most recently used tab
-	executor     *TabExecutor
-	guardOnce    sync.Once
-	guardActive  bool
-	mu           sync.RWMutex
+	browserCtx        context.Context
+	config            *config.RuntimeConfig
+	idMgr             *ids.Manager
+	tabs              map[string]*TabEntry
+	accessed          map[string]bool
+	snapshots         map[string]*RefCache
+	frameScope        map[string]FrameScope
+	onTabSetup        TabSetupFunc
+	onAfterClose      func() // optional: invoked after any successful CloseTab
+	dialogMgr         *DialogManager
+	logStore          *ConsoleLogStore
+	routeMgr          *RouteManager
+	onTabRemovedHooks []func(tabID string)
+	netMonitor        *NetworkMonitor
+	currentTab        string // ID of the most recently used tab
+	executor          *TabExecutor
+	guardOnce         sync.Once
+	guardActive       bool
+	mu                sync.RWMutex
 
 	// pendingClicks tracks in-flight click actions that may open a popup.
 	// Keyed by the opener tab's raw CDP target ID. Read by the popup guard
@@ -66,7 +66,6 @@ func NewTabManager(browserCtx context.Context, cfg *config.RuntimeConfig, idMgr 
 	}
 }
 
-// SetDialogManager sets the dialog manager for dialog event tracking on new tabs.
 func (tm *TabManager) SetDialogManager(dm *DialogManager) {
 	tm.dialogMgr = dm
 }
@@ -80,7 +79,6 @@ func (tm *TabManager) SetOnAfterClose(fn func()) {
 	tm.onAfterClose = fn
 }
 
-// SetNetworkMonitor sets the network monitor for eager network capture on new tabs.
 func (tm *TabManager) SetNetworkMonitor(nm *NetworkMonitor) {
 	tm.netMonitor = nm
 }
@@ -92,10 +90,16 @@ func (tm *TabManager) SetRouteManager(rm *RouteManager) {
 	tm.routeMgr = rm
 }
 
-// SetOnTabRemoved registers a per-tab cleanup callback fired alongside the
-// route/log/executor cleanup whenever a tracked tab is removed.
-func (tm *TabManager) SetOnTabRemoved(fn func(tabID string)) {
-	tm.onTabRemoved = fn
+// AddTabRemovedHook registers a per-tab cleanup callback fired alongside the
+// route/log/executor cleanup whenever a tracked tab is removed. Multiple hooks
+// may be registered; each must be best-effort and must not panic.
+func (tm *TabManager) AddTabRemovedHook(fn func(tabID string)) {
+	if fn == nil {
+		return
+	}
+	tm.mu.Lock()
+	tm.onTabRemovedHooks = append(tm.onTabRemovedHooks, fn)
+	tm.mu.Unlock()
 }
 
 // browserExecutorContext returns a context bound to the top-level browser
@@ -144,8 +148,7 @@ func (tm *TabManager) CreateTab(url string) (string, context.Context, context.Ca
 		}
 	}
 
-	// Use target.CreateTarget CDP protocol call to create a new tab.
-	// This works for both local and remote (CDP_URL) allocators.
+	// target.CreateTarget works for both local and remote (CDP_URL) allocators.
 	var targetID target.ID
 	createCtx, createCancel := context.WithTimeout(tm.browserCtx, 30*time.Second)
 	if err := chromedp.Run(createCtx,
@@ -278,8 +281,6 @@ func (tm *TabManager) CloseTab(tabID string) error {
 	return nil
 }
 
-// FocusTab activates a tab by ID, bringing it to the foreground and setting it
-// as the current tab for subsequent operations.
 func (tm *TabManager) FocusTab(tabID string) error {
 	if tm == nil {
 		return fmt.Errorf("tab manager not initialized")

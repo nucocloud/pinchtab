@@ -15,7 +15,6 @@ import (
 	"github.com/pinchtab/pinchtab/internal/stealth"
 )
 
-// TestHandleHealth_NilBridge verifies health endpoint returns 503 when bridge is nil
 func TestHandleHealth_NilBridge(t *testing.T) {
 	h := &Handlers{
 		Bridge: nil,
@@ -45,7 +44,6 @@ func TestHandleHealth_NilBridge(t *testing.T) {
 	}
 }
 
-// TestHandleHealth_BridgeListTargetsError verifies health returns 503 when ListTargets fails
 func TestHandleHealth_BridgeListTargetsError(t *testing.T) {
 	mockBridge := &MockBridge{
 		targets:        nil,
@@ -80,7 +78,6 @@ func TestHandleHealth_BridgeListTargetsError(t *testing.T) {
 	}
 }
 
-// TestHandleHealth_Success verifies health returns 200 when everything works
 func TestHandleHealth_Success(t *testing.T) {
 	mockBridge := &MockBridge{
 		targets: []bridge.TabTarget{
@@ -116,7 +113,6 @@ func TestHandleHealth_Success(t *testing.T) {
 	}
 }
 
-// TestHandleTabs_NilBridge verifies tabs endpoint returns 503 when bridge is nil
 func TestHandleTabs_NilBridge(t *testing.T) {
 	h := &Handlers{
 		Bridge: nil,
@@ -133,7 +129,6 @@ func TestHandleTabs_NilBridge(t *testing.T) {
 	}
 }
 
-// TestHandleTabs_Success verifies tabs endpoint returns tab list when bridge works
 func TestHandleTabs_Success(t *testing.T) {
 	mockBridge := &MockBridge{
 		targets: []bridge.TabTarget{
@@ -212,7 +207,6 @@ func TestHandleTabs_CurrentTrackedTabIsReturnedFirst(t *testing.T) {
 	}
 }
 
-// TestHandleHealth_EnsureBrowserFailure verifies /health returns 503 when browser initialization fails
 func TestHandleHealth_EnsureBrowserFailure(t *testing.T) {
 	mockBridge := &MockBridge{
 		targets:             []bridge.TabTarget{},
@@ -254,7 +248,6 @@ func TestHandleHealth_EnsureBrowserFailure(t *testing.T) {
 	}
 }
 
-// TestHandleHealth_EnsureBrowserSuccess verifies /health calls ensureBrowser and then checks ListTargets
 func TestHandleHealth_EnsureBrowserSuccess(t *testing.T) {
 	mockBridge := &MockBridge{
 		targets: []bridge.TabTarget{
@@ -301,7 +294,6 @@ func contains(s, substr string) bool {
 	return false
 }
 
-// MockBridge is a test implementation of the BridgeAPI interface
 type MockBridge struct {
 	targets             []bridge.TabTarget
 	listTargetsErr      string
@@ -559,6 +551,7 @@ func (m *MockBridge) DisableFetch(ctx context.Context) error                    
 func (m *MockBridge) ListenAuthRequired(ctx context.Context, handler func(string, bool))     {}
 func (m *MockBridge) ContinueWithAuth(ctx context.Context, requestID, u, p string) error     { return nil }
 func (m *MockBridge) ContinueRequest(ctx context.Context, requestID string) error            { return nil }
+func (m *MockBridge) SetFetchPauseSuppressed(tabID string, v bool)                           {}
 func (m *MockBridge) GoBack(ctx context.Context) (bool, error)                               { return false, nil }
 func (m *MockBridge) GoForward(ctx context.Context) (bool, error)                            { return false, nil }
 func (m *MockBridge) Reload(ctx context.Context) error                                       { return nil }

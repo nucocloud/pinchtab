@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Wait sends a wait request to the server.
 func Wait(client *http.Client, base, token string, args []string, cmd *cobra.Command) {
 	body := map[string]any{}
 

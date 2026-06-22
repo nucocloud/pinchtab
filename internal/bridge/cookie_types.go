@@ -10,33 +10,6 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
-// CookieData is a bridge-level representation of a browser cookie,
-// avoiding direct use of cdproto types in handler code.
-type CookieData struct {
-	Name     string  `json:"name"`
-	Value    string  `json:"value"`
-	Domain   string  `json:"domain"`
-	Path     string  `json:"path"`
-	Expires  float64 `json:"expires"`
-	HTTPOnly bool    `json:"httpOnly"`
-	Secure   bool    `json:"secure"`
-	SameSite string  `json:"sameSite"`
-}
-
-// SetCookieParams holds parameters for setting a single cookie.
-type SetCookieParams struct {
-	Name     string  `json:"name"`
-	Value    string  `json:"value"`
-	URL      string  `json:"url"`
-	Domain   string  `json:"domain"`
-	Path     string  `json:"path"`
-	Secure   bool    `json:"secure"`
-	HTTPOnly bool    `json:"httpOnly"`
-	SameSite string  `json:"sameSite"`
-	Expires  float64 `json:"expires"`
-}
-
-// GetCookies retrieves cookies for the given URLs via CDP.
 func (b *Bridge) GetCookies(ctx context.Context, urls []string) ([]CookieData, error) {
 	var cookies []*network.Cookie
 	err := chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
@@ -64,7 +37,6 @@ func (b *Bridge) GetCookies(ctx context.Context, urls []string) ([]CookieData, e
 	return result, nil
 }
 
-// SetCookie sets a single cookie via CDP.
 func (b *Bridge) SetCookie(ctx context.Context, params SetCookieParams) error {
 	return chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		p := network.SetCookie(params.Name, params.Value).

@@ -21,14 +21,12 @@ var (
 	registry = map[string]Hooks{}
 )
 
-// Register stores provider-specific hooks under a normalized browser ID.
 func Register(browserID string, hooks Hooks) {
 	mu.Lock()
 	defer mu.Unlock()
 	registry[browserID] = hooks
 }
 
-// DecorateBridge applies the provider's bridge decorator when one exists.
 func DecorateBridge(browserID string, api bridge.BridgeAPI, cfg *config.RuntimeConfig) bridge.BridgeAPI {
 	mu.RLock()
 	hooks, ok := registry[browserID]
@@ -39,7 +37,6 @@ func DecorateBridge(browserID string, api bridge.BridgeAPI, cfg *config.RuntimeC
 	return hooks.DecorateBridge(api, cfg)
 }
 
-// CleanupProfile runs provider-specific orphan cleanup for a profile path.
 func CleanupProfile(browserID, profileDir string) {
 	mu.RLock()
 	hooks, ok := registry[browserID]
@@ -50,7 +47,6 @@ func CleanupProfile(browserID, profileDir string) {
 	hooks.CleanupProfile(profileDir)
 }
 
-// Shutdown runs provider-specific process cleanup during server shutdown.
 func Shutdown(browserID string) {
 	mu.RLock()
 	hooks, ok := registry[browserID]

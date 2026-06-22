@@ -67,14 +67,11 @@ func escalatedRoute(quality int, reason string) *browserops.RouteMetadata {
 // returns *bridge.StaticEscalateError so the handler can launch Chrome itself.
 func (a *BridgeAdapter) Navigate(ctx context.Context, url string, params bridge.NavigateParams) (*bridge.NavigateResult, error) {
 	if params.SkipStatic {
-		// The handler already ran the static phase and is escalating.
 		return a.BridgeAPI.Navigate(ctx, url, params)
 	}
-	// Concrete type needed: CloseTab is not part of browserops.BrowserRuntime.
 	staticBrowser := a.StaticBrowser()
 	if staticBrowser != nil {
-		// Attach network policy from NavigateParams so the static
-		// browser enforces SSRF/redirect protections.
+		// Attach network policy so the static browser enforces SSRF/redirect protections.
 		ctx = staticfetch.WithNavigateNetworkPolicy(ctx, navigateParamsToPolicy(&params))
 		navResult, err := staticBrowser.Navigate(ctx, url)
 		if err == nil {
@@ -91,8 +88,6 @@ func (a *BridgeAdapter) Navigate(ctx context.Context, url string, params bridge.
 						Route: staticAcceptedRoute(gr.Quality, gr.FormatReason(), true),
 					}, nil
 				}
-				// Quality too low — escalate to Chrome. The static tab was
-				// never exposed to the caller; release it.
 				slog.Debug("ghost-chrome navigate: quality too low, escalating",
 					"url", url, "quality", gr.Quality, "reason", gr.FormatReason())
 				staticBrowser.CloseTab(navResult.TabID)
@@ -106,8 +101,6 @@ func (a *BridgeAdapter) Navigate(ctx context.Context, url string, params bridge.
 				chromeResult.Route = escalatedRoute(gr.Quality, gr.FormatReason())
 				return chromeResult, nil
 			}
-			// Text extraction failed — escalate with zero quality. The static
-			// tab was never exposed to the caller; release it.
 			slog.Debug("ghost-chrome navigate: text extraction failed, escalating",
 				"url", url, "err", textErr)
 			staticBrowser.CloseTab(navResult.TabID)
@@ -134,11 +127,65 @@ func (a *BridgeAdapter) Navigate(ctx context.Context, url string, params bridge.
 	return chromeResult, nil
 }
 
-// Snapshot implements the ghost-chrome "static first, assess quality, escalate
-// to Chrome" routing pattern for snapshots. It tries reading the accessibility
-// tree from the static browser; if the snapshot passes the quality gate it
-// converts the nodes to bridge.A11yNode and returns. Otherwise it falls
-// through to Chrome.
+// resolveEscalationTabID maps a (possibly static "lite-N") tabID to the Chrome
+// tab that backs it, lazily escalating through the proxy when no mapping exists
+// yet. The shared resolution site for the Snapshot/Text escalation tails.
+//
+// It routes through proxy.TabContext rather than the read-only ChromeTabID: on a
+// cache miss ChromeTabID returned the lite id unchanged, so the escalated read
+// then called Chrome with a tab it had never created (tab-not-found, which
+// stalls the read to the action timeout). proxy.TabContext re-checks the map and,
+// for a known lite tab, creates the Chrome tab from the lite tab's URL and
+// records the mapping — so escalation targets a real Chrome tab. A genuinely
+// unresolvable tab now surfaces a clear error instead of hanging.
+func (a *BridgeAdapter) resolveEscalationTabID(tabID string) (string, error) {
+	_, resolved, err := a.proxy.TabContext(tabID)
+	if err != nil {
+		return "", fmt.Errorf("resolve escalation tab %q: %w", tabID, err)
+	}
+	return resolved, nil
+}
+
+// snapshotIDPIScan runs the IDPI content guard over the snapshot's node text
+// (scan-only, no redaction). It returns a non-empty warning when the scanner
+// flags the content and an error when it blocks it.
+func snapshotIDPIScan(params bridge.ContentParams, flat []bridge.A11yNode) (string, error) {
+	if params.ContentGuard == nil {
+		return "", nil
+	}
+	var sb strings.Builder
+	for _, n := range flat {
+		if n.Name != "" || n.Value != "" {
+			sb.WriteString(n.Name)
+			if n.Name != "" && n.Value != "" {
+				sb.WriteByte(' ')
+			}
+			sb.WriteString(n.Value)
+			sb.WriteByte('\n')
+		}
+	}
+	scanResult := params.ContentGuard.ScanOnly(sb.String())
+	if scanResult.Blocked {
+		return "", fmt.Errorf("snapshot blocked by IDPI scanner: %s", scanResult.BlockReason)
+	}
+	return scanResult.Warning, nil
+}
+
+// textIDPIScan runs the IDPI content guard over extracted text, returning the
+// (possibly redacted) text, a warning when flagged, and an error when blocked.
+func textIDPIScan(params bridge.ContentParams, text, url string) (string, string, error) {
+	if params.ContentGuard == nil {
+		return text, "", nil
+	}
+	scanResult := params.ContentGuard.Scan(text, url)
+	if scanResult.Blocked {
+		return "", "", fmt.Errorf("content blocked by IDPI scanner: %s", scanResult.BlockReason)
+	}
+	return scanResult.Text, scanResult.Warning, nil
+}
+
+// Snapshot tries the static browser's accessibility tree; if it passes the
+// quality gate the nodes are returned, otherwise it falls through to Chrome.
 func (a *BridgeAdapter) Snapshot(ctx context.Context, tabID string, filter string, params bridge.ContentParams) (*bridge.SnapshotResult, error) {
 	staticBrowser := a.proxy.StaticBrowser()
 	if staticBrowser != nil {
@@ -167,26 +214,9 @@ func (a *BridgeAdapter) Snapshot(ctx context.Context, tabID string, filter strin
 					}
 				}
 
-				var idpiWarning string
-				if params.ContentGuard != nil {
-					var sb strings.Builder
-					for _, n := range flat {
-						if n.Name != "" || n.Value != "" {
-							sb.WriteString(n.Name)
-							if n.Name != "" && n.Value != "" {
-								sb.WriteByte(' ')
-							}
-							sb.WriteString(n.Value)
-							sb.WriteByte('\n')
-						}
-					}
-					scanResult := params.ContentGuard.ScanOnly(sb.String())
-					if scanResult.Blocked {
-						return nil, fmt.Errorf("snapshot blocked by IDPI scanner: %s", scanResult.BlockReason)
-					}
-					if scanResult.Warning != "" {
-						idpiWarning = scanResult.Warning
-					}
+				idpiWarning, err := snapshotIDPIScan(params, flat)
+				if err != nil {
+					return nil, err
 				}
 
 				slog.Debug("ghost-chrome snapshot: static accepted",
@@ -203,11 +233,11 @@ func (a *BridgeAdapter) Snapshot(ctx context.Context, tabID string, filter strin
 		}
 	}
 
-	resolvedTabID := tabID
-	if chromeID, ok := a.proxy.ChromeTabID(tabID); ok {
-		resolvedTabID = chromeID
+	escalatedTabID, err := a.resolveEscalationTabID(tabID)
+	if err != nil {
+		return nil, err
 	}
-	chromeSnap, err := a.BridgeAPI.Snapshot(ctx, resolvedTabID, filter, params)
+	chromeSnap, err := a.BridgeAPI.Snapshot(ctx, escalatedTabID, filter, params)
 	if err != nil {
 		return nil, err
 	}
@@ -215,10 +245,8 @@ func (a *BridgeAdapter) Snapshot(ctx context.Context, tabID string, filter strin
 	return chromeSnap, nil
 }
 
-// Text implements the ghost-chrome "static first, assess quality, escalate to
-// Chrome" routing pattern for text extraction. It tries the static browser
-// first; if the text passes the quality gate it returns immediately. Otherwise
-// it falls through to Chrome.
+// Text tries the static browser first; if the text passes the quality gate it
+// returns immediately, otherwise it falls through to Chrome.
 func (a *BridgeAdapter) Text(ctx context.Context, tabID string, params bridge.ContentParams) (*bridge.TextResult, error) {
 	staticBrowser := a.proxy.StaticBrowser()
 	if staticBrowser != nil {
@@ -226,17 +254,9 @@ func (a *BridgeAdapter) Text(ctx context.Context, tabID string, params bridge.Co
 		if err == nil && textResult.Text != "" {
 			gr := ghostchrome.AssessContent(textResult.Text)
 			if gr.ShouldAccept() {
-				text := textResult.Text
-				var idpiWarning string
-				if params.ContentGuard != nil {
-					scanResult := params.ContentGuard.Scan(text, textResult.URL)
-					if scanResult.Blocked {
-						return nil, fmt.Errorf("content blocked by IDPI scanner: %s", scanResult.BlockReason)
-					}
-					text = scanResult.Text
-					if scanResult.Warning != "" {
-						idpiWarning = scanResult.Warning
-					}
+				text, idpiWarning, err := textIDPIScan(params, textResult.Text, textResult.URL)
+				if err != nil {
+					return nil, err
 				}
 
 				slog.Debug("ghost-chrome text: static accepted",
@@ -254,11 +274,11 @@ func (a *BridgeAdapter) Text(ctx context.Context, tabID string, params bridge.Co
 		}
 	}
 
-	resolvedTabID := tabID
-	if chromeID, ok := a.proxy.ChromeTabID(tabID); ok {
-		resolvedTabID = chromeID
+	escalatedTabID, err := a.resolveEscalationTabID(tabID)
+	if err != nil {
+		return nil, err
 	}
-	chromeText, err := a.BridgeAPI.Text(ctx, resolvedTabID, params)
+	chromeText, err := a.BridgeAPI.Text(ctx, escalatedTabID, params)
 	if err != nil {
 		return nil, err
 	}

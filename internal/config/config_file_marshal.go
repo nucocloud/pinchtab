@@ -39,7 +39,7 @@ func boolPtrValue(v bool) *bool {
 	return &b
 }
 
-func cloakBrowserConfigJSONFromFile(provider string, c CloakBrowserConfig) *cloakBrowserConfigJSON {
+func cloakBrowserConfigJSONFromFile(c CloakBrowserConfig) *cloakBrowserConfigJSON {
 	if !hasCloakBrowserConfig(c) {
 		return nil
 	}
@@ -181,7 +181,7 @@ func (fc FileConfig) MarshalJSON() ([]byte, error) {
 			BrowserBinary:     fc.Browser.BrowserBinary,
 			BrowserDebugPort:  fc.Browser.BrowserDebugPort,
 			BrowserExtraFlags: fc.Browser.BrowserExtraFlags,
-			Cloak:             cloakBrowserConfigJSONFromFile(fc.Browser.Provider, fc.Browser.Cloak),
+			Cloak:             cloakBrowserConfigJSONFromFile(fc.Browser.Cloak),
 			ExtensionPaths:    copyStringSlice(fc.Browser.ExtensionPaths),
 			Proxy:             browserProxyJSONFromFile(fc.Browser.Proxy),
 			DefaultTarget:     fc.Browser.DefaultTarget,
@@ -349,8 +349,6 @@ func (fc *FileConfig) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// FileConfigFromRuntime converts the effective runtime configuration back into a
-// nested file configuration shape.
 func FileConfigFromRuntime(cfg *RuntimeConfig) FileConfig {
 	if cfg == nil {
 		return DefaultFileConfig()
@@ -429,10 +427,13 @@ func FileConfigFromRuntime(cfg *RuntimeConfig) FileConfig {
 	retainBodies := cfg.RetainNetworkBodies
 	retainBodyMaxBytes := cfg.RetainNetworkBodyMaxBytes
 
-	// Always emit browsers.default; stop writing the deprecated browser.provider field.
+	// Always emit browsers.default; stop writing the deprecated browser.provider
+	// field. Write the value verbatim (unknown values are kept raw by config load
+	// so the load-time warning + chrome fallback still fire — don't normalize and
+	// silently rewrite them); only an empty value falls back to chrome.
 	browsersDefault := cfg.DefaultBrowser
 	if browsersDefault == "" {
-		browsersDefault = NormalizeBrowser(cfg.DefaultBrowser)
+		browsersDefault = BrowserChrome
 	}
 	browsersBlock := BrowsersConfig{
 		Default:   browsersDefault,

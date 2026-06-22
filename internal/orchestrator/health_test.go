@@ -69,6 +69,69 @@ func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return fn(req)
 }
 
+// waitForChildBridgeHealthy must only promote starting -> running. If the
+// concurrent monitor() goroutine already moved the instance to a terminal
+// "error" state, a health 200 must not resurrect it to "running".
+func TestWaitForChildBridgeHealthy_DoesNotOverwriteErrorStatus(t *testing.T) {
+	o := NewOrchestratorWithRunner(t.TempDir(), &mockRunner{portAvail: true})
+	o.client = &http.Client{
+		Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader("ok")),
+				Header:     make(http.Header),
+			}, nil
+		}),
+	}
+
+	inst := &InstanceInternal{
+		Instance: bridge.Instance{ID: "inst_err0001", Port: "9999", Status: "error"},
+		URL:      "http://127.0.0.1:9999",
+	}
+	o.mu.Lock()
+	o.instances[inst.ID] = inst
+	o.mu.Unlock()
+
+	if err := o.waitForChildBridgeHealthy(inst, time.Second); err != nil {
+		t.Fatalf("waitForChildBridgeHealthy returned error on 200: %v", err)
+	}
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	if inst.Status != "error" {
+		t.Fatalf("status = %q, want error (health 200 must not resurrect a terminal state)", inst.Status)
+	}
+}
+
+func TestWaitForChildBridgeHealthy_PromotesStartingToRunning(t *testing.T) {
+	o := NewOrchestratorWithRunner(t.TempDir(), &mockRunner{portAvail: true})
+	o.client = &http.Client{
+		Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader("ok")),
+				Header:     make(http.Header),
+			}, nil
+		}),
+	}
+
+	inst := &InstanceInternal{
+		Instance: bridge.Instance{ID: "inst_ok0001", Port: "9999", Status: "starting"},
+		URL:      "http://127.0.0.1:9999",
+	}
+	o.mu.Lock()
+	o.instances[inst.ID] = inst
+	o.mu.Unlock()
+
+	if err := o.waitForChildBridgeHealthy(inst, time.Second); err != nil {
+		t.Fatalf("waitForChildBridgeHealthy returned error: %v", err)
+	}
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	if inst.Status != "running" {
+		t.Fatalf("status = %q, want running", inst.Status)
+	}
+}
+
 func TestIsInstanceHealthyStatus(t *testing.T) {
 	tests := []struct {
 		code int

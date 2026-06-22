@@ -15,46 +15,14 @@ import (
 	bridgeruntime "github.com/pinchtab/pinchtab/internal/bridge/runtime"
 )
 
-// downloadNavTimeout caps the navigate-and-capture phase of a browser-based
-// download, matching the pre-refactor handler behavior.
 const downloadNavTimeout = 30 * time.Second
 
-// Sentinels for handler-side status mapping via errors.Is. Texts match the
-// historical messages so anything still string-matching keeps working.
+// Texts match the historical messages so anything still string-matching keeps working.
 var (
 	ErrDownloadTooLarge = errors.New("download response too large")
 	ErrDownloadTimeout  = errors.New("download timed out")
 )
 
-// DownloadOpts configures a browser-based download.
-type DownloadOpts struct {
-	// MaxBytes is the maximum response size in bytes. 0 means no limit.
-	MaxBytes int
-	// MaxRedirects limits browser-side redirects. -1 means unlimited.
-	MaxRedirects int
-	// ValidateURL is called for every request/redirect URL seen by the browser.
-	// If it returns an error, the request is blocked.
-	ValidateURL func(rawURL string, isRedirect bool) error
-	// ValidateRemoteIP is called when the response remote IP is known.
-	// If it returns an error, the download is aborted.
-	ValidateRemoteIP func(remoteIP string) error
-	// IsDomainAllowed reports whether a URL's domain is on the operator allowlist
-	// (bypassing private-IP checks).
-	IsDomainAllowed func(rawURL string) bool
-	// ParseContentLength extracts Content-Length from response headers, if present.
-	ParseContentLength func(headers map[string]interface{}) (int64, bool)
-}
-
-// DownloadResult holds the result of a browser-based download.
-type DownloadResult struct {
-	Body       []byte
-	MIMEType   string
-	StatusCode int
-}
-
-// DownloadURL downloads a URL using the browser's session (cookies, stealth).
-// It creates a temporary tab, enables fetch interception to validate requests,
-// navigates to the URL, and returns the response body.
 func (b *Bridge) DownloadURL(ctx context.Context, dlURL string, opts DownloadOpts) (*DownloadResult, error) {
 	browserCtx := b.BrowserContext()
 	tabCtx, tabCancel := chromedp.NewContext(browserCtx)

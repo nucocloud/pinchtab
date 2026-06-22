@@ -14,8 +14,6 @@ import (
 	"github.com/pinchtab/pinchtab/internal/browsers"
 )
 
-// binaryNames lists the executable names that may represent a Chrome or
-// Chromium install on any platform.
 var binaryNames = []string{
 	"google-chrome",
 	"google-chrome-stable",
@@ -86,7 +84,6 @@ func randomWindowSize() (int, int) {
 	return s[0], s[1]
 }
 
-// Browser implements browsers.Browser for Google Chrome.
 type Browser struct{}
 
 func (Browser) ID() string          { return "chrome" }
@@ -104,7 +101,6 @@ func (Browser) Capabilities() browsers.CapabilitySet {
 	)
 }
 
-// DiscoverBinary locates a Chrome/Chromium binary on the current system.
 func (Browser) DiscoverBinary() browsers.BinaryDiscovery {
 	d := browserprobe.DiscoverBinary(BinaryNames(), CommonPaths(runtime.GOOS))
 	return browsers.BinaryDiscovery{Found: d.Found, Probed: d.Probed}

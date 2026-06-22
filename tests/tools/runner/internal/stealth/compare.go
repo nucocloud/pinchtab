@@ -295,7 +295,6 @@ func render(paths []string, reports []Report) (string, []Divergence) {
 			if e == nil {
 				continue
 			}
-			// stable but readable order
 			var local []string
 			for k := range e.Metrics {
 				local = append(local, k)
@@ -437,11 +436,10 @@ func renderHistoryMD(dir string, limit int) error {
 		}
 		rows = append(rows, e)
 	}
-	// Last N, newest first.
 	if len(rows) > limit {
 		rows = rows[len(rows)-limit:]
 	}
-	// reverse
+	// Reverse so newest renders first.
 	for i, j := 0, len(rows)-1; i < j; i, j = i+1, j-1 {
 		rows[i], rows[j] = rows[j], rows[i]
 	}

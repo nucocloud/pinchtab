@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -56,11 +55,7 @@ func (h *Handlers) HandlePDF(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.ensureBrowser(h.Config); err != nil {
-		if h.writeBridgeUnavailable(w, err) {
-			return
-		}
-		httpx.Error(w, 500, fmt.Errorf("browser initialization: %w", err))
+	if !h.ensureBrowserOrRespond(w, h.Config) {
 		return
 	}
 
@@ -68,18 +63,11 @@ func (h *Handlers) HandlePDF(w http.ResponseWriter, r *http.Request) {
 	output := r.URL.Query().Get("output")
 	h.recordReadRequest(r, "pdf", tabID)
 
-	ctx, resolvedTabID, err := h.tabContext(r, tabID)
-	if err != nil {
-		WriteTabContextError(w, err, 404)
+	_, tCtx, cancel, ok := h.resolveBinaryReadContext(w, r, tabID, h.Config.ActionTimeout)
+	if !ok {
 		return
 	}
-	if _, ok := h.enforceCurrentTabDomainPolicy(w, r, ctx, resolvedTabID); !ok {
-		return
-	}
-
-	tCtx, tCancel := context.WithTimeout(ctx, h.Config.ActionTimeout)
-	defer tCancel()
-	go httpx.CancelOnClientDone(r.Context(), tCancel)
+	defer cancel()
 
 	landscape := r.URL.Query().Get("landscape") == "true"
 	preferCSSPageSize := r.URL.Query().Get("preferCSSPageSize") == "true"
@@ -187,13 +175,12 @@ func (h *Handlers) HandlePDF(w http.ResponseWriter, r *http.Request) {
 	if output == "file" {
 		savePath := r.URL.Query().Get("path")
 		if savePath == "" {
-			pdfDir := filepath.Join(h.Config.StateDir, "pdfs")
-			if err := os.MkdirAll(pdfDir, 0750); err != nil {
-				httpx.Error(w, 500, fmt.Errorf("create pdf dir: %w", err))
+			p, _, err := saveBinaryToStateDir(h.Config.StateDir, "pdfs", "page", ".pdf", buf)
+			if err != nil {
+				httpx.Error(w, 500, fmt.Errorf("write pdf: %w", err))
 				return
 			}
-			timestamp := time.Now().Format("20060102-150405")
-			savePath = filepath.Join(pdfDir, fmt.Sprintf("page-%s.pdf", timestamp))
+			savePath = p
 		} else {
 			safe, err := httpx.SafeCreatePath(h.Config.StateDir, savePath)
 			if err != nil {
@@ -211,11 +198,10 @@ func (h *Handlers) HandlePDF(w http.ResponseWriter, r *http.Request) {
 				httpx.Error(w, 500, fmt.Errorf("create dir: %w", err))
 				return
 			}
-		}
-
-		if err := os.WriteFile(savePath, buf, 0600); err != nil {
-			httpx.Error(w, 500, fmt.Errorf("write pdf: %w", err))
-			return
+			if err := os.WriteFile(savePath, buf, 0600); err != nil {
+				httpx.Error(w, 500, fmt.Errorf("write pdf: %w", err))
+				return
+			}
 		}
 
 		httpx.JSON(w, 200, map[string]any{
@@ -226,10 +212,7 @@ func (h *Handlers) HandlePDF(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.URL.Query().Get("raw") == "true" {
-		w.Header().Set("Content-Type", "application/pdf")
-		if _, err := w.Write(buf); err != nil {
-			slog.Error("pdf write", "err", err)
-		}
+		writeRawImage(w, buf, "application/pdf", "pdf write")
 		return
 	}
 

@@ -87,7 +87,6 @@ func (h *Handlers) HandleFingerprintRotate(w http.ResponseWriter, r *http.Reques
 			httpx.Error(w, 500, fmt.Errorf("add platform overlay: %w", err))
 			return
 		}
-		// Also evaluate the overlay script in the current page
 		if err := h.Bridge.Evaluate(tCtx, overlayScript, nil, bridge.EvalOpts{}); err != nil {
 			httpx.Error(w, 500, fmt.Errorf("evaluate platform overlay: %w", err))
 			return

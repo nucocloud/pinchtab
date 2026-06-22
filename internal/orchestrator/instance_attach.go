@@ -77,12 +77,10 @@ func (o *Orchestrator) Attach(name, cdpURL string) (*bridge.Instance, error) {
 	return o.AttachWithProvider(name, cdpURL, "")
 }
 
-// AttachWithProvider is Attach with an explicit provider ("" defaults to chrome).
 func (o *Orchestrator) AttachWithProvider(name, cdpURL, provider string) (*bridge.Instance, error) {
 	return o.AttachWithOptions(name, cdpURL, AttachOptions{Browser: provider})
 }
 
-// AttachWithOptions wraps an externally-managed browser and records its resolved browser target.
 func (o *Orchestrator) AttachWithOptions(name, cdpURL string, opts AttachOptions) (*bridge.Instance, error) {
 	if err := profiles.ValidateProfileName(name); err != nil {
 		return nil, err
@@ -239,7 +237,6 @@ func (o *Orchestrator) AttachWithOptions(name, cdpURL string, opts AttachOptions
 	return &result, nil
 }
 
-// waitForChildBridgeHealthy polls the child /health until OK or the deadline elapses.
 func (o *Orchestrator) waitForChildBridgeHealthy(inst *InstanceInternal, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	healthURL := strings.TrimRight(inst.URL, "/") + "/health"
@@ -251,7 +248,13 @@ func (o *Orchestrator) waitForChildBridgeHealthy(inst *InstanceInternal, timeout
 			_ = resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
 				o.mu.Lock()
-				inst.Status = "running"
+				// Only promote starting -> running. The concurrent monitor()
+				// goroutine may have already moved the instance to a terminal
+				// state (error on process exit, or stopping/stopped); a transient
+				// health 200 must not resurrect it.
+				if inst.Status == "starting" {
+					inst.Status = "running"
+				}
 				o.mu.Unlock()
 				return nil
 			}
@@ -268,7 +271,6 @@ func (o *Orchestrator) AttachBridge(name, baseURL, token string) (*bridge.Instan
 	return o.AttachBridgeWithOptions(name, baseURL, token, AttachOptions{})
 }
 
-// AttachBridgeWithOptions registers an already-running bridge server with browser metadata.
 func (o *Orchestrator) AttachBridgeWithOptions(name, baseURL, token string, opts AttachOptions) (*bridge.Instance, bool, error) {
 	if err := o.validateAttachURL(baseURL); err != nil {
 		return nil, false, err

@@ -8,7 +8,7 @@ func FilterAnnotationItems(items []AnnotationItem, target *AnnotationRect, viewp
 	if target != nil {
 		region = *target
 	}
-	out := items[:0]
+	out := make([]AnnotationItem, 0, len(items))
 	for _, it := range items {
 		if RectsOverlap(it.Box, region) {
 			out = append(out, it)

@@ -10,7 +10,6 @@ import (
 
 const popupGuardInitScript = stealth.PopupGuardInitScript
 
-// InitBrowser initializes a browser for a Bridge instance.
 func InitBrowser(cfg *config.RuntimeConfig, bundle *stealth.Bundle) (context.Context, context.CancelFunc, context.Context, context.CancelFunc, stealth.LaunchMode, error) {
 	return bridgeruntime.InitBrowser(cfg, bundle, bridgeruntime.Hooks{
 		SetHumanRandSeed:           SetHumanRandSeed,

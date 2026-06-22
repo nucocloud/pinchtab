@@ -15,12 +15,10 @@ import (
 	"time"
 )
 
-// CleanupOrphanedChromeProcesses kills Chrome processes left behind by
-// previous PinchTab runs and removes temporary profile directories.
 // Call on startup before launching Chrome.
 func CleanupOrphanedChromeProcesses(profileDir string) {
-	// 1. Kill Chrome processes using the configured profile dir
-	// (from a previous crashed run that didn't shut down cleanly)
+	// Kill Chrome left over from a previous crashed run that didn't shut down
+	// cleanly.
 	if profileDir != "" {
 		killed := killChromeByProfileDir(profileDir)
 		if killed > 0 {
@@ -28,7 +26,7 @@ func CleanupOrphanedChromeProcesses(profileDir string) {
 		}
 	}
 
-	// 2. Find and clean up temp profile dirs from previous headless fallbacks
+	// Clean up temp profile dirs from previous headless fallbacks.
 	tmpDir := os.TempDir()
 	entries, err := os.ReadDir(tmpDir)
 	if err != nil {
@@ -50,10 +48,9 @@ func CleanupOrphanedChromeProcesses(profileDir string) {
 	}
 }
 
-// KillAllPinchtabChrome kills all Chrome processes spawned by PinchTab.
 // Matches both persistent profiles (--user-data-dir=.../profiles/...) and
-// temp profiles (--user-data-dir=.../pinchtab-profile-*).
-// Called on server shutdown — one ps scan, immediate SIGKILL.
+// temp profiles (--user-data-dir=.../pinchtab-profile-*). Called on server
+// shutdown — one ps scan, immediate SIGKILL.
 func KillAllPinchtabChrome() int {
 	var pids []int
 	tempPids := findPIDsByNeedle("pinchtab-profile")
@@ -81,7 +78,6 @@ func KillAllPinchtabChrome() int {
 // Test seam: overridden to simulate process presence without /proc or ps.
 var findChromePIDsByProfileDirFunc = findChromePIDsByProfileDir
 
-// findChromePIDsByProfileDir returns PIDs of Chrome processes using the given profile directory.
 func findChromePIDsByProfileDir(profileDir string) []int {
 	if pids := findChromePIDsByUserDataDirViaProc(profileDir); pids != nil {
 		return pids
@@ -89,7 +85,6 @@ func findChromePIDsByProfileDir(profileDir string) []int {
 	return findChromePIDsByUserDataDirViaPS(profileDir)
 }
 
-// findPIDsByNeedle searches process command lines for a substring.
 // Tries /proc first (Linux, always available even in minimal containers),
 // then falls back to ps (macOS, BSDs).
 func findPIDsByNeedle(needle string) []int {
@@ -99,7 +94,6 @@ func findPIDsByNeedle(needle string) []int {
 	return findPIDsViaPS(needle)
 }
 
-// findPIDsViaProc reads /proc/*/cmdline to find matching processes.
 // Returns nil (not empty slice) if /proc is not available.
 func findPIDsViaProc(needle string) []int {
 	entries, err := os.ReadDir("/proc")
@@ -197,7 +191,6 @@ func findChromePIDsByUserDataDirViaPS(profileDir string) []int {
 	return pids
 }
 
-// findPIDsViaPS uses `ps -axo pid=,args=` to find matching processes.
 func findPIDsViaPS(needle string) []int {
 	cmd := exec.Command("ps", "-axo", "pid=,args=")
 	out, err := cmd.Output()
@@ -228,9 +221,7 @@ func findPIDsViaPS(needle string) []int {
 	return pids
 }
 
-// killChromeByProfileDir finds Chrome processes using the given profile
-// directory, sends SIGTERM, waits briefly, then SIGKILL any survivors.
-// Returns the number of processes killed.
+// Sends SIGTERM, waits briefly, then SIGKILL any survivors.
 func killChromeByProfileDir(profileDir string) int {
 	pids := findChromePIDsByProfileDirFunc(profileDir)
 	if len(pids) == 0 {
@@ -246,7 +237,6 @@ func killChromeByProfileDir(profileDir string) int {
 	killed := 0
 	for _, pid := range pids {
 		if err := syscall.Kill(pid, 0); err != nil {
-			// Process already dead
 			killed++
 			continue
 		}
@@ -259,7 +249,7 @@ func killChromeByProfileDir(profileDir string) int {
 	return killed
 }
 
-// terminateChromeByProfileDir sends SIGTERM without escalating to SIGKILL.
+// Sends SIGTERM without escalating to SIGKILL.
 func terminateChromeByProfileDir(profileDir string) int {
 	pids := findChromePIDsByProfileDirFunc(profileDir)
 	if len(pids) == 0 {

@@ -37,8 +37,109 @@ func EmitDefaultConfigHint() {
 	})
 }
 
-// Load returns the RuntimeConfig with precedence: env vars > config file > defaults.
+// parsedConfigFile is the side-effect-free result of resolving + reading +
+// parsing the config file.
+type parsedConfigFile struct {
+	Path           string
+	DefaultPath    string
+	EnvOverride    bool
+	Found          bool  // file read succeeded
+	ReadErr        error // os.ReadFile error (incl. not-exist); nil when Found
+	Legacy         bool
+	FC             *FileConfig
+	ParseErr       error   // json unmarshal error (legacy or nested)
+	UnknownFields  error   // non-fatal: unrecognized nested fields
+	ValidationErrs []error // non-fatal: ValidateFileConfig
+}
+
+func resolveConfigPath() (path, defaultPath string, envOverride bool) {
+	defaultPath = filepath.Join(userConfigDir(), "config.json")
+	path = envOr("PINCHTAB_CONFIG", defaultPath)
+	return path, defaultPath, os.Getenv("PINCHTAB_CONFIG") != ""
+}
+
+// ConfigFilePath returns the effective config file path (honoring PINCHTAB_CONFIG),
+// i.e. the path LoadFileConfig reads — exposed so callers can stat it for change
+// detection without performing a full load.
+func ConfigFilePath() string {
+	path, _, _ := resolveConfigPath()
+	return path
+}
+
+// readAndParseConfigFile resolves, reads, detects legacy format, and parses the
+// config file with no side effects (no logging, no os.Exit). Callers decide how
+// to surface the outcome.
+func readAndParseConfigFile() parsedConfigFile {
+	path, defaultPath, override := resolveConfigPath()
+	res := parsedConfigFile{Path: path, DefaultPath: defaultPath, EnvOverride: override}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		res.ReadErr = err
+		return res
+	}
+	res.Found = true
+
+	if isLegacyConfig(data) {
+		res.Legacy = true
+		var lc legacyFileConfig
+		if err := json.Unmarshal(data, &lc); err != nil {
+			res.ParseErr = err
+			return res
+		}
+		res.FC = convertLegacyConfig(&lc)
+	} else {
+		fc := &FileConfig{}
+		if err := json.Unmarshal(data, fc); err != nil {
+			res.ParseErr = err
+			return res
+		}
+		res.FC = fc
+		dec := json.NewDecoder(bytes.NewReader(data))
+		dec.DisallowUnknownFields()
+		if ufErr := dec.Decode(&FileConfig{}); ufErr != nil {
+			res.UnknownFields = ufErr
+		}
+	}
+	if res.FC != nil {
+		res.ValidationErrs = ValidateFileConfig(res.FC)
+	}
+	return res
+}
+
+// LoadDiagnostic is a non-fatal config-load message for the caller to emit.
+type LoadDiagnostic struct {
+	Level   slog.Level
+	Message string
+	Attrs   []any // slog key/value pairs
+}
+
+// Load returns the RuntimeConfig with precedence: env vars > config file >
+// defaults. It is a thin wrapper over LoadConfig that emits the load diagnostics
+// via slog and terminates the process on a fatal config error.
 func Load() *RuntimeConfig {
+	cfg, diags, err := LoadConfig()
+	for _, d := range diags {
+		switch d.Level {
+		case slog.LevelDebug:
+			slog.Debug(d.Message, d.Attrs...)
+		case slog.LevelInfo:
+			slog.Info(d.Message, d.Attrs...)
+		default:
+			slog.Warn(d.Message, d.Attrs...)
+		}
+	}
+	if err != nil {
+		slog.Error(err.Error())
+		os.Exit(1)
+	}
+	return cfg
+}
+
+// LoadConfig builds the RuntimeConfig (env > file > defaults) with no logging and
+// no os.Exit. It returns the config, ordered diagnostics for the caller to log,
+// and a fatal error (e.g. missing port) for the caller to act on.
+func LoadConfig() (*RuntimeConfig, []LoadDiagnostic, error) {
 	cfg := &RuntimeConfig{
 		Bind:              "127.0.0.1",
 		Port:              defaultPort,
@@ -155,64 +256,49 @@ func Load() *RuntimeConfig {
 			SolverTimeoutSec:  30,
 			RetryBaseDelayMs:  500,
 			RetryMaxDelayMs:   10000,
-			Solvers:           []string{"cloudflare", "semantic", "capsolver", "twocaptcha"},
+			Solvers:           []string{"cloudflare", "semantic"},
 			LLMFallback:       false,
 		},
 	}
 	finalizeProfileConfig(cfg)
 
-	defaultConfigPath := filepath.Join(userConfigDir(), "config.json")
-	configPath := envOr("PINCHTAB_CONFIG", defaultConfigPath)
-
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			slog.Warn("failed to read config file", "path", configPath, "error", err)
+	var diags []LoadDiagnostic
+	res := readAndParseConfigFile()
+	if !res.Found {
+		if res.ReadErr != nil && !os.IsNotExist(res.ReadErr) {
+			diags = append(diags, LoadDiagnostic{slog.LevelWarn, "failed to read config file", []any{"path", res.Path, "error", res.ReadErr}})
 		}
-		return cfg
+		return cfg, diags, nil
 	}
 
-	slog.Debug("loading config file", "path", configPath)
+	diags = append(diags, LoadDiagnostic{slog.LevelDebug, "loading config file", []any{"path", res.Path}})
 
-	var fc *FileConfig
-
-	if isLegacyConfig(data) {
-		var lc legacyFileConfig
-		if err := json.Unmarshal(data, &lc); err != nil {
-			slog.Warn("failed to parse legacy config", "path", configPath, "error", err)
-			return cfg
+	if res.ParseErr != nil {
+		if res.Legacy {
+			diags = append(diags, LoadDiagnostic{slog.LevelWarn, "failed to parse legacy config", []any{"path", res.Path, "error", res.ParseErr}})
+		} else {
+			diags = append(diags, LoadDiagnostic{slog.LevelWarn, "failed to parse config", []any{"path", res.Path, "error", res.ParseErr}})
 		}
-		fc = convertLegacyConfig(&lc)
-		slog.Info("loaded legacy flat config, consider migrating to nested format", "path", configPath)
-	} else {
-		fc = &FileConfig{}
-		if err := json.Unmarshal(data, fc); err != nil {
-			slog.Warn("failed to parse config", "path", configPath, "error", err)
-			return cfg
-		}
-		// Warn about unrecognized fields (non-fatal, config still loads).
-		dec := json.NewDecoder(bytes.NewReader(data))
-		dec.DisallowUnknownFields()
-		if ufErr := dec.Decode(&FileConfig{}); ufErr != nil {
-			slog.Warn("config has unrecognized fields that will be ignored", "path", configPath, "error", ufErr)
-		}
+		return cfg, diags, nil
+	}
+	if res.Legacy {
+		diags = append(diags, LoadDiagnostic{slog.LevelInfo, "loaded legacy flat config, consider migrating to nested format", []any{"path", res.Path}})
+	}
+	if res.UnknownFields != nil {
+		diags = append(diags, LoadDiagnostic{slog.LevelWarn, "config has unrecognized fields that will be ignored", []any{"path", res.Path, "error", res.UnknownFields}})
+	}
+	for _, e := range res.ValidationErrs {
+		diags = append(diags, LoadDiagnostic{slog.LevelWarn, "config validation error", []any{"path", res.Path, "error", e}})
 	}
 
-	if errs := ValidateFileConfig(fc); len(errs) > 0 {
-		for _, e := range errs {
-			slog.Warn("config validation error", "path", configPath, "error", e)
-		}
-	}
-
-	applyFileConfig(cfg, fc)
+	applyFileConfig(cfg, res.FC)
 	finalizeProfileConfig(cfg)
 
 	if cfg.Port == "" {
-		slog.Error("server port is not configured — set server.port in config.json")
-		os.Exit(1)
+		return cfg, diags, fmt.Errorf("server port is not configured — set server.port in config.json")
 	}
 
-	return cfg
+	return cfg, diags, nil
 }
 
 // ConfigFileStatus reports on-disk config state without invoking Load (used by `pinchtab doctor`).
@@ -226,32 +312,14 @@ type ConfigFileStatus struct {
 
 // InspectConfigFile reports config-file load status with no side effects.
 func InspectConfigFile() ConfigFileStatus {
-	defaultPath := filepath.Join(userConfigDir(), "config.json")
-	path := envOr("PINCHTAB_CONFIG", defaultPath)
-	status := ConfigFileStatus{
-		Path:        path,
-		DefaultPath: defaultPath,
-		EnvOverride: os.Getenv("PINCHTAB_CONFIG") != "",
+	res := readAndParseConfigFile()
+	return ConfigFileStatus{
+		Path:        res.Path,
+		DefaultPath: res.DefaultPath,
+		EnvOverride: res.EnvOverride,
+		Found:       res.Found,
+		ParseErr:    res.ParseErr,
 	}
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return status
-	}
-	status.Found = true
-
-	if isLegacyConfig(data) {
-		var lc legacyFileConfig
-		if err := json.Unmarshal(data, &lc); err != nil {
-			status.ParseErr = err
-		}
-		return status
-	}
-	var fc FileConfig
-	if err := json.Unmarshal(data, &fc); err != nil {
-		status.ParseErr = err
-	}
-	return status
 }
 
 func envOr(key, fallback string) string {
@@ -351,14 +419,9 @@ func applyFileConfig(cfg *RuntimeConfig, fc *FileConfig) {
 	if fc.Security.MaxRedirects != nil {
 		cfg.MaxRedirects = *fc.Security.MaxRedirects
 	}
-	if fc.Security.Attach.Enabled != nil {
-		cfg.AttachEnabled = *fc.Security.Attach.Enabled
-	}
-	if fc.Security.Attach.ForwardProxyAuth != nil {
-		cfg.AttachForwardProxyAuth = *fc.Security.Attach.ForwardProxyAuth
-	}
-	cfg.AttachAllowHosts = append([]string(nil), fc.Security.Attach.AllowHosts...)
-	cfg.AttachAllowSchemes = append([]string(nil), fc.Security.Attach.AllowSchemes...)
+	// Attach fields (Enabled/ForwardProxyAuth/AllowHosts/AllowSchemes) are applied
+	// once, below, with conditional AllowHosts/AllowSchemes so omitting them in the
+	// file keeps the seeded defaults instead of clobbering them with an empty list.
 	cfg.TrustedProxyCIDRs = append([]string(nil), fc.Security.TrustedProxyCIDRs...)
 	cfg.TrustedResolveCIDRs = append([]string(nil), fc.Security.TrustedResolveCIDRs...)
 	if fc.Security.TrustLoopbackProxy != nil {
@@ -454,7 +517,11 @@ func applyFileConfig(cfg *RuntimeConfig, fc *FileConfig) {
 	// would contradict it and destructively "reconcile" it on the next
 	// FileConfigFromRuntime round-trip.
 	if fc.Browsers.Default != "" {
-		cfg.DefaultBrowser = fc.Browsers.Default
+		// Store the canonical lowercased form so logs, the doctor header, and
+		// FileConfigFromRuntime round-trips stay consistent ("Cloak" -> "cloak").
+		// Keep an unknown value as-is (don't NormalizeBrowser) so the warning
+		// below and the launch-time chrome fallback still apply.
+		cfg.DefaultBrowser = strings.ToLower(strings.TrimSpace(fc.Browsers.Default))
 		// Launch paths coerce unknown providers to chrome via
 		// NormalizeBrowser; name that consequence loudly at load time.
 		if _, ok := browsers.Get(strings.ToLower(strings.TrimSpace(fc.Browsers.Default))); !ok {

@@ -11,24 +11,20 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
-// EnableFetchWithAuth enables the CDP Fetch domain with auth request
-// interception, used by the credentials handler.
 func (b *Bridge) EnableFetchWithAuth(ctx context.Context) error {
 	return chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		return fetch.Enable().WithHandleAuthRequests(true).Do(ctx)
 	}))
 }
 
-// DisableFetch disables the CDP Fetch domain.
 func (b *Bridge) DisableFetch(ctx context.Context) error {
 	return chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		return fetch.Disable().Do(ctx)
 	}))
 }
 
-// ListenAuthRequired installs a CDP event listener for Fetch.AuthRequired and
-// Fetch.RequestPaused events. The handler callback receives (requestID, isAuth)
-// where isAuth=true for AuthRequired events and false for RequestPaused events.
+// The handler callback receives isAuth=true for AuthRequired events and false
+// for RequestPaused events.
 func (b *Bridge) ListenAuthRequired(ctx context.Context, handler func(requestID string, isAuth bool)) {
 	chromedp.ListenTarget(ctx, func(ev interface{}) {
 		switch e := ev.(type) {
@@ -40,7 +36,6 @@ func (b *Bridge) ListenAuthRequired(ctx context.Context, handler func(requestID 
 	})
 }
 
-// ContinueWithAuth responds to an auth challenge with credentials.
 func (b *Bridge) ContinueWithAuth(ctx context.Context, requestID, username, password string) error {
 	return chromedp.Run(ctx, chromedp.ActionFunc(func(innerCtx context.Context) error {
 		return fetch.ContinueWithAuth(fetch.RequestID(requestID), &fetch.AuthChallengeResponse{
@@ -51,15 +46,12 @@ func (b *Bridge) ContinueWithAuth(ctx context.Context, requestID, username, pass
 	}))
 }
 
-// ContinueRequest continues a paused request without modification.
 func (b *Bridge) ContinueRequest(ctx context.Context, requestID string) error {
 	return chromedp.Run(ctx, chromedp.ActionFunc(func(innerCtx context.Context) error {
 		return fetch.ContinueRequest(fetch.RequestID(requestID)).Do(innerCtx)
 	}))
 }
 
-// GoBack navigates back in the browser history. Returns didNavigate=false if
-// there is no prior history entry.
 func (b *Bridge) GoBack(ctx context.Context) (bool, error) {
 	var didNavigate bool
 	err := chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
@@ -77,8 +69,6 @@ func (b *Bridge) GoBack(ctx context.Context) (bool, error) {
 	return didNavigate, err
 }
 
-// GoForward navigates forward in the browser history. Returns didNavigate=false
-// if there is no forward history entry.
 func (b *Bridge) GoForward(ctx context.Context) (bool, error) {
 	var didNavigate bool
 	err := chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
@@ -96,27 +86,22 @@ func (b *Bridge) GoForward(ctx context.Context) (bool, error) {
 	return didNavigate, err
 }
 
-// Reload reloads the current page.
 func (b *Bridge) Reload(ctx context.Context) error {
 	return chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		return page.Reload().Do(ctx)
 	}))
 }
 
-// WaitVisible waits until the CSS selector matches a visible element.
 func (b *Bridge) WaitVisible(ctx context.Context, selector string) error {
 	return chromedp.Run(ctx, chromedp.WaitVisible(selector, chromedp.ByQuery))
 }
 
-// EnableNetwork enables the CDP Network domain for event listening.
 func (b *Bridge) EnableNetwork(ctx context.Context) error {
 	return chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		return network.Enable().Do(ctx)
 	}))
 }
 
-// ListenNetworkEvents installs a CDP event listener for network request/response
-// events, used by the navigation policy guard.
 func (b *Bridge) ListenNetworkEvents(ctx context.Context, handler NetworkEventHandler) {
 	chromedp.ListenTarget(ctx, func(ev interface{}) {
 		switch e := ev.(type) {
@@ -132,7 +117,6 @@ func (b *Bridge) ListenNetworkEvents(ctx context.Context, handler NetworkEventHa
 	})
 }
 
-// SetRawCookie sets a cookie via the CDP Network domain. Used by state restore.
 func (b *Bridge) SetRawCookie(ctx context.Context, params RawSetCookieParams) error {
 	return chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		p := network.SetCookie(params.Name, params.Value).
@@ -159,7 +143,6 @@ func (b *Bridge) SetRawCookie(ctx context.Context, params RawSetCookieParams) er
 	}))
 }
 
-// GetRawCookies retrieves all cookies from the browser via CDP Network domain.
 func (b *Bridge) GetRawCookies(ctx context.Context) ([]RawCookie, error) {
 	var cookies []*network.Cookie
 	err := chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
@@ -187,7 +170,6 @@ func (b *Bridge) GetRawCookies(ctx context.Context) ([]RawCookie, error) {
 	return result, nil
 }
 
-// SetUserAgentOverride overrides the user agent via CDP Emulation domain.
 func (b *Bridge) SetUserAgentOverride(ctx context.Context, params UserAgentOverrideParams) error {
 	return chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		p := emulation.SetUserAgentOverride(params.UserAgent).WithPlatform(params.Platform)
@@ -198,21 +180,18 @@ func (b *Bridge) SetUserAgentOverride(ctx context.Context, params UserAgentOverr
 	}))
 }
 
-// SetLocaleOverride overrides the browser locale via CDP Emulation domain.
 func (b *Bridge) SetLocaleOverride(ctx context.Context, locale string) error {
 	return chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		return emulation.SetLocaleOverride().WithLocale(locale).Do(ctx)
 	}))
 }
 
-// SetTimezoneOverride overrides the browser timezone via CDP Emulation domain.
 func (b *Bridge) SetTimezoneOverride(ctx context.Context, timezoneID string) error {
 	return chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		return emulation.SetTimezoneOverride(timezoneID).Do(ctx)
 	}))
 }
 
-// SetDeviceMetricsOverride overrides device metrics (screen size) via CDP Emulation domain.
 func (b *Bridge) SetDeviceMetricsOverride(ctx context.Context, params DeviceMetricsOverrideParams) error {
 	return chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		return emulation.SetDeviceMetricsOverride(params.Width, params.Height, params.DeviceScaleFactor, params.Mobile).
@@ -222,8 +201,7 @@ func (b *Bridge) SetDeviceMetricsOverride(ctx context.Context, params DeviceMetr
 	}))
 }
 
-// AddScriptToEvaluateOnNewDocument adds a script to be evaluated when a new
-// document is created, before any page scripts run. Returns the script identifier.
+// The script is evaluated before any page scripts run.
 func (b *Bridge) AddScriptToEvaluateOnNewDocument(ctx context.Context, source string) (string, error) {
 	var identifier string
 	err := chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {

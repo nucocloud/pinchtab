@@ -21,18 +21,13 @@ type ChromeBridge interface {
 	AvailableActions() []string
 }
 
-// ActionRequest mirrors the fields from bridge.ActionRequest that the
-// proxy needs for static-action routing. The server layer is responsible
-// for type-asserting the real bridge.ActionRequest when calling through.
-type ActionRequest struct {
-	TabID string
-	Kind  string
-	Ref   string
-	Text  string
-	Value string
-}
+// ActionRequest is the subset of a full browser action request the proxy needs
+// for static-action routing. It aliases browserops.StaticActionRequest — a
+// cycle-safe shared type — so the field set is defined once instead of being
+// hand-copied here to dodge the bridge → … → ghostchrome import cycle. The
+// adapter (bridgekit) maps the richer bridge.ActionRequest down to this.
+type ActionRequest = browserops.StaticActionRequest
 
-// Action kind constants matching bridge.Action* values.
 const (
 	ActionClick        = "click"
 	ActionType         = "type"
@@ -47,17 +42,13 @@ const (
 // transparent ghost-chrome routing. Lite tabs are lazily escalated to
 // Chrome when Chrome-only operations are requested.
 type BridgeProxy struct {
-	chrome        ChromeBridge         // underlying Chrome bridge (all unhandled methods forwarded here)
-	lite          *staticfetch.Browser // static fetch browser (may be nil → pure passthrough)
-	ensureBrowser func() error         // ensures the browser runtime is running before escalation
-	tabMap        tabMapping           // lite tabID → Chrome tabID
-	escalationMu  sync.Map             // lite tabID → *sync.Mutex (serializes per-tab escalation)
+	chrome        ChromeBridge
+	lite          *staticfetch.Browser // may be nil → pure passthrough
+	ensureBrowser func() error
+	tabMap        tabMapping // lite tabID → Chrome tabID
+	escalationMu  sync.Map   // lite tabID → *sync.Mutex (serializes per-tab escalation)
 }
 
-// NewBridgeProxy creates a BridgeProxy that transparently routes between
-// the static fetch browser and the Chrome bridge. The ensureBrowser
-// function is called before escalating a lite tab to Chrome; it should
-// call the bridge browser-init path with the appropriate config.
 func NewBridgeProxy(chrome ChromeBridge, lite *staticfetch.Browser, ensureBrowser func() error) *BridgeProxy {
 	return &BridgeProxy{
 		chrome:        chrome,
@@ -102,7 +93,7 @@ func (p *BridgeProxy) TabContext(tabID string) (context.Context, string, error) 
 
 	url, found := p.lite.TabURL(tabID)
 	if !found {
-		return nil, "", err // return original error
+		return nil, "", err
 	}
 
 	if p.ensureBrowser != nil {
@@ -189,23 +180,18 @@ func (p *BridgeProxy) canHandleStaticAction(kind string, ref string, tabID strin
 	}
 }
 
-// AvailableActions returns the combined set of available actions from both
-// the Chrome bridge and the static browser.
 func (p *BridgeProxy) AvailableActions() []string {
 	chrome := p.chrome.AvailableActions()
 	if p.lite == nil {
 		return chrome
 	}
 
-	// Ensure click and type are in the list (they may already be if
-	// Chrome is running, but add them if Chrome hasn't started yet).
 	set := make(map[string]struct{}, len(chrome)+2)
 	for _, a := range chrome {
 		set[a] = struct{}{}
 	}
 	set[ActionClick] = struct{}{}
 	set[ActionType] = struct{}{}
-
 	result := make([]string, 0, len(set))
 	for a := range set {
 		result = append(result, a)
@@ -216,8 +202,6 @@ func (p *BridgeProxy) AvailableActions() []string {
 	return result
 }
 
-// StaticBrowser returns the underlying static fetch browser as a
-// BrowserRuntime. Returns nil if no lite browser is configured.
 func (p *BridgeProxy) StaticBrowser() browserops.BrowserRuntime {
 	if p.lite == nil {
 		return nil
@@ -225,13 +209,10 @@ func (p *BridgeProxy) StaticBrowser() browserops.BrowserRuntime {
 	return p.lite
 }
 
-// ChromeTabID returns the Chrome tab ID for an escalated lite tab.
-// Returns ("", false) if no mapping exists.
 func (p *BridgeProxy) ChromeTabID(liteTabID string) (string, bool) {
 	return p.tabMap.get(liteTabID)
 }
 
-// TabURL returns the URL of a lite tab, if it exists.
 func (p *BridgeProxy) TabURL(tabID string) (string, bool) {
 	if p.lite == nil {
 		return "", false
@@ -239,8 +220,7 @@ func (p *BridgeProxy) TabURL(tabID string) (string, bool) {
 	return p.lite.TabURL(tabID)
 }
 
-// tabMapping tracks lite-tabID → Chrome-tabID associations created by
-// lazy Chrome escalation. Thread-safe.
+// tabMapping tracks lite-tabID → Chrome-tabID associations. Thread-safe.
 type tabMapping struct {
 	mu sync.RWMutex
 	m  map[string]string

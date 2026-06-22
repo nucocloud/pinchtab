@@ -8,7 +8,6 @@ import (
 	"strings"
 )
 
-// LaunchFailureReason categorizes why a browser instance failed to launch.
 type LaunchFailureReason string
 
 const (

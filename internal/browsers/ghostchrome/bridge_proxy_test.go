@@ -14,7 +14,7 @@ import (
 
 type mockChromeBridge struct {
 	mu               sync.Mutex
-	tabs             map[string]bool // known Chrome tab IDs
+	tabs             map[string]bool
 	failTab          bool
 	createTabURLs    []string
 	lastCreatedTabID string
@@ -157,7 +157,6 @@ func TestBridgeProxy_TabContext_CachedEscalation(t *testing.T) {
 
 	proxy := NewBridgeProxy(mb, lite, ec.fn())
 
-	// First call — escalates.
 	_, _, err = proxy.TabContext(liteTabID)
 	if err != nil {
 		t.Fatalf("first call: %v", err)
@@ -166,7 +165,6 @@ func TestBridgeProxy_TabContext_CachedEscalation(t *testing.T) {
 		t.Fatalf("expected 1 EnsureBrowser call, got %d", ec.calls)
 	}
 
-	// Second call — uses cached mapping, no new escalation.
 	_, resolved, err := proxy.TabContext(liteTabID)
 	if err != nil {
 		t.Fatalf("second call: %v", err)
@@ -198,17 +196,14 @@ func TestBridgeProxy_TabContext_StaleCachedTab(t *testing.T) {
 
 	proxy := NewBridgeProxy(mb, lite, ec.fn())
 
-	// First call — escalates.
 	_, _, err = proxy.TabContext(liteTabID)
 	if err != nil {
 		t.Fatalf("first call: %v", err)
 	}
 	firstChromeTab := mb.lastCreatedTabID
 
-	// Simulate the Chrome tab becoming stale by removing it from the mock.
 	delete(mb.tabs, firstChromeTab)
 
-	// Second call — cached mapping is stale, should re-escalate.
 	_, resolved, err := proxy.TabContext(liteTabID)
 	if err != nil {
 		t.Fatalf("second call: %v", err)
@@ -262,7 +257,6 @@ func TestBridgeProxy_TabContext_ConcurrentEscalation(t *testing.T) {
 		}
 	}
 
-	// All goroutines should resolve to the same Chrome tab.
 	first := resolvedIDs[0]
 	for i, id := range resolvedIDs[1:] {
 		if id != first {
@@ -286,7 +280,6 @@ func TestBridgeProxy_ExecuteAction_ClickWithRef(t *testing.T) {
 	if err != nil {
 		t.Fatalf("navigate: %v", err)
 	}
-	// Take a snapshot to populate refs.
 	_, err = lite.Snapshot(context.Background(), navResult.TabID, "")
 	if err != nil {
 		t.Fatalf("snapshot: %v", err)
@@ -326,7 +319,6 @@ func TestBridgeProxy_ExecuteAction_ClickNoRef(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExecuteAction click: %v", err)
 	}
-	// Without ref, should delegate to Chrome.
 	if result["chrome"] != true {
 		t.Fatalf("expected chrome=true, got %v", result)
 	}
@@ -344,7 +336,6 @@ func TestBridgeProxy_ExecuteAction_UnsupportedKind(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExecuteAction press: %v", err)
 	}
-	// press is not a static-capable kind, so should delegate to Chrome.
 	if result["chrome"] != true {
 		t.Fatalf("expected chrome=true, got %v", result)
 	}
@@ -354,7 +345,6 @@ func TestBridgeProxy_NilLite_Passthrough(t *testing.T) {
 	mb := newMockChromeBridge()
 	proxy := NewBridgeProxy(mb, nil, nil)
 
-	// TabContext on a Chrome tab should work.
 	_, resolved, err := proxy.TabContext("chrome-tab-1")
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -363,13 +353,11 @@ func TestBridgeProxy_NilLite_Passthrough(t *testing.T) {
 		t.Fatalf("resolved = %q, want %q", "chrome-tab-1", resolved)
 	}
 
-	// TabContext on unknown tab should fail (no lite to escalate).
 	_, _, err = proxy.TabContext("unknown-tab")
 	if err == nil {
 		t.Fatal("expected error for unknown tab with nil lite, got nil")
 	}
 
-	// ExecuteAction should delegate to Chrome.
 	result, err := proxy.ExecuteAction(context.Background(), ActionClick, ActionRequest{
 		TabID: "chrome-tab-1",
 		Ref:   "e5",
@@ -381,19 +369,16 @@ func TestBridgeProxy_NilLite_Passthrough(t *testing.T) {
 		t.Fatalf("expected chrome=true, got %v", result)
 	}
 
-	// AvailableActions should return only Chrome actions.
 	actions := proxy.AvailableActions()
-	if len(actions) != 3 { // click, type, press from mock
+	if len(actions) != 3 {
 		t.Fatalf("expected 3 actions, got %d: %v", len(actions), actions)
 	}
 
-	// TabURL should return false.
 	_, found := proxy.TabURL("any")
 	if found {
 		t.Fatal("expected TabURL=false with nil lite")
 	}
 
-	// StaticBrowser should return nil.
 	if proxy.StaticBrowser() != nil {
 		t.Fatal("expected StaticBrowser()=nil with nil lite")
 	}
@@ -401,7 +386,6 @@ func TestBridgeProxy_NilLite_Passthrough(t *testing.T) {
 
 func TestBridgeProxy_AvailableActions_MergesStaticAndChrome(t *testing.T) {
 	mb := newMockChromeBridge()
-	// Chrome only returns "press" — no click or type.
 	mb.availableActions = []string{ActionPress}
 
 	lite := staticfetch.NewBrowser()
@@ -413,7 +397,6 @@ func TestBridgeProxy_AvailableActions_MergesStaticAndChrome(t *testing.T) {
 		actionSet[a] = true
 	}
 
-	// Should have press from Chrome + click and type from static.
 	for _, want := range []string{ActionPress, ActionClick, ActionType} {
 		if !actionSet[want] {
 			t.Errorf("expected %q in available actions, got %v", want, actions)

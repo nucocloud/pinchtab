@@ -9,6 +9,7 @@ import (
 
 	"github.com/pinchtab/pinchtab/internal/bridge"
 	"github.com/pinchtab/pinchtab/internal/httpx"
+	"github.com/pinchtab/pinchtab/internal/routes"
 )
 
 type routeRuleRequest struct {
@@ -103,9 +104,7 @@ func (h *Handlers) HandleTabNetworkRouteList(w http.ResponseWriter, r *http.Requ
 // with enforceCurrentTabDomainPolicy(tabCtx, resolvedID).
 func (h *Handlers) requireRouteContext(w http.ResponseWriter, r *http.Request, tabID string) (tabCtx context.Context, resolvedID string, ok bool) {
 	if !h.networkInterceptEnabled() {
-		httpx.ErrorCode(w, 403, "network_intercept_disabled",
-			httpx.DisabledEndpointMessage("networkIntercept", "security.allowNetworkIntercept"),
-			false, map[string]any{"setting": "security.allowNetworkIntercept"})
+		h.writeCapabilityDisabled(w, routes.CapNetworkIntercept)
 		return nil, "", false
 	}
 	if err := h.ensureBrowser(h.Config); err != nil {

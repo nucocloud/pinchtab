@@ -2,7 +2,6 @@ package browsers
 
 import "sort"
 
-// BrowserCapability identifies a discrete browser feature.
 type BrowserCapability string
 
 const (
@@ -51,7 +50,6 @@ func (cs CapabilitySet) List() []BrowserCapability {
 	return out
 }
 
-// Len returns the number of capabilities in the set.
 func (cs CapabilitySet) Len() int {
 	return len(cs.m)
 }

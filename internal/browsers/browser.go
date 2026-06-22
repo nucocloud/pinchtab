@@ -12,7 +12,6 @@ import (
 	"time"
 )
 
-// LaunchErrorKind classifies a browser launch failure.
 type LaunchErrorKind int
 
 const (
@@ -20,8 +19,6 @@ const (
 	LaunchErrorSilentCDPDrop
 )
 
-// LaunchFailure carries context about a browser launch error for provider
-// classification.
 type LaunchFailure struct {
 	Err             error
 	Elapsed         time.Duration
@@ -39,7 +36,6 @@ type LaunchFailure struct {
 // Security policy (domain blocks, IDPI, private IP) is enforced separately
 // at the handler level and is never subject to fallback.
 
-// Decision classifies whether a browser can handle a given request intent.
 type Decision string
 
 const (
@@ -48,20 +44,16 @@ const (
 	DecisionFail   Decision = "fail"
 )
 
-// HandleDecision pairs a Decision with an optional human-readable reason.
 type HandleDecision struct {
 	Decision Decision `json:"decision"`
 	Reason   string   `json:"reason,omitempty"`
 }
 
-// RequestIntent describes the shape of an incoming request so a browser can
-// decide whether it is able to serve it.
 type RequestIntent struct {
 	Shape         string `json:"shape"`
 	StateChanging bool   `json:"stateChanging,omitempty"`
 }
 
-// Shape constants classify the kind of work a request represents.
 const (
 	ShapeStaticRead     = "static-read"
 	ShapeStaticSnapshot = "static-snapshot"
@@ -73,11 +65,9 @@ const (
 	ShapeDownloadUpload = "download-upload"
 )
 
-// Browser is the extension point for adding new browser providers.
 type Browser interface {
 	// ID returns a short stable identifier ("chrome", "cloak", …).
 	ID() string
-	// DisplayName returns a human-readable label.
 	DisplayName() string
 	// Capabilities reports implementation-level features this browser
 	// supports (e.g. CDP, headless, native stealth). Used for launch
@@ -85,22 +75,13 @@ type Browser interface {
 	// CanHandle for that.
 	Capabilities() CapabilitySet
 
-	// DiscoverBinary locates the browser binary on the current system.
 	DiscoverBinary() BinaryDiscovery
-	// DoctorChecks returns provider-specific health checks.
 	DoctorChecks(cfg TargetConfig) []DoctorCheck
 
-	// BuildLaunchArgs produces the CLI args and env vars needed to start
-	// the browser. Returns (args, env, err).
 	BuildLaunchArgs(cfg LaunchConfig) ([]string, []string, error)
-	// SupportsRemoteCDP reports whether this browser can be attached to
-	// via a remote CDP endpoint.
 	SupportsRemoteCDP() bool
 
-	// GeoAlignment returns launch-time flags/env derived from geo config.
 	GeoAlignment(geo GeoConfig) GeoStrategy
-	// ValidateTarget checks that a target configuration is valid for this
-	// browser, returning a descriptive error if not.
 	ValidateTarget(cfg TargetConfig) error
 
 	// ClassifyLaunchError lets a provider identify known failure patterns
@@ -123,8 +104,7 @@ var (
 	registry = map[string]Browser{}
 )
 
-// Register adds a Browser to the global registry.
-// It panics if a browser with the same ID is already registered.
+// Register panics if a browser with the same ID is already registered.
 func Register(b Browser) {
 	mu.Lock()
 	defer mu.Unlock()
@@ -136,7 +116,6 @@ func Register(b Browser) {
 	registry[id] = b
 }
 
-// Get returns the Browser registered under id, or (nil, false) if unknown.
 func Get(id string) (Browser, bool) {
 	mu.Lock()
 	defer mu.Unlock()
@@ -145,8 +124,7 @@ func Get(id string) (Browser, bool) {
 	return b, ok
 }
 
-// MustGet returns the Browser registered under id.
-// It panics with a message listing all known IDs if id is not found.
+// MustGet panics with a message listing all known IDs if id is not found.
 func MustGet(id string) Browser {
 	mu.Lock()
 	defer mu.Unlock()
@@ -162,8 +140,6 @@ func MustGet(id string) Browser {
 	))
 }
 
-// IDs returns a sorted list of all registered browser IDs.
-// It returns an empty (non-nil) slice when the registry is empty.
 func IDs() []string {
 	mu.Lock()
 	defer mu.Unlock()
@@ -171,7 +147,7 @@ func IDs() []string {
 	return sortedKeysLocked()
 }
 
-// sortedKeysLocked returns sorted registry keys. Caller must hold mu.
+// Caller must hold mu.
 func sortedKeysLocked() []string {
 	out := make([]string, 0, len(registry))
 	for id := range registry {

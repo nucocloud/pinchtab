@@ -80,15 +80,11 @@ const bannerDismissJS = `(() => {
   }
 })();`
 
-// bannerDismissTimeout caps how long the dismissal script can run end-to-end.
-// Hard upper bound — if the page is unresponsive we silently skip.
+// bannerDismissTimeout is a hard upper bound — if the page is unresponsive we silently skip.
 const bannerDismissTimeout = 750 * time.Millisecond
 
-// dismissBanners runs the dismissal script on the current page of the given
-// tab context. Errors are swallowed: dismissal is purely best-effort.
-//
-// Pass enabled=false to no-op (lets call-sites wire the helper unconditionally
-// and decide based on the request flag).
+// dismissBanners runs the dismissal script best-effort; errors are swallowed.
+// Pass enabled=false to no-op so call-sites can wire it unconditionally.
 func (h *Handlers) dismissBanners(ctx context.Context, tabID string, enabled bool) {
 	if !enabled || ctx == nil || tabID == "" {
 		return

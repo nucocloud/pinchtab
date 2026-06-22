@@ -86,6 +86,37 @@ func TestReportBrowsers_DefaultBrowser(t *testing.T) {
 	}
 }
 
+// When browsers.default diverges from the default target's provider, doctor
+// must flag the provider that actually launches (the target's), matching
+// ResolveDefaultBrowserTarget — not the raw browsers.default.
+func TestReportBrowsers_DefaultResolvesViaTargetMap(t *testing.T) {
+	cfg := &config.RuntimeConfig{
+		DefaultBrowser:    "cloak",
+		BrowsersAvailable: []string{"chrome", "cloak"},
+		Targets: config.BrowserTargetsConfig{
+			"default": config.BrowserTargetConfig{Provider: config.BrowserChrome},
+		},
+		DefaultTarget: "default",
+	}
+	report := ReportBrowsers(context.Background(), cfg)
+
+	if report.DefaultBrowser != "chrome" {
+		t.Fatalf("DefaultBrowser = %q, want chrome (default target provider, matching launch)", report.DefaultBrowser)
+	}
+	for _, bi := range report.Browsers {
+		switch bi.Name {
+		case "chrome":
+			if !bi.IsDefault {
+				t.Error("chrome (default target provider) should be marked default")
+			}
+		default:
+			if bi.IsDefault {
+				t.Errorf("browser %q should not be marked default", bi.Name)
+			}
+		}
+	}
+}
+
 func TestReportBrowsers_StatusReady(t *testing.T) {
 	cfg := &config.RuntimeConfig{
 		BrowsersAvailable: []string{"chrome"},

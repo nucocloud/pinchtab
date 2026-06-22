@@ -470,7 +470,6 @@ func TestRealworld_WikipediaStyle(t *testing.T) {
 			{"links detected as interactive", func(t *testing.T, lite *Browser) {
 				nodes := snapshotNodes(t, lite, "interactive")
 				requireRole(t, nodes, "link", 1) // at minimum the logo link and toc links
-				// All should be interactive
 				for _, n := range nodes {
 					if !n.Interactive {
 						t.Errorf("interactive filter returned non-interactive: %+v", n)
@@ -574,7 +573,6 @@ func TestRealworld_EcommerceStyle(t *testing.T) {
 			{"details/summary as group/button", func(t *testing.T, lite *Browser) {
 				nodes := snapshotNodes(t, lite, "")
 				requireRole(t, nodes, "group", 1)
-				// summary -> interactive button
 				interNodes := snapshotNodes(t, lite, "interactive")
 				foundSummary := false
 				for _, n := range interNodes {
@@ -778,10 +776,8 @@ func TestRealworld_SpecialCharacters(t *testing.T) {
 		checks: []realworldCheck{
 			{"HTML entities decoded in text", func(t *testing.T, lite *Browser) {
 				text := getText(t, lite)
-				// &amp; should be decoded to &
-				requireTextContains(t, text, "&")
-				// &lt; should be decoded
-				requireTextContains(t, text, "<$50")
+				requireTextContains(t, text, "&")    // &amp; decoded
+				requireTextContains(t, text, "<$50") // &lt; decoded
 			}},
 			{"accented characters", func(t *testing.T, lite *Browser) {
 				text := getText(t, lite)
@@ -814,7 +810,6 @@ func TestRealworld_EmptyPage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Snapshot: %v", err)
 	}
-	// Empty body should yield 0 or very few nodes
 	if len(snapRes.Nodes) > 1 {
 		t.Errorf("expected <= 1 nodes for empty page, got %d", len(snapRes.Nodes))
 	}
@@ -867,7 +862,6 @@ func TestRealworld_HTTP404(t *testing.T) {
 }
 
 func TestRealworld_LargePagePerformance(t *testing.T) {
-	// Generate a page with many elements to test performance doesn't degrade
 	var b strings.Builder
 	b.WriteString(`<!DOCTYPE html><html><head><title>Large</title></head><body>`)
 	for i := range 200 {
@@ -980,7 +974,6 @@ func TestRealworld_InlineStyles(t *testing.T) {
 }
 
 func TestRealworld_ClickWorkflow(t *testing.T) {
-	// Test clicking buttons — buttons should work without navigation side effects
 	page := `<!DOCTYPE html>
 <html><head><title>Click Test</title></head>
 <body>
@@ -1003,7 +996,6 @@ func TestRealworld_ClickWorkflow(t *testing.T) {
 	_, _ = lite.Navigate(context.Background(), ts.URL)
 	nodes := snapshotNodes(t, lite, "interactive")
 
-	// Click every interactive element — should not error or panic
 	for _, n := range nodes {
 		err := lite.Click(context.Background(), "", n.Ref)
 		if err != nil {
@@ -1011,7 +1003,6 @@ func TestRealworld_ClickWorkflow(t *testing.T) {
 		}
 	}
 
-	// Engine should still be usable
 	textRes2, err := lite.Text(context.Background(), "")
 	if err != nil {
 		t.Fatalf("Text after clicks: %v", err)
@@ -1065,7 +1056,6 @@ func TestRealworld_TypeWorkflow(t *testing.T) {
 	_, _ = lite.Navigate(context.Background(), ts.URL)
 	nodes := snapshotNodes(t, lite, "interactive")
 
-	// Type into all textboxes
 	for _, n := range nodes {
 		if n.Role == "textbox" {
 			err := lite.Type(context.Background(), "", n.Ref, "test-value")

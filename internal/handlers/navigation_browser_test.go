@@ -27,12 +27,10 @@ func TestHandleNavigate_BrowserParam_Valid(t *testing.T) {
 	w := httptest.NewRecorder()
 	h.HandleNavigate(w, req)
 
-	// Should not return 400 (browser validation passes).
 	if w.Code == http.StatusBadRequest {
 		t.Fatalf("expected browser param 'cloak' to be accepted, got 400 body=%s", w.Body.String())
 	}
 
-	// If 200, verify route metadata includes the requested browser.
 	if w.Code == http.StatusOK {
 		var resp map[string]any
 		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
@@ -137,7 +135,6 @@ func TestHandleNavigate_BrowserParam_GET(t *testing.T) {
 	w := httptest.NewRecorder()
 	h.HandleNavigate(w, req)
 
-	// Should not return 400.
 	if w.Code == http.StatusBadRequest {
 		t.Fatalf("expected browser param 'cloak' to be accepted via GET, got 400 body=%s", w.Body.String())
 	}
@@ -152,7 +149,6 @@ func TestHandleSnapshot_BrowserParam_Valid(t *testing.T) {
 	w := httptest.NewRecorder()
 	h.HandleSnapshot(w, req)
 
-	// Should not return 400 (validation passes).
 	if w.Code == http.StatusBadRequest {
 		t.Fatalf("expected browser param 'cloak' to be accepted, got 400 body=%s", w.Body.String())
 	}
@@ -281,7 +277,6 @@ func TestHandleNavigate_RequestBrowser_OverridesSessionBrowser(t *testing.T) {
 	w := httptest.NewRecorder()
 	h.HandleNavigate(w, req)
 
-	// Should NOT get 400 — request "chrome" wins over session "fake-browser".
 	if w.Code == http.StatusBadRequest {
 		t.Fatalf("expected request browser 'chrome' to override session 'fake-browser', but got 400 body=%s", w.Body.String())
 	}
@@ -321,7 +316,6 @@ func TestHandleNavigate_EmptyConfig_DefaultsToChrome(t *testing.T) {
 	w := httptest.NewRecorder()
 	h.HandleNavigate(w, req)
 
-	// Should NOT get 400 — chrome is always accepted.
 	if w.Code == http.StatusBadRequest {
 		t.Fatalf("expected empty config to default to chrome (no 400), got body=%s", w.Body.String())
 	}
@@ -342,12 +336,10 @@ func TestHandleNavigate_RequestConflictsWithSession_RequestWins(t *testing.T) {
 	w := httptest.NewRecorder()
 	h.HandleNavigate(w, req)
 
-	// Should not be 400 — "chrome" is valid.
 	if w.Code == http.StatusBadRequest {
 		t.Fatalf("expected request browser 'chrome' to be accepted, got 400 body=%s", w.Body.String())
 	}
 
-	// If we get a 200, verify route metadata reflects the request browser.
 	if w.Code == http.StatusOK {
 		var resp map[string]any
 		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
@@ -377,7 +369,6 @@ func TestHandleNavigate_SessionBrowser_AcceptedWhenAvailable(t *testing.T) {
 	w := httptest.NewRecorder()
 	h.HandleNavigate(w, req)
 
-	// Should NOT get 400 — session browser "cloak" is available.
 	if w.Code == http.StatusBadRequest {
 		t.Fatalf("expected session browser 'cloak' to be accepted when available, got 400 body=%s", w.Body.String())
 	}
@@ -396,7 +387,6 @@ func TestHandleNavigate_GlobalDefault_AcceptedWhenAvailable(t *testing.T) {
 	w := httptest.NewRecorder()
 	h.HandleNavigate(w, req)
 
-	// Should NOT get 400 — global default "cloak" is available.
 	if w.Code == http.StatusBadRequest {
 		t.Fatalf("expected global default 'cloak' to be accepted when available, got 400 body=%s", w.Body.String())
 	}
@@ -419,7 +409,6 @@ func TestHandleNavigate_SessionOverridesGlobalDefault(t *testing.T) {
 	w := httptest.NewRecorder()
 	h.HandleNavigate(w, req)
 
-	// Should get 400 — session "fake-browser" wins over global default "chrome".
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 because session 'fake-browser' overrides global default 'chrome', got %d body=%s", w.Code, w.Body.String())
 	}
@@ -443,7 +432,6 @@ func TestHandleNavigate_RequestOverridesSessionAndDefault(t *testing.T) {
 	w := httptest.NewRecorder()
 	h.HandleNavigate(w, req)
 
-	// Should NOT get 400 — request "chrome" wins over both session and default.
 	if w.Code == http.StatusBadRequest {
 		t.Fatalf("expected request 'chrome' to override session and default 'fake-browser', but got 400 body=%s", w.Body.String())
 	}

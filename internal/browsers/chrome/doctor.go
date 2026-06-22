@@ -12,7 +12,6 @@ import (
 
 const chromeMinVersion = "120.0.0"
 
-// DoctorChecks returns Chrome-specific health checks for the doctor command.
 func (b Browser) DoctorChecks(_ browsers.TargetConfig) []browsers.DoctorCheck {
 	return []browsers.DoctorCheck{
 		{

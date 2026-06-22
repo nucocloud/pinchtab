@@ -260,7 +260,6 @@ func TestFileConfigFromRuntime_PreservesBrowserTargets(t *testing.T) {
 	}
 }
 
-// TestIsLegacyConfig tests the format detection logic.
 func TestIsLegacyConfig(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -314,7 +313,6 @@ func TestIsLegacyConfig(t *testing.T) {
 	}
 }
 
-// TestConvertLegacyConfig tests the legacy to nested conversion.
 func TestConvertLegacyConfig(t *testing.T) {
 	h := false
 	maxTabs := 25
@@ -374,7 +372,6 @@ func TestTabPolicyDefaultsFromRuntime(t *testing.T) {
 	}
 }
 
-// TestDefaultFileConfigJSON tests that DefaultFileConfig serializes correctly.
 func TestDefaultFileConfigJSON(t *testing.T) {
 	fc := DefaultFileConfig()
 	data, err := json.MarshalIndent(fc, "", "  ")
@@ -382,7 +379,6 @@ func TestDefaultFileConfigJSON(t *testing.T) {
 		t.Fatalf("failed to marshal DefaultFileConfig: %v", err)
 	}
 
-	// Verify it can be parsed back
 	var parsed FileConfig
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		t.Fatalf("failed to unmarshal DefaultFileConfig output: %v", err)
@@ -504,7 +500,6 @@ func TestFileConfigJSONPreservesExplicitZeroValues(t *testing.T) {
 	if _, ok := browser["provider"]; ok {
 		t.Fatal("browser.provider should not be emitted in JSON (deprecated in favor of browsers.default)")
 	}
-	// Verify browsers.default is emitted instead
 	if browsersRaw, ok := raw["browsers"]; !ok {
 		t.Fatal("browsers block missing from JSON")
 	} else if browsersMap, ok := browsersRaw.(map[string]any); !ok {
@@ -618,6 +613,21 @@ func TestFileConfigFromRuntimeEmitsCloakStorageQuotaZeroForCloakProvider(t *test
 	})
 	if fc.Browser.Cloak.StorageQuotaMB == nil || *fc.Browser.Cloak.StorageQuotaMB != 0 {
 		t.Fatalf("StorageQuotaMB = %v, want explicit 0", fc.Browser.Cloak.StorageQuotaMB)
+	}
+}
+
+// An unknown browsers.default must be written verbatim (config load keeps it raw
+// so the load-time warning + chrome fallback still fire); marshal must not
+// normalize it to chrome. An empty value falls back to chrome.
+func TestFileConfigFromRuntime_DefaultBrowserVerbatim(t *testing.T) {
+	if got := FileConfigFromRuntime(&RuntimeConfig{DefaultBrowser: "foo"}).Browsers.Default; got != "foo" {
+		t.Errorf("unknown DefaultBrowser = %q, want verbatim \"foo\" (not normalized)", got)
+	}
+	if got := FileConfigFromRuntime(&RuntimeConfig{DefaultBrowser: ""}).Browsers.Default; got != BrowserChrome {
+		t.Errorf("empty DefaultBrowser = %q, want chrome fallback", got)
+	}
+	if got := FileConfigFromRuntime(&RuntimeConfig{DefaultBrowser: BrowserCloak}).Browsers.Default; got != BrowserCloak {
+		t.Errorf("known DefaultBrowser = %q, want cloak", got)
 	}
 }
 

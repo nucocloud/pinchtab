@@ -42,7 +42,6 @@ func SetHumanRandSeed(seed int64) {
 	humanRand = rand.New(rand.NewSource(seed))
 }
 
-// Config allows injecting a custom random source for testing
 type Config struct {
 	Rand *rand.Rand
 }
@@ -198,8 +197,7 @@ var boxModelForBackendNodeAction = func(ctx context.Context, backendNodeID cdp.B
 
 var clickCoordinateHumanAction = Click
 
-// ClickElement clicks on an element identified by its backend DOM node ID.
-// This uses the backendDOMNodeId from the accessibility tree, NOT a regular DOM nodeId.
+// The ID is the backendDOMNodeId from the accessibility tree, NOT a regular DOM nodeId.
 func ClickElement(ctx context.Context, backendNodeID cdp.BackendNodeID) error {
 	// Scroll the target into the visual viewport first. The humanized click is
 	// coordinate-based (Input.dispatchMouseEvent at the box-model center), so an
@@ -231,7 +229,6 @@ func Type(text string, fast bool) []chromedp.Action {
 	return TypeWithConfig(text, fast, nil)
 }
 
-// TypeWithConfig generates typing actions with optional custom random source
 func TypeWithConfig(text string, fast bool, cfg *Config) []chromedp.Action {
 	rng := cfg.getRand()
 	actions := []chromedp.Action{}

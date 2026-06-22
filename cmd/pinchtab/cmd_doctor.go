@@ -44,12 +44,18 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return newCommandExitError(2, fmt.Errorf("pinchtab doctor: %w", err))
 	}
+	return runDoctorChecks(cmd, cfg, doctorCheck, "pinchtab doctor", "")
+}
 
-	check := strings.TrimSpace(doctorCheck)
-
+// runDoctorChecks validates the optional single-check filter, runs the doctor
+// checks, renders JSON/text, and maps the summary to an exit code. errPrefix is
+// the command label used in error messages; target is the browser-target label
+// passed to the renderers ("" for the top-level doctor command).
+func runDoctorChecks(cmd *cobra.Command, cfg *config.RuntimeConfig, check, errPrefix, target string) error {
+	check = strings.TrimSpace(check)
 	if check != "" {
 		if !doctor.KnownCheck(cfg, check) {
-			return newCommandExitError(2, fmt.Errorf("pinchtab doctor: unknown check %q for browser=%s", check, cfg.DefaultBrowser))
+			return newCommandExitError(2, fmt.Errorf("%s: unknown check %q for browser=%s", errPrefix, check, cfg.DefaultBrowser))
 		}
 	}
 
@@ -58,17 +64,17 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	out := cmd.OutOrStdout()
 
 	if doctorJSON {
-		if err := doctor.WriteJSON(out, browser, "", results); err != nil {
+		if err := doctor.WriteJSON(out, browser, target, results); err != nil {
 			return fmt.Errorf("write json: %w", err)
 		}
 	} else {
-		doctor.WriteText(out, browser, "", results)
+		doctor.WriteText(out, browser, target, results)
 	}
 
 	summary := doctor.Summarize(results)
 	code := doctor.ExitCode(summary)
 	if code != 0 {
-		return newCommandExitError(code, fmt.Errorf("pinchtab doctor: %d check(s) failed", summary.Failed))
+		return newCommandExitError(code, fmt.Errorf("%s: %d check(s) failed", errPrefix, summary.Failed))
 	}
 	return nil
 }

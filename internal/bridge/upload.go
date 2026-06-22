@@ -11,7 +11,6 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
-// SetFileInputFiles sets files on a file input element identified by its node ID.
 func (b *Bridge) SetFileInputFiles(ctx context.Context, nodeID int64, paths []string) error {
 	return chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		return dom.SetFileInputFiles(paths).WithNodeID(cdp.NodeID(nodeID)).Do(ctx)

@@ -41,7 +41,6 @@ func killProcesses(processes []chromeProfileProcess) error {
 		// is better to ensure the next startup succeeds.
 		_ = syscall.Kill(pid, syscall.SIGKILL)
 	}
-	// Give a small amount of time for processes to actually exit
 	time.Sleep(100 * time.Millisecond)
 	return nil
 }

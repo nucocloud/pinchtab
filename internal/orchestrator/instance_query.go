@@ -13,6 +13,20 @@ import (
 	"github.com/pinchtab/pinchtab/internal/config"
 )
 
+// effectiveInstanceStatus reconciles a stored instance Status with whether the
+// instance is actually active, so a stale "stopped" on a live instance reads as
+// "running" and a non-live "starting/running/stopping" reads as "stopped".
+func effectiveInstanceStatus(status string, active bool) string {
+	if active && status == "stopped" {
+		return "running"
+	}
+	if !active &&
+		(status == "starting" || status == "running" || status == "stopping") {
+		return "stopped"
+	}
+	return status
+}
+
 func (o *Orchestrator) List() []bridge.Instance {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
@@ -20,14 +34,7 @@ func (o *Orchestrator) List() []bridge.Instance {
 	result := make([]bridge.Instance, 0, len(o.instances))
 	for _, inst := range o.instances {
 		copyInst := inst.Instance
-		if instanceIsActive(inst) && copyInst.Status == "stopped" {
-			copyInst.Status = "running"
-		}
-		if !instanceIsActive(inst) &&
-			(copyInst.Status == "starting" || copyInst.Status == "running" || copyInst.Status == "stopping") {
-			copyInst.Status = "stopped"
-		}
-
+		copyInst.Status = effectiveInstanceStatus(copyInst.Status, instanceIsActive(inst))
 		result = append(result, copyInst)
 	}
 	return result
@@ -45,6 +52,21 @@ func (o *Orchestrator) Logs(id string) (string, error) {
 		return "", nil
 	}
 	return inst.logBuf.String(), nil
+}
+
+func (o *Orchestrator) LogsSince(id string, offset uint64) (chunk string, newOffset uint64, reset bool, err error) {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+
+	inst, ok := o.instances[id]
+	if !ok {
+		return "", 0, false, fmt.Errorf("instance %q not found", id)
+	}
+	if inst.logBuf == nil {
+		return "", 0, false, nil
+	}
+	c, n, rs := inst.logBuf.since(offset)
+	return c, n, rs, nil
 }
 
 func (o *Orchestrator) FirstRunningURL() string {
@@ -69,7 +91,6 @@ func (o *Orchestrator) firstRunningURL(match func(*InstanceInternal) bool) strin
 	o.mu.RLock()
 	defer o.mu.RUnlock()
 	// Collect running instances and sort by start time for determinism.
-	// This works for both local launched instances and attached remote bridges.
 	type candidate struct {
 		start time.Time
 		url   string
@@ -131,13 +152,24 @@ func (o *Orchestrator) FirstRunningURLForRequest(r *http.Request) (string, int, 
 		return u, 0, nil
 	}
 
-	return o.FirstRunningURLForBrowser(normalized), 0, nil
+	if u := o.FirstRunningURLForBrowser(normalized); u != "" {
+		return u, 0, nil
+	}
+	// The requested browser has no running instance. If a single instance with a
+	// different browser is running, this browser-pinned server can't serve the
+	// request: return a clear conflict instead of an empty result the caller
+	// would poll on until a misleading "instance not ready" timeout. On-demand
+	// cross-browser launch is the multi-instance (simple) strategy's job; a
+	// single always-on server serves one browser.
+	if only := o.singleRunningInstance(); only != nil && only.Browser != "" &&
+		config.NormalizeBrowser(only.Browser) != normalized {
+		return "", http.StatusConflict, fmt.Errorf(
+			"browser %q requested but %q is already running; restart the server with --browser %s or launch an instance with that browser",
+			requested, only.Browser, requested)
+	}
+	return "", 0, nil
 }
 
-// instanceTabsCached returns the tab list for inst using the per-instance
-// cache. fresh=true forces a bypass and refresh. Returned tabs are
-// InstanceTab-shaped (with InstanceID set) so callers can hand them
-// straight to JSON encoders.
 func (o *Orchestrator) instanceTabsCached(inst *InstanceInternal, fresh bool) ([]bridge.InstanceTab, error) {
 	if inst == nil {
 		return nil, fmt.Errorf("nil instance")
@@ -189,7 +221,6 @@ func (o *Orchestrator) allTabs(fresh bool) []bridge.InstanceTab {
 	return all
 }
 
-// FindInstanceByTab returns the running instance owning tabID, or (nil,false).
 func (o *Orchestrator) FindInstanceByTab(tabID string) (*bridge.Instance, bool) {
 	if tabID == "" {
 		return nil, false

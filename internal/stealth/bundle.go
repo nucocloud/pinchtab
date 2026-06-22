@@ -341,6 +341,13 @@ func nativeCloakCapabilityMap() map[string]bool {
 	caps["audioNoise"] = true
 	caps["webglSpoofing"] = true
 	caps["webrtcMitigation"] = true
+	// The PinchTab worker-UA-parity script is replaced by the popup-guard-only
+	// native cloak script, so don't advertise PinchTab-provided worker UA
+	// parity. (workerHardwareConsistency/serviceWorkerHardwareConsistency also
+	// inherit true and warrant the same native-vs-advertised confirmation —
+	// follow-up, not flipped here.)
+	caps["workerUserAgentConsistency"] = false
+	caps["serviceWorkerUserAgentConsistency"] = false
 	return caps
 }
 

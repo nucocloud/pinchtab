@@ -66,7 +66,6 @@ func TestCleanup_RemovesTempProfileDir(t *testing.T) {
 func TestCleanup_NoTempDir(t *testing.T) {
 	ctx := context.TODO()
 	b := New(ctx, ctx, &config.RuntimeConfig{})
-	// Should not panic with no temp dir
 	b.Cleanup()
 }
 
@@ -229,7 +228,6 @@ func TestCleanup_RemoteCDP_SkipsKillLogic(t *testing.T) {
 	}
 }
 
-// M16: per-tab pause-suppression flag lifecycle on the Bridge.
 func TestFetchPauseSuppressionLifecycle(t *testing.T) {
 	b := &Bridge{}
 	flag := b.fetchPauseSuppression("t1")

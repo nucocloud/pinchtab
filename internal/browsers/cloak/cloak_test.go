@@ -118,7 +118,6 @@ func TestBinaryNamesReturnsExpectedNames(t *testing.T) {
 		t.Errorf("BinaryNames() missing 'cloakbrowser'; got %v", names)
 	}
 
-	// Defensive copy check
 	names[0] = "MUTATED"
 	fresh := cloak.BinaryNames()
 	if fresh[0] == "MUTATED" {
@@ -256,7 +255,6 @@ func TestDiscoverBinaryOverridesChrome(t *testing.T) {
 	}
 	d := b.DiscoverBinary()
 
-	// Probed must reference cloakbrowser, not google-chrome
 	foundCloakProbe := false
 	for _, p := range d.Probed {
 		if strings.Contains(p, "cloakbrowser") {
@@ -366,8 +364,6 @@ func TestClassifyLaunchErrorBrowserNotCanceled(t *testing.T) {
 	}
 }
 
-// Parity tests: verify launch-arg and validation behaviour across configs.
-
 func TestBuildLaunchArgsParityWithRepresentativeConfigs(t *testing.T) {
 	b, ok := browsers.Get("cloak")
 	if !ok {
@@ -404,27 +400,21 @@ func TestBuildLaunchArgsParityWithRepresentativeConfigs(t *testing.T) {
 			},
 			checks: func(t *testing.T, args []string) {
 				t.Helper()
-				// Chrome base flags
 				if !slices.Contains(args, "--disable-background-networking") {
 					t.Error("missing Chrome base flag --disable-background-networking")
 				}
-				// Headless flags
 				if !slices.Contains(args, "--headless=new") {
 					t.Error("missing headless flag --headless=new")
 				}
-				// Debug port
 				if !slices.Contains(args, "--remote-debugging-port=9222") {
 					t.Error("missing --remote-debugging-port=9222")
 				}
-				// Profile
 				if !slices.Contains(args, "--user-data-dir=/tmp/cloak-profile") {
 					t.Error("missing --user-data-dir=/tmp/cloak-profile")
 				}
-				// No-sandbox
 				if !slices.Contains(args, "--no-sandbox") {
 					t.Error("missing --no-sandbox")
 				}
-				// All 7 fingerprint flags
 				for _, want := range []string{
 					"--fingerprint=seed-42",
 					"--fingerprint-platform=linux",
@@ -438,9 +428,6 @@ func TestBuildLaunchArgsParityWithRepresentativeConfigs(t *testing.T) {
 						t.Errorf("missing fingerprint flag %q", want)
 					}
 				}
-				// Extension flags (extension path /ext/one likely doesn't exist
-				// on disk, so Chrome will not emit --load-extension; just verify
-				// the args slice is non-empty which is guaranteed by base flags)
 			},
 		},
 		{
@@ -452,15 +439,12 @@ func TestBuildLaunchArgsParityWithRepresentativeConfigs(t *testing.T) {
 			},
 			checks: func(t *testing.T, args []string) {
 				t.Helper()
-				// Chrome base flags present
 				if !slices.Contains(args, "--disable-background-networking") {
 					t.Error("missing Chrome base flag --disable-background-networking")
 				}
-				// Seed flag present
 				if !slices.Contains(args, "--fingerprint=minimal-seed") {
 					t.Error("missing --fingerprint=minimal-seed")
 				}
-				// No other fingerprint-* flags
 				for _, a := range args {
 					if a == "--fingerprint=minimal-seed" {
 						continue
@@ -469,7 +453,6 @@ func TestBuildLaunchArgsParityWithRepresentativeConfigs(t *testing.T) {
 						t.Errorf("unexpected fingerprint flag %q in minimal config", a)
 					}
 				}
-				// Specifically no storage quota
 				for _, a := range args {
 					if strings.HasPrefix(a, "--fingerprint-storage-quota") {
 						t.Errorf("unexpected storage quota flag %q in minimal config", a)
@@ -482,11 +465,9 @@ func TestBuildLaunchArgsParityWithRepresentativeConfigs(t *testing.T) {
 			cfg:  browsers.LaunchConfig{},
 			checks: func(t *testing.T, args []string) {
 				t.Helper()
-				// Chrome base flags present
 				if !slices.Contains(args, "--disable-background-networking") {
 					t.Error("missing Chrome base flag --disable-background-networking")
 				}
-				// NO fingerprint flags at all
 				for _, a := range args {
 					if strings.HasPrefix(a, "--fingerprint") {
 						t.Errorf("unexpected fingerprint flag %q for zero-valued CloakFingerprint", a)

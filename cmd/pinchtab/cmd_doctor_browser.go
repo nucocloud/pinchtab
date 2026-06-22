@@ -56,31 +56,7 @@ func runDoctorBrowser(cmd *cobra.Command, args []string) error {
 	}
 
 	cfg = resolved.Config
-	check := strings.TrimSpace(doctorBrowserCheck)
-	if check != "" {
-		if !doctor.KnownCheck(cfg, check) {
-			return newCommandExitError(2, fmt.Errorf("pinchtab doctor browser: unknown check %q for browser=%s", check, cfg.DefaultBrowser))
-		}
-	}
-
-	results := doctor.Run(cmd.Context(), cfg, check)
-	browser := config.NormalizeBrowser(cfg.DefaultBrowser)
-	out := cmd.OutOrStdout()
-
-	if doctorJSON {
-		if err := doctor.WriteJSON(out, browser, target, results); err != nil {
-			return fmt.Errorf("write json: %w", err)
-		}
-	} else {
-		doctor.WriteText(out, browser, target, results)
-	}
-
-	summary := doctor.Summarize(results)
-	code := doctor.ExitCode(summary)
-	if code != 0 {
-		return newCommandExitError(code, fmt.Errorf("pinchtab doctor browser: %d check(s) failed", summary.Failed))
-	}
-	return nil
+	return runDoctorChecks(cmd, cfg, doctorBrowserCheck, "pinchtab doctor browser", target)
 }
 
 func runDoctorBrowserOverview(cmd *cobra.Command, cfg *config.RuntimeConfig, focus string) error {
@@ -94,12 +70,6 @@ func runDoctorBrowserOverview(cmd *cobra.Command, cfg *config.RuntimeConfig, foc
 	return nil
 }
 
-var browserInstallHints = map[string]string{
-	"chrome":       "Install Google Chrome: https://www.google.com/chrome/ or via package manager (apt install google-chrome-stable / brew install --cask google-chrome)",
-	"cloak":        "CloakBrowser requires a custom build. See: docs/guides/cloakbrowser.md",
-	"ghost-chrome": "ghost-chrome is built-in (uses Chrome with static-first routing). Ensure Chrome is installed.",
-}
-
 func writeBrowserOverview(w io.Writer, report doctor.BrowsersReport, focus string) {
 	_, _ = fmt.Fprintf(w, "pinchtab doctor browser\n\n")
 
@@ -110,33 +80,16 @@ func writeBrowserOverview(w io.Writer, report doctor.BrowsersReport, focus strin
 			continue
 		}
 
-		var marker string
-		switch bi.Status {
-		case "ready":
-			marker = "✓"
-		case "needs-config":
-			marker = "~"
-		default:
-			marker = "✗"
-		}
-
-		_, _ = fmt.Fprintf(w, "  %s %-14s %s\n", marker, bi.Name, bi.StatusDetail)
+		_, _ = fmt.Fprintf(w, "  %s %-14s %s\n", doctor.BrowserStatusMarker(bi.Status), bi.Name, bi.StatusDetail)
 
 		if bi.Status != "ready" {
-			if hint, ok := browserInstallHints[bi.Name]; ok {
+			if hint, ok := doctor.BrowserInstallHints[bi.Name]; ok {
 				_, _ = fmt.Fprintf(w, "    %s\n", hint)
 			}
 		}
 
-		if len(bi.Checks) > 0 {
-			for _, c := range bi.Checks {
-				m := checkMarker(c.Status)
-				detail := c.Detail
-				if detail == "" && c.ErrMsg != "" {
-					detail = c.ErrMsg
-				}
-				_, _ = fmt.Fprintf(w, "    %s %s: %s\n", m, c.Name, detail)
-			}
+		for _, c := range bi.Checks {
+			doctor.WriteBrowserCheckRow(w, c)
 		}
 	}
 
@@ -145,7 +98,7 @@ func writeBrowserOverview(w io.Writer, report doctor.BrowsersReport, focus strin
 		if report.DefaultBrowser != "" {
 			_, _ = fmt.Fprintf(w, "Default: %s\n", report.DefaultBrowser)
 		}
-		_, _ = fmt.Fprintf(w, "\nLegend: ✓ ready  ~ needs config  ✗ not available\n")
+		_, _ = fmt.Fprintf(w, "\n%s\n", doctor.BrowserLegend)
 	} else {
 		found := false
 		for _, bi := range report.Browsers {

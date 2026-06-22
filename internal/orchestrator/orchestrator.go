@@ -19,13 +19,11 @@ import (
 	"github.com/pinchtab/pinchtab/internal/profiles"
 )
 
-// InstanceEvent is emitted when instance state changes.
 type InstanceEvent struct {
 	Type     string           `json:"type"` // "instance.started", "instance.stopped", "instance.error"
 	Instance *bridge.Instance `json:"instance"`
 }
 
-// EventHandler receives instance lifecycle events.
 type EventHandler func(InstanceEvent)
 
 type Orchestrator struct {
@@ -66,8 +64,6 @@ type Orchestrator struct {
 	attachHealthCheckTimeout time.Duration
 }
 
-// OnEvent adds an event handler for instance lifecycle events.
-// Multiple handlers can be registered; all will be called in order.
 func (o *Orchestrator) OnEvent(handler EventHandler) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
@@ -85,8 +81,6 @@ func (o *Orchestrator) emitEvent(eventType string, inst *bridge.Instance) {
 	}
 }
 
-// EmitEvent allows external components (e.g. strategies) to broadcast
-// lifecycle events through the orchestrator's event system.
 func (o *Orchestrator) EmitEvent(eventType string, inst *bridge.Instance) {
 	o.emitEvent(eventType, inst)
 }
@@ -150,6 +144,42 @@ func NewOrchestrator(baseDir string) *Orchestrator {
 }
 
 func NewOrchestratorWithRunner(baseDir string, runner HostRunner) *Orchestrator {
+	orch := &Orchestrator{
+		instances: make(map[string]*InstanceInternal),
+		baseDir:   baseDir,
+		binary:    resolveStableBinary(baseDir),
+		runner:    runner,
+		// Client timeout for proxying to instances: 60 seconds
+		// Why so high?
+		// - First request to an instance triggers lazy Chrome initialization (8-20+ seconds)
+		// - Navigation can take up to 60s (NavigateTimeout in bridge config)
+		// - Proxied requests (e.g., POST /tabs/{tabId}/navigate) must wait for:
+		//   1. Instance /health handler to initialize the browser
+		//   2. Tab operations to complete (navigate, snapshot, actions, etc.)
+		// - Short timeout (<5s) would break first-request scenarios
+		// See: internal/orchestrator/health.go (monitor), internal/bridge/init.go (InitBrowser)
+		client:         &http.Client{Timeout: 60 * time.Second},
+		childAuthToken: "",
+		allowEvaluate:  false,
+		internalToken:  generateInternalToken(),
+		bindings:       NewBindings(nil),
+		tabsCache:      NewTabsCache(0, nil),
+		portAllocator:  NewPortAllocator(9868, 9968),
+		idMgr:          ids.NewManager(),
+	}
+
+	orch.registerInstanceCleanupHook()
+	orch.initInstanceManager()
+
+	return orch
+}
+
+// resolveStableBinary discovers the running executable, installs it into the
+// sibling bin/ directory as the stable launch binary, and returns the path to
+// launch instances with — falling back to the installed stable copy if the
+// running path is gone. All steps are best-effort: filesystem failures are
+// logged, not fatal. This isolates construction's disk side effects.
+func resolveStableBinary(baseDir string) string {
 	binDir := filepath.Join(filepath.Dir(baseDir), "bin")
 	stableBin := filepath.Join(binDir, "pinchtab")
 	exe, _ := os.Executable()
@@ -176,55 +206,32 @@ func NewOrchestratorWithRunner(baseDir string, runner HostRunner) *Orchestrator 
 		}
 	}
 
-	orch := &Orchestrator{
-		instances: make(map[string]*InstanceInternal),
-		baseDir:   baseDir,
-		binary:    binary,
-		runner:    runner,
-		// Client timeout for proxying to instances: 60 seconds
-		// Why so high?
-		// - First request to an instance triggers lazy Chrome initialization (8-20+ seconds)
-		// - Navigation can take up to 60s (NavigateTimeout in bridge config)
-		// - Proxied requests (e.g., POST /tabs/{tabId}/navigate) must wait for:
-		//   1. Instance /health handler to initialize the browser
-		//   2. Tab operations to complete (navigate, snapshot, actions, etc.)
-		// - Short timeout (<5s) would break first-request scenarios
-		// See: internal/orchestrator/health.go (monitor), internal/bridge/init.go (InitBrowser)
-		client:         &http.Client{Timeout: 60 * time.Second},
-		childAuthToken: "",
-		allowEvaluate:  false,
-		internalToken:  generateInternalToken(),
-		bindings:       NewBindings(nil),
-		tabsCache:      NewTabsCache(0, nil),
-		portAllocator:  NewPortAllocator(9868, 9968),
-		idMgr:          ids.NewManager(),
-	}
+	return binary
+}
 
-	// Drop identity → instance bindings and any cached tab snapshots when
-	// an instance stops or errors so a restarted instance does not keep
-	// receiving routed traffic and dashboards do not show ghost tabs.
-	orch.OnEvent(func(evt InstanceEvent) {
+// registerInstanceCleanupHook drops identity → instance bindings and any cached
+// tab snapshots when an instance stops or errors, so a restarted instance does
+// not keep receiving routed traffic and dashboards do not show ghost tabs.
+func (o *Orchestrator) registerInstanceCleanupHook() {
+	o.OnEvent(func(evt InstanceEvent) {
 		switch evt.Type {
 		case "instance.stopped", "instance.error":
 			if evt.Instance != nil {
-				orch.bindings.ClearInstance(evt.Instance.ID)
-				orch.tabsCache.Invalidate(evt.Instance.ID)
+				o.bindings.ClearInstance(evt.Instance.ID)
+				o.tabsCache.Invalidate(evt.Instance.ID)
 			}
 		}
 	})
-
-	bridgeClient := instance.NewBridgeClient()
-	orch.instanceMgr = instance.NewManager(
-		&orchestratorLauncher{orch: orch},
-		bridgeClient,
-	)
-
-	return orch
 }
 
-// RunMaintenance runs periodic background maintenance tasks for the
-// orchestrator (currently: pruning idle agent bindings). Returns when ctx
-// is cancelled.
+func (o *Orchestrator) initInstanceManager() {
+	bridgeClient := instance.NewBridgeClient()
+	o.instanceMgr = instance.NewManager(
+		&orchestratorLauncher{orch: o},
+		bridgeClient,
+	)
+}
+
 func (o *Orchestrator) RunMaintenance(ctx context.Context) {
 	if o == nil {
 		return
@@ -246,8 +253,6 @@ func (o *Orchestrator) RunMaintenance(ctx context.Context) {
 	}
 }
 
-// Bindings returns the identity → instance binding map. Exposed for tests
-// and for handlers that need to inspect routing state.
 func (o *Orchestrator) Bindings() *Bindings {
 	if o == nil {
 		return nil
@@ -255,8 +260,6 @@ func (o *Orchestrator) Bindings() *Bindings {
 	return o.bindings
 }
 
-// SetStrictCrossInstanceTab toggles strict cross-instance handling. See
-// the strictCrossInstanceTab field for semantics.
 func (o *Orchestrator) SetStrictCrossInstanceTab(strict bool) {
 	if o == nil {
 		return
@@ -266,12 +269,10 @@ func (o *Orchestrator) SetStrictCrossInstanceTab(strict bool) {
 	o.mu.Unlock()
 }
 
-// InstanceManager returns the decomposed instance manager.
 func (o *Orchestrator) InstanceManager() *instance.Manager {
 	return o.instanceMgr
 }
 
-// SetAllocationPolicy changes the allocation policy at runtime.
 func (o *Orchestrator) SetAllocationPolicy(name string) error {
 	return o.instanceMgr.SetAllocationPolicy(name)
 }

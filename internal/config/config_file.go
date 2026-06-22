@@ -274,7 +274,7 @@ func DefaultFileConfig() FileConfig {
 			SolverTimeoutSec:  &autoSolverSolverTimeoutSec,
 			RetryBaseDelayMs:  &autoSolverRetryBaseDelayMs,
 			RetryMaxDelayMs:   &autoSolverRetryMaxDelayMs,
-			Solvers:           []string{"cloudflare", "semantic", "capsolver", "twocaptcha"},
+			Solvers:           []string{"cloudflare", "semantic"},
 			LLMFallback:       &autoSolverLLMFallback,
 		},
 	}

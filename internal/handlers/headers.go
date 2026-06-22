@@ -31,20 +31,14 @@ func (h *Handlers) HandleSetHeaders(w http.ResponseWriter, r *http.Request) {
 // HandleTabSetHeaders sets extra HTTP headers for a specific tab.
 // POST /tabs/{id}/emulation/headers
 func (h *Handlers) HandleTabSetHeaders(w http.ResponseWriter, r *http.Request) {
-	tabID := r.PathValue("id")
-	if tabID == "" {
-		httpx.Error(w, 400, fmt.Errorf("missing tab ID"))
-		return
-	}
-
 	var req headersRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodySize)).Decode(&req); err != nil {
 		httpx.Error(w, 400, fmt.Errorf("decode: %w", err))
 		return
 	}
 
-	if req.TabID != "" && req.TabID != tabID {
-		httpx.Error(w, 400, fmt.Errorf("tabId in body %q does not match URL path %q", req.TabID, tabID))
+	tabID, ok := h.requirePathTabIDMatch(w, r, req.TabID)
+	if !ok {
 		return
 	}
 	req.TabID = tabID

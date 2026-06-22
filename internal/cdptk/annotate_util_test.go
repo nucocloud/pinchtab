@@ -26,11 +26,13 @@ func TestFilterAnnotationItems_SelectorClip(t *testing.T) {
 		{Ref: "e2", Box: AnnotationRect{X: 0, Y: 0, W: 50, H: 50}},     // outside (top-left)
 		{Ref: "e3", Box: AnnotationRect{X: 290, Y: 290, W: 30, H: 30}}, // partial overlap with target bottom-right
 	}
-	// FilterAnnotationItems mutates the underlying slice; copy first.
-	src := append([]AnnotationItem(nil), items...)
-	got := FilterAnnotationItems(src, &target, AnnotationRect{})
+	got := FilterAnnotationItems(items, &target, AnnotationRect{})
 	if len(got) != 2 || got[0].Ref != "e1" || got[1].Ref != "e3" {
 		t.Fatalf("FilterAnnotationItems selector = %+v, want e1+e3", got)
+	}
+	// The input slice must be left intact (no in-place backing-array reuse).
+	if len(items) != 3 || items[1].Ref != "e2" {
+		t.Fatalf("FilterAnnotationItems mutated its input: %+v", items)
 	}
 }
 
