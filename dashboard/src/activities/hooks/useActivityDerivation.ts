@@ -191,7 +191,7 @@ export function useActivityDerivation({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [unlabeledPtsKey]);
+  }, [unlabeledPtsKey, setAgentSessions]);
 
   const derivedAgents = useMemo<Agent[]>(
     () => deriveAgents(agentCatalogEvents),
@@ -228,7 +228,13 @@ export function useActivityDerivation({
         sessionId: "",
       }));
     }
-  }, [filters.agentId, requireSelectedAgent, sidebarTab, visibleAgents]);
+  }, [
+    filters.agentId,
+    requireSelectedAgent,
+    sidebarTab,
+    visibleAgents,
+    setFilters,
+  ]);
 
   return {
     filteredInstances,
