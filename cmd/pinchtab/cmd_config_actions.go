@@ -123,10 +123,22 @@ func confirmSaveAnyway() bool {
 }
 
 func displayConfigValue(path, value string) string {
-	if strings.EqualFold(strings.TrimSpace(path), "server.token") {
+	if isSensitiveConfigPath(path) {
 		return config.MaskToken(value)
 	}
 	return value
+}
+
+// isSensitiveConfigPath reports whether a config path points at a secret
+// (token/password/credential) so its value is masked before being printed.
+func isSensitiveConfigPath(path string) bool {
+	segments := strings.Split(strings.ToLower(strings.TrimSpace(path)), ".")
+	last := segments[len(segments)-1]
+	switch last {
+	case "token", "password", "secret", "apikey", "apisecret":
+		return true
+	}
+	return false
 }
 
 func handleConfigValidate() {

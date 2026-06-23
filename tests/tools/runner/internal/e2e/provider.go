@@ -289,7 +289,7 @@ func (r *Runner) ensureCloakImage(image string) error {
 }
 
 func dockerImagePresent(image string) (bool, error) {
-	cmd := exec.Command("docker", "image", "inspect", image)
+	cmd := exec.Command("docker", "image", "inspect", image) // #nosec G204 -- fixed docker command; image name is runner-controlled, not user input
 	out, err := cmd.CombinedOutput()
 	if err == nil {
 		return true, nil

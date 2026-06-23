@@ -42,7 +42,7 @@ func LaunchAndProbe(ctx context.Context, binary string, extraArgs []string, time
 	}
 	args = append(args, extraArgs...)
 
-	cmd := exec.CommandContext(cctx, binary, args...)
+	cmd := exec.CommandContext(cctx, binary, args...) // #nosec G204 -- binary is a browser path from config or provider discovery, not user input
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		return CDPProbeResult{}, fmt.Errorf("attach stderr: %w", err)

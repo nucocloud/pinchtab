@@ -76,7 +76,7 @@ func checkBinaryStarts(ctx context.Context, cfg *config.RuntimeConfig) CheckResu
 	cctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(cctx, bin, "--version")
+	cmd := exec.CommandContext(cctx, bin, "--version") // #nosec G204 -- bin is a browser path from config/discovery, not user input
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return CheckResult{

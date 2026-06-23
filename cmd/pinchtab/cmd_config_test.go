@@ -369,6 +369,22 @@ func TestConfigSetHintsRestartWhenServerRunning(t *testing.T) {
 	}
 }
 
+func TestIsSensitiveConfigPath(t *testing.T) {
+	cases := map[string]bool{
+		"server.token":                            true,
+		"instanceDefaults.proxy.password":         true,
+		"autosolver.credentials.capsolver.apiKey": true,
+		"cloak.fontsDir":                          false,
+		"strategy":                                false,
+		"":                                        false,
+	}
+	for path, want := range cases {
+		if got := isSensitiveConfigPath(path); got != want {
+			t.Errorf("isSensitiveConfigPath(%q) = %v, want %v", path, got, want)
+		}
+	}
+}
+
 func TestConfigSetMasksServerTokenInOutput(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.json")
 	t.Setenv("PINCHTAB_CONFIG", configPath)
