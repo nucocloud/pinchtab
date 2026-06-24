@@ -58,6 +58,27 @@ func TestDispatchNamedKey_NonPrintableNoInsertText(t *testing.T) {
 	}
 }
 
+// TestDispatchNamedKey_ModifiersNotTyped is the regression test for issue #588:
+// modifier keys (Shift/Control/Alt/Meta) must be recognised named keys with an
+// empty insertText so they dispatch keyDown/keyUp events instead of falling
+// through to chromedp.KeyEvent, which would type the literal name (e.g. "Shift")
+// into the focused field.
+func TestDispatchNamedKey_ModifiersNotTyped(t *testing.T) {
+	for _, k := range []string{"Shift", "Control", "Alt", "Meta"} {
+		def, ok := namedKeyDefs[k]
+		if !ok {
+			t.Errorf("modifier %q must be a recognised named key (else it gets typed as text)", k)
+			continue
+		}
+		if def.insertText != "" {
+			t.Errorf("modifier %q must have empty insertText, got %q (would type literal text)", k, def.insertText)
+		}
+		if def.code == "" || def.virtualKey == 0 {
+			t.Errorf("modifier %q must carry a code and virtualKey, got code=%q vk=%d", k, def.code, def.virtualKey)
+		}
+	}
+}
+
 // TestDispatchNamedKey_ReturnAlias verifies that "Return" is an alias for
 // Enter and produces the same CDP parameters.
 func TestDispatchNamedKey_ReturnAlias(t *testing.T) {

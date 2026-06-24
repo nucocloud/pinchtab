@@ -18,6 +18,14 @@ var namedKeyDefs = map[string]struct {
 	"Return":     {"Enter", 13, "\r"},
 	"Tab":        {"Tab", 9, "\t"},
 	"Escape":     {"Escape", 27, ""},
+	// Modifier keys must dispatch keyDown/keyUp events, never text. Without these
+	// entries they fall through to chromedp.KeyEvent and the literal name ("Shift")
+	// is typed into the focused field (issue #588). insertText is empty so the
+	// browser receives a real modifier key event with no character.
+	"Shift":   {"ShiftLeft", 16, ""},
+	"Control": {"ControlLeft", 17, ""},
+	"Alt":     {"AltLeft", 18, ""},
+	"Meta":    {"MetaLeft", 91, ""},
 	"Backspace":  {"Backspace", 8, ""},
 	"Delete":     {"Delete", 46, ""},
 	"ArrowLeft":  {"ArrowLeft", 37, ""},
