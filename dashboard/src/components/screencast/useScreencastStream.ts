@@ -204,6 +204,10 @@ export function useScreencastStream({
   const retry = () => {
     setStatus("connecting");
     setHasFrame(false);
+    // Manual retry is a fresh start: clear the exhausted reconnect budget so the
+    // next drop gets a full backoff window instead of falling straight back into
+    // the error path.
+    reconnectAttemptsRef.current = 0;
     setRetryKey((p) => p + 1);
   };
 

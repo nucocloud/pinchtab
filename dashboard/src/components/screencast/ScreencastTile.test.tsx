@@ -189,4 +189,62 @@ describe("ScreencastTile", () => {
     // so a transient blip never leaves the user stuck on a "connection lost" overlay.
     await waitFor(() => expect(webSocketMock).toHaveBeenCalledTimes(2));
   });
+
+  it("restores the reconnect budget when the user hits Retry connection", async () => {
+    vi.useFakeTimers();
+    const authFailure = vi
+      .spyOn(api, "handleRealtimeAuthFailure")
+      .mockResolvedValue(undefined);
+
+    const dropLatestSocket = async () => {
+      const socket = webSocketInstances.at(-1) as {
+        onclose?: (event: CloseEvent) => void;
+      };
+      await act(async () => {
+        socket.onclose?.({} as CloseEvent);
+        // Cover the longest backoff (250ms → 4s cap) so the reconnect fires.
+        await vi.advanceTimersByTimeAsync(4000);
+      });
+    };
+
+    await act(async () => {
+      render(
+        <ScreencastTile
+          instanceId="inst_123"
+          tabId="tab_456"
+          label="Example"
+          url="https://pinchtab.com"
+        />,
+      );
+    });
+
+    expect(webSocketMock).toHaveBeenCalledTimes(1);
+
+    // Exhaust the six-attempt budget; the seventh drop surfaces the error path.
+    for (let i = 0; i < 6; i++) {
+      await dropLatestSocket();
+    }
+    const lastSocket = webSocketInstances.at(-1) as {
+      onclose?: (event: CloseEvent) => void;
+    };
+    await act(async () => {
+      lastSocket.onclose?.({} as CloseEvent);
+    });
+
+    expect(authFailure).toHaveBeenCalledTimes(1);
+    const socketsBeforeRetry = webSocketMock.mock.calls.length;
+
+    await act(async () => {
+      screen.getByText("Retry connection").click();
+    });
+
+    // A fresh socket opens immediately on retry...
+    expect(webSocketMock.mock.calls.length).toBe(socketsBeforeRetry + 1);
+
+    // ...and the next drop gets a full backoff window again instead of falling
+    // straight back into the auth-failure error path.
+    await dropLatestSocket();
+    expect(authFailure).toHaveBeenCalledTimes(1);
+    expect(webSocketMock.mock.calls.length).toBe(socketsBeforeRetry + 2);
+  });
 });
