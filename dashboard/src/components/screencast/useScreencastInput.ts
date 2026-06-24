@@ -9,6 +9,23 @@ interface UseScreencastInputArgs {
   status: ScreencastStatus;
 }
 
+// CDP modifier bitmask: Alt=1, Ctrl=2, Meta=4, Shift=8. Shared by the keyboard
+// and pointer paths so held-modifier gestures (Shift+click, Cmd/Ctrl+click,
+// Ctrl+C) reach the page with the same encoding.
+function modifierBitmask(e: {
+  altKey: boolean;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  shiftKey: boolean;
+}): number {
+  return (
+    (e.altKey ? 1 : 0) |
+    (e.ctrlKey ? 2 : 0) |
+    (e.metaKey ? 4 : 0) |
+    (e.shiftKey ? 8 : 0)
+  );
+}
+
 export function useScreencastInput({
   canvasRef,
   tabId,
@@ -47,6 +64,7 @@ export function useScreencastInput({
           hasXY: true,
           frameW: coords.frameW,
           frameH: coords.frameH,
+          modifiers: modifierBitmask(e),
         });
       } catch (err) {
         console.error("click failed", err);
@@ -69,6 +87,7 @@ export function useScreencastInput({
           scrollY: Math.round(e.deltaY),
           frameW: coords.frameW,
           frameH: coords.frameH,
+          modifiers: modifierBitmask(e),
         });
       } catch (err) {
         console.error("scroll failed", err);
@@ -95,13 +114,9 @@ export function useScreencastInput({
         return;
       }
       e.preventDefault();
-      // CDP modifier bitmask: Alt=1, Ctrl=2, Meta=4, Shift=8. Forwarded with
-      // `press` so keyboard chords (Ctrl+C, Cmd+A, Shift+Arrow) reach the page.
-      const modifiers =
-        (e.altKey ? 1 : 0) |
-        (e.ctrlKey ? 2 : 0) |
-        (e.metaKey ? 4 : 0) |
-        (e.shiftKey ? 8 : 0);
+      // Forwarded with `press` so keyboard chords (Ctrl+C, Cmd+A, Shift+Arrow)
+      // reach the page.
+      const modifiers = modifierBitmask(e);
       try {
         if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
           // Printable character with no command modifier (Shift-for-caps is

@@ -16,6 +16,7 @@ var scrollByCoordinateAction = ScrollByCoordinate
 var mouseMoveByCoordinateAction = MouseMoveByCoordinate
 var mouseDownByCoordinateAction = MouseDownByCoordinate
 var mouseUpByCoordinateAction = MouseUpByCoordinate
+var clickByCoordinateAction = ClickByCoordinate
 var clickElementAction = ClickElement
 var clickByNodeIDAction = ClickByNodeID
 var jsClickByBackendNodeAction = JSClickByBackendNode
@@ -301,7 +302,7 @@ func (b *Bridge) actionClick(ctx context.Context, req ActionRequest) (result map
 			}
 			err = clickByNodeIDWithMode(clickCtx, req.NodeID, req.Mode)
 		} else if req.HasXY {
-			err = ClickByCoordinate(clickCtx, req.X, req.Y)
+			err = clickByCoordinateAction(clickCtx, req.X, req.Y, req.Modifiers)
 		} else {
 			resultCh <- clickResult{err: fmt.Errorf("need selector, ref, nodeId, or x/y coordinates")}
 			return
@@ -489,7 +490,7 @@ func (b *Bridge) actionMouseDown(ctx context.Context, req ActionRequest) (map[st
 	if button == "" {
 		button = "left"
 	}
-	if err := mouseDownByCoordinateAction(ctx, x, y, button); err != nil {
+	if err := mouseDownByCoordinateAction(ctx, x, y, button, req.Modifiers); err != nil {
 		return nil, err
 	}
 	b.rememberPointerPosition(req.TabID, x, y)
@@ -505,7 +506,7 @@ func (b *Bridge) actionMouseUp(ctx context.Context, req ActionRequest) (map[stri
 	if button == "" {
 		button = "left"
 	}
-	if err := mouseUpByCoordinateAction(ctx, x, y, button); err != nil {
+	if err := mouseUpByCoordinateAction(ctx, x, y, button, req.Modifiers); err != nil {
 		return nil, err
 	}
 	b.rememberPointerPosition(req.TabID, x, y)
@@ -532,7 +533,7 @@ func (b *Bridge) actionMouseWheel(ctx context.Context, req ActionRequest) (map[s
 	if deltaX == 0 && deltaY == 0 {
 		deltaY = 120
 	}
-	if err := scrollByCoordinateAction(ctx, x, y, deltaX, deltaY); err != nil {
+	if err := scrollByCoordinateAction(ctx, x, y, deltaX, deltaY, req.Modifiers); err != nil {
 		return nil, err
 	}
 	b.rememberPointerPosition(req.TabID, x, y)
@@ -578,7 +579,7 @@ func (b *Bridge) actionScroll(ctx context.Context, req ActionRequest) (map[strin
 			"deltaX":  scrollX,
 			"deltaY":  scrollY,
 		},
-		scrollByCoordinateAction(ctx, scrollTargetX, scrollTargetY, scrollX, scrollY)
+		scrollByCoordinateAction(ctx, scrollTargetX, scrollTargetY, scrollX, scrollY, req.Modifiers)
 }
 
 func (b *Bridge) actionDrag(ctx context.Context, req ActionRequest) (map[string]any, error) {
