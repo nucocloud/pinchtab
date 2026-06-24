@@ -30,12 +30,14 @@ func (b *Bridge) StartScreencast(ctx context.Context, opts ScreencastOpts) (*Scr
 }
 
 func (b *Bridge) shouldUsePollingScreencast() bool {
-	// Headless is NOT a reason to poll: new-headless ("--headless=new") supports
-	// event-driven Page.startScreencast, and the event-driven path starts a
-	// repaint loop that forces the compositor to keep painting so frames flow even
-	// without a foreground window. Event-driven is far more responsive than polling
-	// CaptureScreenshot per frame, which matters for interactive dashboard control.
-	// Polling remains only for providers whose CDP proxy lacks startScreencast.
+	// Headless uses polling: headless Page.startScreencast does not reliably emit
+	// frames (no foreground compositor), so the polling CaptureScreenshot loop is
+	// the dependable path — and since each capture is the cost ceiling regardless,
+	// event-driven buys no throughput here. Polling is also used for providers whose
+	// CDP proxy lacks startScreencast (e.g. Cloak).
+	if b.Config != nil && b.Config.Headless {
+		return true
+	}
 	if b.Config != nil {
 		browserID := config.NormalizeBrowser(b.Config.DefaultBrowser)
 		if browser, ok := browsers.Get(browserID); ok {
