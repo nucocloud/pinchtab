@@ -78,7 +78,8 @@ for id in $TARGETS; do
   CX=$(echo "$CENTER" | jq -r '.[0]')
   CY=$(echo "$CENTER" | jq -r '.[1]')
   for s in $SCALES; do
-    read -r FX FY FW FH < <(python3 -c "cx,cy,cw,ch,s=$CX,$CY,$CSSW,$CSSH,$s; print(round(cx*s), round(cy*s), round(cw*s), round(ch*s))")
+    read -r FX FY FW FH < <(awk -v cx="$CX" -v cy="$CY" -v cw="$CSSW" -v ch="$CSSH" -v s="$s" \
+      'BEGIN{printf "%.0f %.0f %.0f %.0f", cx*s, cy*s, cw*s, ch*s}')
     sc_eval 'window.__lastClick=""; "ok"' >/dev/null
     sc_click_frame "$FX" "$FY" "$FW" "$FH"
     GOT=$(sc_eval 'window.__lastClick')
@@ -103,7 +104,8 @@ CX=$(echo "$CENTER" | jq -r '.[0]')
 CY=$(echo "$CENTER" | jq -r '.[1]')
 
 # Simulate a 2x HiDPI frame.
-read -r FX FY FW FH < <(python3 -c "cx,cy,cw,ch=$CX,$CY,$CSSW,$CSSH; print(cx*2, cy*2, cw*2, ch*2)")
+read -r FX FY FW FH < <(awk -v cx="$CX" -v cy="$CY" -v cw="$CSSW" -v ch="$CSSH" \
+  'BEGIN{printf "%.0f %.0f %.0f %.0f", cx*2, cy*2, cw*2, ch*2}')
 sc_eval 'document.getElementById("inp").blur(); "ok"' >/dev/null
 sc_click_frame "$FX" "$FY" "$FW" "$FH"
 ACTIVE=$(sc_eval 'document.activeElement.id')
