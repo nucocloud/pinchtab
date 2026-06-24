@@ -95,15 +95,24 @@ export function useScreencastInput({
         return;
       }
       e.preventDefault();
+      // CDP modifier bitmask: Alt=1, Ctrl=2, Meta=4, Shift=8. Forwarded with
+      // `press` so keyboard chords (Ctrl+C, Cmd+A, Shift+Arrow) reach the page.
+      const modifiers =
+        (e.altKey ? 1 : 0) |
+        (e.ctrlKey ? 2 : 0) |
+        (e.metaKey ? 4 : 0) |
+        (e.shiftKey ? 8 : 0);
       try {
         if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          // Printable character with no command modifier (Shift-for-caps is
+          // already reflected in e.key) → insert as text.
           await api.sendAction({
             kind: "keyboard-inserttext",
             tabId,
             text: e.key,
           });
         } else {
-          await api.sendAction({ kind: "press", tabId, key: e.key });
+          await api.sendAction({ kind: "press", tabId, key: e.key, modifiers });
         }
       } catch (err) {
         console.error("key input failed", err);

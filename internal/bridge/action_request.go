@@ -62,6 +62,10 @@ type ActionRequest struct {
 	FrameW float64 `json:"frameW,omitempty"`
 	FrameH float64 `json:"frameH,omitempty"`
 
+	// Modifiers is the CDP key-modifier bitmask (Alt=1, Ctrl=2, Meta=4, Shift=8)
+	// held during a press, enabling keyboard chords such as Ctrl+C or Shift+Arrow.
+	Modifiers int `json:"modifiers,omitempty"`
+
 	ScrollX int `json:"scrollX"`
 	ScrollY int `json:"scrollY"`
 	// DeltaX/DeltaY are explicit mouse-wheel deltas for low-level

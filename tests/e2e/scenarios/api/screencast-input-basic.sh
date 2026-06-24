@@ -50,6 +50,15 @@ sc_click_frame() {
   pt_post /action "$body" >/dev/null
 }
 
+# sc_press <key> <modifiers> — press a key with a CDP modifier bitmask
+# (Alt=1, Ctrl=2, Meta=4, Shift=8), as the dashboard sends keyboard chords.
+sc_press() {
+  local body
+  body=$(jq -nc --arg t "$SC_TAB_ID" --arg key "$1" --argjson mods "$2" \
+    '{kind:"press", tabId:$t, key:$key, modifiers:$mods}')
+  pt_post /action "$body" >/dev/null
+}
+
 # ─────────────────────────────────────────────────────────────────
 start_test "screencast click mapping: every target at every frame scale"
 
@@ -132,6 +141,36 @@ if [ "$GOT" = "c" ]; then
   pass_assert "CSS-pixel click (no frameW) landed on centre target"
 else
   fail_assert "CSS-pixel click landed on '${GOT}', want 'c'"
+fi
+
+end_test
+
+# ─────────────────────────────────────────────────────────────────
+start_test "screencast keyboard chords (Ctrl+A, Shift+End) reach the page"
+
+sc_navigate "${FIXTURES_URL}/screencast-click-targets.html"
+# Put known text in the input and focus it with the caret mid-string.
+sc_eval 'var b=document.getElementById("inp"); b.value="hello world"; b.focus(); b.setSelectionRange(3,3); "ok"' >/dev/null
+
+# Ctrl+A (modifiers=2) → select the whole field.
+sc_press "a" 2
+SEL_START=$(sc_eval 'document.getElementById("inp").selectionStart')
+SEL_END=$(sc_eval 'document.getElementById("inp").selectionEnd')
+if [ "$SEL_START" = "0" ] && [ "$SEL_END" = "11" ]; then
+  pass_assert "Ctrl+A selected the whole field (0..11)"
+else
+  fail_assert "Ctrl+A selection was ${SEL_START}..${SEL_END}, want 0..11"
+fi
+
+# Shift+End (modifiers=8) from the start → extend selection to the end.
+sc_eval 'document.getElementById("inp").setSelectionRange(0,0); "ok"' >/dev/null
+sc_press "End" 8
+SEL_START=$(sc_eval 'document.getElementById("inp").selectionStart')
+SEL_END=$(sc_eval 'document.getElementById("inp").selectionEnd')
+if [ "$SEL_START" = "0" ] && [ "$SEL_END" = "11" ]; then
+  pass_assert "Shift+End extended the selection (0..11)"
+else
+  fail_assert "Shift+End selection was ${SEL_START}..${SEL_END}, want 0..11"
 fi
 
 end_test
